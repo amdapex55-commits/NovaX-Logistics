@@ -22,7 +22,9 @@
 <meta name="twitter:title" content="Track your parcel · NovaX Logistics">
 <meta name="twitter:description" content="Live tracking for your NovaX parcel.">
 <meta name="twitter:image" content="https://novaxlogistics.com/assets/og-image.png">
-<meta name="theme-color" content="#04100b">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f7fa">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0e12">
+<meta name="color-scheme" content="light dark">
 
 <meta name="robots" content="noindex,nofollow">
 <!-- AUDIT FIX: the tracking token lives in this page's URL. Without this,
@@ -36,194 +38,236 @@
      Self-contained, no build step, mobile-first at 360px.
      This page is shown to the MERCHANT'S CUSTOMER, not the merchant, so it
      shows only what that customer needs: where the parcel is and how much
-     cash to keep ready. */
+     cash to keep ready.
+
+     9 Oct 2026: rebuilt in the portal's look. The colours below are the
+     portal's own tokens (light and dark), copied here on purpose: a customer
+     must never wait on a stylesheet the merchant portal owns. The theme
+     follows the phone, because this visitor has no saved preference. */
   :root{
-    --ink:#0d1220; --muted:#6b7280; --line:#e6e8ef;
-    /* NovaX brand, matching novaxlogistics.com. This page was indigo/violet
-       from a starter template -- the first NovaX surface most consignees ever
-       see, in someone else's colours. */
-    --bg:#04100b; --panel:#0d1c15;
-    --brand:#0c7c59; --brand-2:#14c77b;
-    --good:#059669; --warn:#b45309; --bad:#dc2626;
-    --radius:14px;
+    --bg:#f5f7fa; --panel:#ffffff; --panel-2:#f7f9fb; --line:#e5e9ee; --line-2:#d4dae1;
+    --ink:#121821; --ink-2:#5b6875; --ink-3:#667380;
+    --accent:#0c7c59; --accent-ink:#ffffff;
+    --good-bg:#e6f6ee; --good-fg:#0c7c59; --good-ln:#b7e3ce;
+    --warn-bg:#fff6e5; --warn-fg:#8a5a00; --warn-ln:#f0d9a8;
+    --bad-bg:#fdecea;  --bad-fg:#b3261e;  --bad-ln:#f3c0ba;
+    --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 26px -14px rgba(16,24,40,.14);
+    --r:16px;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0b0e12; --panel:#11151a; --panel-2:#161b21; --line:#1d232a; --line-2:#28303a;
+      --ink:#e8eef4; --ink-2:#9aa7b4; --ink-3:#8793a0;
+      --accent:#14c77b; --accent-ink:#04130d;
+      --good-bg:rgba(20,199,123,.14); --good-fg:#5fe0a8; --good-ln:rgba(20,199,123,.32);
+      --warn-bg:rgba(232,182,76,.14); --warn-fg:#e8b64c; --warn-ln:rgba(232,182,76,.3);
+      --bad-bg:rgba(224,96,75,.15);   --bad-fg:#f0a396; --bad-ln:rgba(224,96,75,.34);
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 30px -16px rgba(0,0,0,.7);
+    }
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     background:var(--bg); color:var(--ink);
-    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    line-height:1.45; -webkit-font-smoothing:antialiased;
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.45; -webkit-font-smoothing:antialiased; -webkit-text-size-adjust:100%;
   }
-  .wrap{max-width:560px;margin:0 auto;padding:16px 14px 40px;min-width:0;}
+  .wrap{max-width:560px;margin:0 auto;padding:14px 14px 36px;min-width:0;}
 
-  /* ── progress rail ───────────────────────────────────────────────────
-     Five stops. Exception and return states never advance it: a refused
-     parcel has not progressed, and painting it next to "Delivered" is a lie
-     the customer can see through. */
-  .prog{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:14px 12px;
-    background:var(--panel);border-radius:var(--radius);border:1px solid rgba(255,255,255,.06);}
-  .pstep{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;min-width:0;}
-  .pdot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.16);
-    box-shadow:0 0 0 3px rgba(255,255,255,.04);transition:background .2s;}
-  .pstep.on .pdot{background:var(--brand-2);box-shadow:0 0 0 3px rgba(20,199,123,.18);}
-  .pstep.cur .pdot{box-shadow:0 0 0 5px rgba(20,199,123,.24);}
-  .pk{font-size:12px;letter-spacing:0;color:rgba(255,255,255,.45);white-space:nowrap;}
-  .pstep.on .pk{color:rgba(255,255,255,.86);}
-  .pstep.cur .pk{color:#fff;font-weight:700;}
-  .pbar{flex:1 1 auto;height:2px;background:rgba(255,255,255,.12);margin:0 4px;
-    position:relative;top:-9px;border-radius:2px;}
-  .pbar.on{background:var(--brand-2);}
-  .prog.trouble .pstep.cur .pdot{background:var(--bad);box-shadow:0 0 0 5px rgba(220,38,38,.22);}
-  .prog.returning .pstep.cur .pdot{background:var(--warn);box-shadow:0 0 0 5px rgba(180,83,9,.22);}
-  .prog-note{margin:-6px 2px 12px;font-size:13px;}
-  .prog-note.bad{color:#fca5a5;} .prog-note.warn{color:#fcd34d;}
-
-  .eta{margin:2px 0 10px;font-size:14px;color:var(--brand-2);font-weight:700;}
-  .hist-note{margin:10px 2px 0;font-size:12px;color:rgba(255,255,255,.38);line-height:1.4;}
-
-  /* ── copy / share ─────────────────────────────────────────────────── */
-  .acts{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
-  .act{flex:1 1 46%;min-height:44px;padding:11px 12px;border-radius:12px;cursor:pointer;
-    font:600 14px/1.2 inherit;color:#04140d;background:var(--brand-2);
-    border:1px solid transparent;transition:transform .12s,filter .12s;}
-  .act:hover{filter:brightness(1.06);} .act:active{transform:scale(.985);}
-  .act.ghost{background:transparent;color:#eafff5;border-color:rgba(255,255,255,.16);}
-  .act:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px;}
-
-  @media (max-width:380px){ .prog{padding:12px 8px;} .pbar{margin:0 2px;min-width:6px;} }
-  @media (prefers-reduced-motion:reduce){ .act,.pdot{transition:none;} }
+  /* ── who it is from ──────────────────────────────────────────────────
+     NovaX by default; the shop's own name, logo and colour on a token link
+     when they have set them (applyBrand). Text takes the bar's colour, so
+     a shop colour set from the script still reads. */
   .brandbar{
-    display:flex;align-items:center;gap:10px;margin-bottom:16px;
-    padding:12px 14px;border-radius:var(--radius);
-    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;
+    display:flex;align-items:center;gap:11px;margin-bottom:12px;
+    padding:11px 14px;border-radius:var(--r);
+    background:var(--panel);border:1px solid var(--line);color:var(--ink);box-shadow:var(--shadow);
   }
   .brandbar .logo{
-    width:32px;height:32px;border-radius:9px;
+    width:36px;height:36px;border-radius:10px;
     background:url(/assets/icon-192.png) center/contain no-repeat;flex:none;
   }
-  .brandbar .t{min-width:0;}
+  .brandbar .t{min-width:0;flex:1;}
   .brandbar img.nv-shop-logo{width:40px;height:40px;border-radius:10px;object-fit:contain;background:#fff;padding:3px;box-sizing:border-box;flex:none;}
-  .brandbar .nv-shop-initials{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.22) none;
+  .brandbar .nv-shop-initials{width:40px;height:40px;border-radius:10px;background:rgba(127,127,127,.2) none;
     display:grid;place-items:center;font-weight:850;font-size:15px;letter-spacing:.02em;flex:none;}
-  .brandbar strong{overflow-wrap:anywhere;}
-  .nv-shop-wa{display:flex;align-items:center;justify-content:center;min-height:46px;margin:-6px 0 16px;padding:10px 14px;
-    border-radius:var(--radius);background:#25d366;color:#04140d;font-weight:800;font-size:14px;text-decoration:none;text-align:center;}
-  .nv-shop-wa:focus-visible{outline:2px solid #fff;outline-offset:2px;}
-  .brandbar strong{display:block;font-size:15px;letter-spacing:.01em;}
-  .brandbar span{display:block;font-size:12px;opacity:.9;}
-  .card{
-    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:16px 14px;margin-bottom:12px;min-width:0;
+  .brandbar strong{display:block;font-size:15.5px;font-weight:800;letter-spacing:-.01em;overflow-wrap:anywhere;color:inherit;}
+  .brandbar span{display:block;font-size:12.5px;color:inherit;opacity:.74;}
+  .tk-live{display:inline-flex!important;align-items:center;gap:6px;flex:none;font-size:12.5px!important;font-weight:750;opacity:.9!important;}
+  .tk-live[hidden]{display:none!important;}
+  .tk-live i{width:8px;height:8px;border-radius:50%;background:#14c77b;box-shadow:0 0 0 3px rgba(20,199,123,.2);animation:tkPulse 1.8s ease-in-out infinite;}
+  .brandbar[style] .tk-live i{background:currentColor;box-shadow:none;}
+  @keyframes tkPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+
+  /* ── the status, drawn like the portal's wallet card ─────────────────
+     One dark green card in both themes, with the five stops inside it and
+     the tracking number on a perforated stub, the way a label tears off. */
+  .tk-hero{
+    position:relative;overflow:hidden;margin-bottom:12px;padding:18px 16px 0;border-radius:20px;color:#fff;
+    background:
+      radial-gradient(120% 140% at 100% 0%, rgba(31,143,99,.55) 0%, rgba(31,143,99,0) 55%),
+      linear-gradient(135deg,#0b3a29 0%,#082418 60%,#06170f 100%);
+    box-shadow:0 18px 40px -22px rgba(4,25,16,.6);
   }
-  .status-head{font-size:21px;font-weight:850;margin:0 0 4px;overflow-wrap:anywhere;line-height:1.25;}
-  .status-urdu{margin:0 0 10px;color:var(--muted);font-size:13.5px;overflow-wrap:anywhere;}
-  .awbline{
-    display:flex;flex-wrap:wrap;gap:8px;align-items:center;
-    font-size:12px;color:var(--muted);margin-top:10px;
+  .tk-hero.is-bad{
+    background:
+      radial-gradient(120% 140% at 100% 0%, rgba(190,70,55,.5) 0%, rgba(190,70,55,0) 55%),
+      linear-gradient(135deg,#3b1613 0%,#27100e 60%,#180a09 100%);
   }
-  .pill{
-    display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;
-    background:#eef2ff;color:#3730a3;font-weight:700;font-size:12px;
-    min-width:0;overflow-wrap:anywhere;
+  .tk-hero.is-warn{
+    background:
+      radial-gradient(120% 140% at 100% 0%, rgba(200,140,40,.45) 0%, rgba(200,140,40,0) 55%),
+      linear-gradient(135deg,#3a2a0c 0%,#261b08 60%,#171005 100%);
   }
-  .pill.good{background:#ecfdf5;color:#065f46;}
-  .pill.warn{background:#fffbeb;color:#92400e;}
-  .pill.bad{background:#fef2f2;color:#991b1b;}
-  .route{
-    display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
-    gap:8px;align-items:center;margin-top:12px;
+  .tk-hero.is-off{
+    background:
+      radial-gradient(120% 140% at 100% 0%, rgba(120,132,145,.4) 0%, rgba(120,132,145,0) 55%),
+      linear-gradient(135deg,#232a32 0%,#181d23 60%,#101419 100%);
   }
-  .route .city{font-weight:800;font-size:13.5px;overflow-wrap:anywhere;min-width:0;}
-  .route .arrow{color:var(--muted);font-size:15px;}
-  .route .lbl{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+  .tk-badge{position:absolute;right:14px;top:14px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:#fff;}
+  .tk-badge svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .tk-eyebrow{font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.74);padding-right:56px;}
+  .status-head{margin:7px 0 5px;padding-right:56px;font-size:27px;line-height:1.15;font-weight:850;letter-spacing:-.02em;overflow-wrap:anywhere;}
+  .status-urdu{margin:0;font-size:14.5px;line-height:1.5;color:rgba(255,255,255,.86);overflow-wrap:anywhere;}
+  .eta{margin:9px 0 0;font-size:14px;font-weight:750;color:#8ff0c7;}
+
+  /* Five stops. Exception and return states never advance it: a refused
+     parcel has not progressed, and painting it next to "Delivered" is a lie
+     the customer can see through. */
+  .prog{display:flex;align-items:flex-start;margin:18px 0 0;}
+  .pstep{display:flex;flex-direction:column;align-items:center;gap:7px;flex:0 0 auto;min-width:0;}
+  .pdot{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.22);box-shadow:0 0 0 3px rgba(255,255,255,.06);}
+  .pstep.on .pdot{background:#4ee6a5;box-shadow:0 0 0 3px rgba(78,230,165,.16);}
+  .pstep.cur .pdot{box-shadow:0 0 0 5px rgba(78,230,165,.28);animation:tkPulse 1.8s ease-in-out infinite;}
+  .pk{font-size:11.5px;color:rgba(255,255,255,.66);white-space:nowrap;}
+  .pstep.on .pk{color:rgba(255,255,255,.92);}
+  .pstep.cur .pk{color:#fff;font-weight:800;}
+  .pbar{flex:1 1 auto;height:3px;border-radius:3px;background:rgba(255,255,255,.18);margin:5.5px 4px 0;min-width:6px;}
+  .pbar.on{background:#4ee6a5;}
+  .prog.trouble .pstep.cur .pdot{background:#ff9d8c;box-shadow:0 0 0 5px rgba(255,157,140,.26);}
+  .prog.returning .pstep.cur .pdot{background:#f3cd72;box-shadow:0 0 0 5px rgba(243,205,114,.26);}
+  .prog-note{margin:13px 0 0;font-size:13.5px;font-weight:650;line-height:1.45;}
+  .prog-note.bad{color:#ffc4b8;} .prog-note.warn{color:#f6dc9c;}
+
+  .tk-stub{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin:18px -16px 0;padding:12px 16px;border-top:1.5px dashed rgba(255,255,255,.28);background:rgba(0,0,0,.18);}
+  .tk-stub::before,.tk-stub::after{content:"";position:absolute;top:-9px;width:18px;height:18px;border-radius:50%;background:var(--bg);}
+  .tk-stub::before{left:-9px;} .tk-stub::after{right:-9px;}
+  .tk-awb{min-width:0;font:800 17px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;overflow-wrap:anywhere;}
+  .tk-awb small{display:block;margin-bottom:5px;font:800 10.5px/1 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.7);}
+  .tk-copy{flex:none;min-height:44px;padding:0 16px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:750;line-height:1;
+    color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);}
+  .tk-copy:active{transform:scale(.98);}
+  .tk-copy:focus-visible,.act:focus-visible,.tk-seller a:focus-visible,.nv-shop-wa:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
   /* COD is the single highest-stakes number on this page -- the customer
      must have this cash ready when the rider knocks. */
-  .cod{
-    margin-top:14px;border:2px solid var(--ink);border-radius:12px;
-    padding:12px;background:#fff7e6;
-  }
-  .cod .lbl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#92400e;}
-  /* BUG: .amt set no colour, so it inherited the dark theme's near-white
-     body colour (#eafff5, set further down) onto this block's cream #fff7e6
-     background -- the single most important number on the page, invisible.
-     .lbl and .sub next to it both carry explicit dark colours; this one was
-     missed. #431407 on #fff7e6 is roughly 13:1. */
-  .cod .amt{font-size:26px;font-weight:900;margin-top:2px;overflow-wrap:anywhere;color:#431407;}
-  .cod .sub{font-size:12px;color:#7c2d12;margin-top:3px;}
+  .cod{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;
+    padding:14px 16px;border-radius:var(--r);background:var(--warn-bg);border:1px solid var(--warn-ln);}
+  .cod>div:first-child{min-width:0;}
+  .cod .lbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--warn-fg);}
+  .cod .sub{font-size:13px;line-height:1.4;color:var(--ink-2);margin-top:3px;}
+  .cod .amt{flex:none;font-size:28px;font-weight:900;letter-spacing:-.02em;color:var(--ink);white-space:nowrap;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:16px;margin-bottom:12px;min-width:0;box-shadow:var(--shadow);}
+  h2.sec{margin:0 0 14px;font-size:15px;font-weight:800;letter-spacing:-.01em;color:var(--ink);}
+  .route{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center;}
+  .route .lbl{display:block;margin-bottom:3px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);}
+  .route .city{font-size:16px;font-weight:800;overflow-wrap:anywhere;min-width:0;color:var(--ink);}
+  .route .city+.arrow+.city{text-align:right;}
+  .route .arrow{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:15px;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2);}
+  .awbline{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+  .awbline:empty{display:none;}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;min-width:0;overflow-wrap:anywhere;
+    font-size:13px;font-weight:700;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);}
+  .tk-note{margin:14px 0 0;padding:11px 13px;border-radius:12px;font-size:13.5px;line-height:1.5;
+    background:var(--warn-bg);border:1px solid var(--warn-ln);color:var(--ink);overflow-wrap:anywhere;}
+
   .tl{list-style:none;margin:0;padding:0;}
-  .tl li{position:relative;padding:0 0 16px 24px;min-width:0;}
-  .tl li:before{
-    content:"";position:absolute;left:3px;top:4px;width:10px;height:10px;border-radius:50%;
-    background:var(--line);border:2px solid var(--panel);box-shadow:0 0 0 2px var(--line);
-  }
-  .tl li.done:before{background:var(--good);box-shadow:0 0 0 2px #a7f3d0;}
-  .tl li.now:before{background:var(--brand);box-shadow:0 0 0 2px #c7d2fe;}
-  .tl li:after{content:"";position:absolute;left:7.5px;top:16px;bottom:0;width:2px;background:var(--line);}
+  .tl li{position:relative;padding:0 0 18px 30px;min-width:0;}
+  .tl li:last-child{padding-bottom:0;}
+  .tl li:before{content:"";position:absolute;left:4px;top:3px;width:12px;height:12px;border-radius:50%;
+    background:var(--panel);border:2px solid var(--line-2);}
+  .tl li.done:before{background:var(--good-fg);border-color:var(--good-fg);}
+  .tl li.now:before{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px var(--good-bg);}
+  .tl li:after{content:"";position:absolute;left:9px;top:19px;bottom:1px;width:2px;background:var(--line);}
   .tl li:last-child:after{display:none;}
-  .tl .s{font-weight:750;font-size:13.5px;overflow-wrap:anywhere;}
-  .tl .m{font-size:12px;color:var(--muted);overflow-wrap:anywhere;}
-  .tl .d{font-size:12px;color:var(--muted);margin-top:1px;}
-  h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:700;}
-  .cta{
-    display:block;text-align:center;text-decoration:none;
-    padding:14px;border-radius:var(--radius);font-weight:800;font-size:14px;
-    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;
-    margin-top:6px;
-  }
-  .cta-sub{text-align:center;font-size:12px;color:var(--muted);margin-top:8px;overflow-wrap:anywhere;}
-  .msg{text-align:center;padding:28px 14px;color:var(--muted);font-size:14px;overflow-wrap:anywhere;}
-  .msg strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px;}
-  .skel{height:13px;border-radius:6px;background:linear-gradient(90deg,#eef0f5,#f7f8fb,#eef0f5);
-    background-size:200% 100%;animation:sh 1.2s infinite;margin:8px 0;}
+  .tl .s{font-size:14.5px;font-weight:750;color:var(--ink);overflow-wrap:anywhere;}
+  .tl li.now .s{font-weight:850;}
+  .tl .m{font-size:13px;color:var(--ink-2);margin-top:1px;overflow-wrap:anywhere;}
+  .tl .d{font-size:12.5px;color:var(--ink-3);margin-top:2px;}
+  .hist-note{margin:14px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.45;}
+
+  .acts{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
+  .act{flex:1 1 46%;min-height:48px;padding:12px;border-radius:14px;cursor:pointer;
+    font-family:inherit;font-size:14.5px;font-weight:750;line-height:1.2;color:var(--accent-ink);background:var(--accent);border:1px solid transparent;}
+  .act:active{transform:scale(.985);}
+  .act.ghost{background:var(--panel);color:var(--ink);border-color:var(--line-2);box-shadow:var(--shadow);}
+  .nv-shop-wa{display:flex;align-items:center;justify-content:center;min-height:48px;margin:0 0 12px;padding:10px 14px;
+    border-radius:14px;background:#25d366;color:#04140d;font-weight:800;font-size:14.5px;text-decoration:none;text-align:center;}
+
+  .msg{text-align:center;padding:22px 8px;color:var(--ink-2);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere;}
+  .msg:before{content:"!";display:grid;place-items:center;width:44px;height:44px;margin:0 auto 12px;border-radius:50%;
+    font-weight:900;font-size:20px;background:var(--warn-bg);border:1px solid var(--warn-ln);color:var(--warn-fg);}
+  .msg strong{display:block;color:var(--ink);font-size:17px;font-weight:800;margin-bottom:6px;}
+  .skel{height:13px;border-radius:6px;background:linear-gradient(90deg,var(--panel-2),var(--line),var(--panel-2));
+    background-size:200% 100%;animation:sh 1.2s infinite;margin:9px 0;}
   @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* Whoever holds this link buys from an online seller, which makes them, or
+     someone they know, a candidate. Quiet, and last on the page. */
+  .tk-seller{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0 0;padding:14px 16px;border-radius:var(--r);
+    background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);}
+  .tk-seller div{flex:1 1 200px;min-width:0;}
+  .tk-seller b{display:block;font-size:14.5px;font-weight:800;color:var(--ink);}
+  .tk-seller span{display:block;margin-top:3px;font-size:13px;line-height:1.45;color:var(--ink-2);}
+  .tk-seller a{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:46px;padding:0 16px;border-radius:13px;
+    font-weight:800;font-size:14px;text-decoration:none;white-space:nowrap;color:var(--accent-ink);background:var(--accent);}
+  .tk-foot{margin:16px 0 0;text-align:center;font-size:12.5px;color:var(--ink-3);}
+
   @media (max-width:380px){
-    .wrap{padding:12px 10px 32px;}
-    .status-head{font-size:19px;}
-    .cod .amt{font-size:23px;}
+    .wrap{padding:12px 10px 30px;}
+    .status-head{font-size:25px;}
+    .cod .amt{font-size:25px;}
+    .pk{font-size:11px;} .pbar{margin:5.5px 2px 0;}
   }
-  .cta-ask{ font-size:13px; font-weight:800; letter-spacing:.02em; color:#8ff0c7;
-            text-align:center; margin:22px 0 8px; text-transform:uppercase; }
-  /* Dark surface to match the rest of NovaX. Kept as an additive block so the
-     original layout rules are untouched. */
-  body{ background:var(--bg); color:#eafff5; }
-  .card{ background:var(--panel) !important; border:1px solid rgba(20,199,123,.16) !important;
-         color:#eafff5 !important; box-shadow:0 18px 40px -22px rgba(0,0,0,.8) !important; }
-  .msg,.d,.sub{ color:#9dbdae !important; }
-  /* .msg strong was left on var(--ink) = #0d1220, the LIGHT-theme ink, while
-     this block turned the card dark. Every public tracking failure renders its
-     headline through it, so "Parcel not found" came out at 1.06:1 against the
-     card -- measured, not estimated -- i.e. invisible to the customer, on the
-     one page customers actually use. Reported by Codex (note 18, P1). */
-  .msg strong{ color:#eafff5 !important; }
-  .pill{ background:rgba(20,199,123,.10) !important; border:1px solid rgba(20,199,123,.26) !important;
-         color:#8ff0c7 !important; }
-  .pill.good{ background:rgba(20,199,123,.16) !important; color:#4ee6a5 !important; }
-  .pill.bad{ background:rgba(224,96,75,.14) !important; border-color:rgba(224,96,75,.34) !important;
-             color:#ff8a75 !important; }
-  .pill.warn{ background:rgba(232,182,76,.14) !important; border-color:rgba(232,182,76,.32) !important;
-              color:#f0d9a8 !important; }
-  .brandbar{ box-shadow:0 14px 34px -18px rgba(20,199,123,.55); }
-  .skel{ background:linear-gradient(90deg,#0f2419,#14301f,#0f2419) !important; }
-  .cta{ box-shadow:0 14px 30px -14px rgba(20,199,123,.6); }
-  .cta-sub{ color:#7d9a8d !important; }
+  @media (prefers-reduced-motion:reduce){ .tk-live i,.pstep.cur .pdot,.skel{animation:none;} }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="brandbar">
+  <header class="brandbar">
     <div class="logo" role="img" aria-label="NovaX Logistics"></div>
     <div class="t">
       <strong>NovaX Logistics</strong>
       <span>Parcel tracking &middot; Live status</span>
     </div>
-  </div>
-  <div id="out">
+    <span class="tk-live" id="tkLive" hidden><i aria-hidden="true"></i>Live</span>
+  </header>
+  <main id="out">
     <div class="card">
       <div class="skel" style="width:60%"></div>
       <div class="skel" style="width:85%"></div>
       <div class="skel" style="width:40%"></div>
     </div>
-  </div>
+  </main>
+  <!-- These sit outside #out so a refresh that redraws the status cannot
+       wipe them: the shop's WhatsApp button, the assistant, the seller note. -->
+  <div id="tkWaSlot"></div>
+  <div id="tkAiSlot"></div>
+  <!-- Whoever is holding this link is a customer of an online seller, which
+       makes them, or someone they know, a candidate. The link opens the
+       signup anchor on the homepage, not its root, so signup actually opens. -->
+  <aside class="tk-seller">
+    <div><b>Are you a seller?</b><span>COD collected, and your money in your wallet the day it lands. Karachi &middot; Lahore &middot; Islamabad &middot; Rawalpindi.</span></div>
+    <a href="https://novaxlogistics.com/#signup" target="_blank" rel="noopener noreferrer">Ship your parcels with NovaX</a>
+  </aside>
+  <p class="tk-foot">Delivered by NovaX Logistics</p>
 </div>
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
@@ -356,18 +400,9 @@
   }
   function show(html){ document.getElementById("out").innerHTML=html; }
   function fail(title,sub){
-    show('<div class="card"><div class="msg"><strong>'+esc(title)+'</strong>'+esc(sub)+'</div></div>'+ctaHtml());
+    show('<div class="card"><div class="msg"><strong>'+esc(title)+'</strong>'+esc(sub)+'</div></div>');
+    var live=document.getElementById("tkLive"); if(live) live.hidden=true;
   }
-  function ctaHtml(){
-    /* Whoever is holding this link is a customer of an online seller -- which
-       makes them, or someone they know, a candidate. Point at the signup
-       anchor on the homepage rather than the homepage root, so the signup
-       actually opens. */
-    return '<div class="cta-ask">Are you a seller?</div>'+
-           '<a class="cta" href="'+SITE+'/#signup" target="_blank" rel="noopener noreferrer">Ship your parcels with NovaX</a>'+
-           '<div class="cta-sub">COD collected, and your money in your wallet the day it lands. Karachi &middot; Lahore &middot; Islamabad &middot; Rawalpindi.</div>';
-  }
-
   /* The journey, from nv_parcel_status_log -- a real scan history with a
      timestamp on every line, which is what TCS, Leopards and M&P all show
      from a bare tracking number and this page did not.
@@ -486,8 +521,12 @@
       if(i<PROGRESS.length-1) out+='<span class="pbar'+(i<reached?" on":"")+'"></span>';
     }
     out+='</div>';
-    if(isTrouble)  out+='<p class="prog-note bad">This parcel needs attention &mdash; see the journey below.</p>';
-    if(isReturn)   out+='<p class="prog-note warn">This parcel is on its way back to the seller.</p>';
+    /* One line that is true for THIS status. A cancelled parcel does not
+       "need attention", and one already returned is not "on its way back". */
+    if(st==="Cancelled by client")    out+='<p class="prog-note warn">The seller cancelled this parcel.</p>';
+    else if(isTrouble)                out+='<p class="prog-note bad">This parcel needs attention &mdash; see the journey below.</p>';
+    if(st==="Return to shipper")      out+='<p class="prog-note warn">This parcel was returned to the seller.</p>';
+    else if(isReturn)                 out+='<p class="prog-note warn">This parcel is on its way back to the seller.</p>';
     return out;
   }
 
@@ -496,8 +535,7 @@
   function actionsHtml(row){
     var awb=esc(row.awb||"");
     return '<div class="acts">'+
-      '<button type="button" class="act" onclick="nvCopyAwb(this)" data-awb="'+awb+'">Copy tracking number</button>'+
-      '<button type="button" class="act ghost" onclick="nvShare(this)" data-awb="'+awb+'">Share</button>'+
+      '<button type="button" class="act ghost" onclick="nvShare(this)" data-awb="'+awb+'">Share this tracking</button>'+
       '</div>';
   }
   window.nvCopyAwb=function(btn){
@@ -561,6 +599,9 @@
     var t=bar.querySelector(".t");
     if(t) t.innerHTML='<strong></strong><span>Your order &middot; delivered by NovaX Logistics</span>';
     if(t) t.querySelector("strong").textContent=name;
+    /* A shop that has set a name but no colour gets NovaX green, which is
+       what its Profile preview in the portal shows it. */
+    if(!accent) accent="#0c7c59";
     if(accent){
       var L=nvLum(accent);
       /* White text if it reads on the colour, dark text otherwise. */
@@ -575,7 +616,8 @@
       a.textContent="Message "+name+" on WhatsApp";
       if(accent){ var L2=nvLum(accent); var ink2=nvContrast(L2,1)>=4.5?"#ffffff":"#0b1512";
         if(nvContrast(L2,nvLum(ink2))>=4.5){ a.style.background=accent; a.style.color=ink2; } }
-      bar.insertAdjacentElement("afterend",a);
+      var slot=document.getElementById("tkWaSlot");
+      if(slot) slot.appendChild(a); else bar.insertAdjacentElement("afterend",a);
     }
   }
   function render(row){
@@ -588,49 +630,73 @@
     }
     var t=tone(st);
     var cod=Number(row.cod_amount||0);
-    var showCod=cod>0 && st!=="Delivered" && st!=="Return to shipper";
+    /* "Keep this cash ready" only while the parcel is still coming. It was
+       also shown on a refused parcel and on one travelling back to the
+       seller, where nobody is going to collect it. A refusal that gets a
+       second attempt becomes "Reattempt", and the amount shows again. */
+    var showCod=cod>0 && ["Delivered","Refused","Out of service area","Cancelled by client"].indexOf(st)<0 && !/^Return|^Ready for return/.test(st);
 
-    var head='<div class="card">'+
+    /* One icon for where the parcel is. Drawn here so the page needs no
+       icon file; aria-hidden, because the headline already says it. */
+    var ICON={
+      box:'<path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/>',
+      move:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/>',
+      done:'<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.7 2.7L16 9.6"/>',
+      alert:'<path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17v.4"/>',
+      back:'<path d="M9 7 4 12l5 5"/><path d="M4 12h10a5 5 0 0 1 5 5v1"/>',
+      off:'<circle cx="12" cy="12" r="8.5"/><path d="m8.5 8.5 7 7M15.5 8.5l-7 7"/>'
+    };
+    var isReturn=/^Return|^Ready for return/.test(st);
+    var kind = st==="Delivered" ? "done" : st==="Cancelled by client" ? "off" : isReturn ? "back"
+             : (t==="bad"||t==="warn") ? "alert" : (st==="New booked" ? "box" : "move");
+    var heroCls = st==="Cancelled by client" ? " is-off" : t==="bad" ? " is-bad" : t==="warn" ? " is-warn" : "";
+    /* Delivered parcels get the one fact a customer looks for after the
+       fact -- when. Everything else gets no promise: we do not have a
+       committed SLA per parcel, and inventing "arrives Tuesday" is how a
+       tracking page loses trust the first time it is wrong.
+       Only a parcel that IS delivered has a delivery time. N7810135 was
+       marked Delivered in error, put back to Refused, and still printed
+       "Delivered 22 Sept" under "Delivery refused". */
+    var d=(st==="Delivered")?(row.delivered_at||row.updated_at):null;
+
+    var head='<section class="tk-hero'+heroCls+'">'+
+      '<span class="tk-badge" aria-hidden="true"><svg viewBox="0 0 24 24">'+ICON[kind]+'</svg></span>'+
+      '<div class="tk-eyebrow">'+(row.consignee_first?'For '+esc(row.consignee_first):'Your parcel')+'</div>'+
       '<h1 class="status-head">'+esc(say[0])+'</h1>'+
       (say[1]?'<p class="status-urdu">'+esc(say[1])+'</p>':"")+
-      (function(){
-        /* Delivered parcels get the one fact a customer looks for after the
-           fact -- when. Everything else gets no promise: we do not have a
-           committed SLA per parcel, and inventing "arrives Tuesday" is how a
-           tracking page loses trust the first time it is wrong. */
-        /* Only a parcel that IS delivered has a delivery time. N7810135 was
-           marked Delivered in error, put back to Refused, and still printed
-           "Delivered 22 Sept" under "Delivery refused". */
-        var d=(nvStatus(row.status)==="Delivered")?(row.delivered_at||row.updated_at):null;
-        return d?'<p class="eta">Delivered '+esc(when(d))+'</p>':"";
-      })()+
+      (d&&when(d)?'<p class="eta">Delivered '+esc(when(d))+'</p>':"")+
+      progressHtml(row)+
+      '<div class="tk-stub">'+
+        '<div class="tk-awb"><small>Tracking number</small>'+esc(row.awb||"")+'</div>'+
+        '<button type="button" class="tk-copy" onclick="nvCopyAwb(this)" data-awb="'+esc(row.awb||"")+'">Copy</button>'+
+      '</div>'+
+    '</section>';
+
+    var codHtml = showCod ?
+      '<section class="cod">'+
+        '<div><div class="lbl">Cash on delivery</div>'+
+        '<div class="sub">Please keep this amount ready — yeh raqam tayyar rakhein.</div></div>'+
+        '<div class="amt">'+esc(money(cod))+'</div>'+
+      '</section>' : "";
+
+    /* REMOVED long ago, and still out: "Updated <updated_at>". updated_at is
+       when the ROW was last written, not when anything happened to the
+       parcel -- the same reason the journey refuses to stamp steps with it. */
+    var details='<section class="card">'+
+      '<h2 class="sec">Delivery</h2>'+
       '<div class="route">'+
         '<div class="city"><span class="lbl">From</span>'+esc(row.origin_city||"—")+'</div>'+
-        '<div class="arrow">&rarr;</div>'+
+        '<div class="arrow" aria-hidden="true">&rarr;</div>'+
         '<div class="city"><span class="lbl">To</span>'+esc(row.destination_city||"—")+'</div>'+
       '</div>'+
-      (showCod?
-        '<div class="cod">'+
-          '<div class="lbl">Cash on delivery</div>'+
-          '<div class="amt">'+esc(money(cod))+'</div>'+
-          '<div class="sub">Please keep this amount ready — yeh raqam tayyar rakhein.</div>'+
-        '</div>':"")+
       '<div class="awbline">'+
-        '<span class="pill'+(t?" "+t:"")+'">'+esc(row.awb||"")+'</span>'+
-        (row.consignee_first?'<span class="pill">For '+esc(row.consignee_first)+'</span>':"")+
         (row.rider_first?'<span class="pill">Rider: '+esc(row.rider_first)+'</span>':"")+
-        /* REMOVED: "Updated <updated_at>". updated_at is when the ROW was last
-           written, not when anything happened to the parcel -- the same reason
-           the journey above refuses to stamp steps with it. A parcel delivered
-           on 11 July whose row was touched by a backend job on 15 September
-           told the customer it was "Updated 15 September", with no September
-           event anywhere on the page to explain it. Delivered time is already
-           shown above from delivered_at, which is a real event. */
       '</div>'+
-      (row.exception_note?'<p class="status-urdu" style="margin-top:10px">'+esc(row.exception_note)+'</p>':"")+
-    '</div>';
+      (row.exception_note?'<p class="tk-note">'+esc(row.exception_note)+'</p>':"")+
+    '</section>';
 
-    show(head+progressHtml(row)+timelineHtml(row)+actionsHtml(row)+ctaHtml());
+    show(head+codHtml+details+timelineHtml(row)+actionsHtml(row));
+    var live=document.getElementById("tkLive"); if(live) live.hidden=nvIsFinal(st);
     try{ document.title=say[0]+" · "+(row.awb||"")+" · NovaX"; }catch(e){}
   }
 
@@ -764,72 +830,63 @@
 })();
 </script>
 <style id="nvTrkAiStyles">
-/* NovaX AI on the public tracking page. Self-contained: this page has no
-   portal theme tokens, and a consignee should never wait on a stylesheet
-   the merchant portal owns. */
-.nvtai{margin:18px auto 0;max-width:620px;border:1px solid #1f3a31;border-radius:18px;
-  background:#0e1a16;overflow:hidden;position:relative}
-.nvtai::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,transparent,#13a36f,transparent);opacity:.75}
-.nvtai-head{display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid #1f3a31}
-.nvtai-mark{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#fff;
-  background:linear-gradient(140deg,#0c7c59,#13a36f);box-shadow:0 4px 14px rgba(19,163,111,.32);flex:none}
+/* NovaX AI on the public tracking page. Self-contained: it uses this page's
+   own colour tokens, and a consignee should never wait on a stylesheet the
+   merchant portal owns. */
+.nvtai{margin:0 0 12px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel);overflow:hidden;box-shadow:var(--shadow)}
+.nvtai-head{display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.nvtai-mark{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
+  color:var(--accent-ink);background:var(--accent);flex:none}
 .nvtai-t{display:flex;flex-direction:column;line-height:1.25;min-width:0}
-.nvtai-t b{font-size:14.5px;color:#eaf3ee;font-weight:750;letter-spacing:-.01em}
-.nvtai-t span{font-size:12px;color:#8fa8a0}
+.nvtai-t b{font-size:15px;color:var(--ink);font-weight:800;letter-spacing:-.01em}
+.nvtai-t span{font-size:12.5px;color:var(--ink-2)}
 .nvtai-stream{padding:16px;display:flex;flex-direction:column;gap:14px;max-height:340px;overflow-y:auto}
-.nvtai-turn{animation:nvtaiIn .32s cubic-bezier(.2,.9,.2,1) both}
-@keyframes nvtaiIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* The turn slides in but never starts invisible: a page opened in a
+   background tab does not run animations, and an answer must not wait on one. */
+.nvtai-turn{animation:nvtaiIn .28s cubic-bezier(.2,.9,.2,1)}
+@keyframes nvtaiIn{from{transform:translateY(6px)}to{transform:none}}
 /* overflow-wrap:anywhere, because this assistant answers with tracking
    links and AWB runs. white-space:pre-wrap keeps the newlines the model
    sends, but on its own it will not break a long unbroken token: a full
    tracking URL rendered as one 549px line inside a 353px column on a
    375px phone, so the answer ran off the side and the reader had to
    scroll the chat sideways to finish reading it. */
-.nvtai-ai{font-size:14.5px;line-height:1.6;color:#eaf3ee;white-space:pre-wrap;
+.nvtai-ai{font-size:14.5px;line-height:1.6;color:var(--ink);white-space:pre-wrap;
   overflow-wrap:anywhere;padding-left:14px;position:relative}
-.nvtai-ai::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:2px;
-  background:linear-gradient(180deg,#13a36f,transparent)}
-.nvtai-me{align-self:flex-end;max-width:80%;background:#16211d;border:1px solid #1f3a31;color:#eaf3ee;
+.nvtai-ai::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:2px;background:var(--accent)}
+.nvtai-me{align-self:flex-end;max-width:80%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
   overflow-wrap:anywhere;
-  padding:9px 14px;border-radius:15px 15px 4px 15px;font-size:13.5px;margin-left:auto}
+  padding:9px 14px;border-radius:15px 15px 4px 15px;font-size:14px;margin-left:auto}
 .nvtai-chips{display:flex;gap:8px;padding:0 16px 4px;flex-wrap:wrap}
 .nvtai-chips:empty{display:none}
-.nvtai-chip{display:inline-flex;align-items:center;height:36px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;max-width:100%;border:1px solid #2a4a3f;background:transparent;color:#eaf3ee;
-  font:inherit;font-size:12.5px;font-weight:600;padding:0 14px;border-radius:99px;cursor:pointer;
-  transition:background .2s,border-color .2s,transform .2s;animation:nvtaiIn .3s both}
-.nvtai-chip:hover{background:#123227;border-color:#13a36f;transform:translateY(-1px)}
-.nvtai-bar{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #1f3a31}
-.nvtai-bar input{flex:1;min-width:0;height:42px;border-radius:13px;border:1px solid #1f3a31;
-  background:#16211d;padding:0 14px;font:inherit;font-size:16px;color:#eaf3ee;outline:none;
-  transition:border-color .18s,box-shadow .18s}
-.nvtai-bar input:focus{border-color:#13a36f;box-shadow:0 0 0 3px rgba(19,163,111,.14)}
-.nvtai-bar input::placeholder{color:#7d968e;font-size:13px}
-.nvtai-bar button{height:42px;padding:0 17px;border-radius:13px;border:0;cursor:pointer;font:inherit;
-  font-weight:750;font-size:13.5px;color:#fff;background:linear-gradient(135deg,#0c7c59,#13a36f);
-  box-shadow:0 4px 14px rgba(19,163,111,.3);transition:transform .18s,filter .18s}
-.nvtai-bar button:hover{transform:translateY(-1px);filter:brightness(1.07)}
-.nvtai-bar button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.nvtai-chip{display:inline-flex;align-items:center;min-height:40px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%;border:1px solid var(--line-2);background:transparent;color:var(--ink);
+  font:inherit;font-size:13px;font-weight:650;padding:0 14px;border-radius:99px;cursor:pointer}
+.nvtai-bar{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.nvtai-bar input{flex:1;min-width:0;border-radius:13px;border:1px solid var(--line-2);
+  background:var(--panel-2);padding:0 14px;font:inherit;font-size:16px;color:var(--ink);outline:none}
+.nvtai-bar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--good-bg)}
+.nvtai-bar input::placeholder{color:var(--ink-3)}
+.nvtai-bar button{padding:0 18px;border-radius:13px;border:0;cursor:pointer;font:inherit;
+  font-weight:800;font-size:14px;color:var(--accent-ink);background:var(--accent)}
+.nvtai-bar button:disabled{opacity:.5;cursor:not-allowed}
 .nvtai-dots{display:flex;gap:5px;align-items:center;padding-left:14px}
-.nvtai-dots i{width:6px;height:6px;border-radius:50%;background:#13a36f;animation:nvtaiP 1.15s ease-in-out infinite}
+.nvtai-dots i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:nvtaiP 1.15s ease-in-out infinite}
 .nvtai-dots i:nth-child(2){animation-delay:.16s}.nvtai-dots i:nth-child(3){animation-delay:.32s}
-@keyframes nvtaiP{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+@keyframes nvtaiP{0%,80%,100%{opacity:.35;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
 @media (max-width:640px){
-  .nvtai{border-radius:14px;margin-top:14px}
-  .nvtai-stream{padding:13px;max-height:46vh}
+  .nvtai-stream{padding:14px;max-height:46vh}
   .nvtai-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
   .nvtai-chips::-webkit-scrollbar{display:none}
   .nvtai-chip{flex:0 0 auto;max-width:74vw}
 }
-@media (prefers-reduced-motion:reduce){.nvtai-turn,.nvtai-chip{animation:none}.nvtai-dots i{animation:none;opacity:.6}}
+@media (prefers-reduced-motion:reduce){.nvtai-turn{animation:none}.nvtai-dots i{animation:none;opacity:.7}}
 
-/* The ask-a-question controls were 42px, set by .nvtai-bar input/button. This
-   page is the merchant's CUSTOMER asking where their parcel is -- on a phone,
-   usually already annoyed -- and it is the one place a mis-tap costs NovaX a
-   support call rather than costing the customer a second try.
-   Targeting the real ids (#nvTrkInput / #nvTrkSend) and the classes that set
-   the 42px, rather than guessing at attribute matches. */
+/* The ask-a-question controls are 46px. This page is the merchant's CUSTOMER
+   asking where their parcel is -- on a phone, usually already annoyed -- and
+   it is the one place a mis-tap costs NovaX a support call rather than
+   costing the customer a second try. */
 .nvtai-bar input,.nvtai-bar button,#nvTrkInput,#nvTrkSend{height:46px;min-height:46px}
 #nvTrkSend{min-width:64px}
 </style>
@@ -870,7 +927,8 @@
         '<input id="nvTrkInput" placeholder="Where is my parcel?" aria-label="Ask about this parcel">'+
         '<button id="nvTrkSend" type="button">Ask</button>'+
       '</div>';
-    host.parentNode.insertBefore(wrap, host.nextSibling);
+    var slot=document.getElementById("tkAiSlot");
+    if(slot) slot.appendChild(wrap); else host.parentNode.insertBefore(wrap, host.nextSibling);
 
     var STREAM=document.getElementById("nvTrkStream"),
         CHIPS=document.getElementById("nvTrkChips"),
