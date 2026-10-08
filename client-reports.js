@@ -804,7 +804,7 @@
     '.nvr-custom label{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:var(--nvu-ink-2);text-transform:uppercase;letter-spacing:.04em}',
     '.nvr-custom input{height:38px;border-radius:10px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);padding:0 10px;font:inherit;font-size:16px}',
     '.nvr-body{transition:opacity .2s}.nvr-body.is-busy{opacity:.55;pointer-events:none}',
-    '.nvr-scope{margin:4px 0 14px;font-size:13.5px;color:var(--nvu-ink-2)}.nvr-scope b{color:var(--nvu-ink)}',
+    '.nvr-scope{margin:4px 0 14px;font-size:13.5px;color:var(--nvu-ink-2)}.nvr-scope b{color:var(--nvu-ink)}.nvr-scope .nvr-muted{color:inherit}',
     '.nvr-muted{color:var(--nvu-ink-3);font-weight:600}.nvr-small{font-size:12px}.nvr-warn{color:var(--nvu-warn-fg);font-weight:700}',
     '.nvr-card{background:var(--nvu-bg-2);border:1px solid var(--nvu-line);border-radius:var(--nvr-r);padding:18px;min-width:0}',
     '.nvr-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}',

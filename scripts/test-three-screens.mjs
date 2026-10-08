@@ -222,3 +222,27 @@ console.log("BULK RESULTS, HOME FIGURES, WORDING, CHIPS AND AI BUTTON CHECKS PAS
   ok("booking: the note warns when this customer's earlier parcels came back");
 }
 console.log("STORE CONNECTIONS, TEAM, MENU NAMES, SUPPORT TAB AND BOOKING NOTE CHECKS PASSED");
+
+// Colours (9 Oct 2026). A contrast pass found white text on the accent colour
+// in dark mode (2.2:1) on the booking button, the booked card and five other
+// places, and the booked card's tracking number at 1.25:1. The rule these
+// checks hold: text on a themed background takes its colour from the same
+// token set, never a fixed hex.
+{
+  const rules = (src) => [...src.matchAll(/([^{}]{0,90})\{([^{}]*)\}/g)];
+  const onAccent = (b) => /background(?:-color)?\s*:\s*(?:linear-gradient\([^;]*)?var\(--nvu-accent\b/.test(b);
+  const fixedText = (b) => /(?:^|[;{\s])color\s*:\s*(?:#[0-9a-f]{3,8}\b|white\b|rgba?\()/i.test(b);
+  const bad = [...rules(html), ...rules(app)].filter((m) => onAccent(m[2]) && fixedText(m[2])).map((m) => m[1].trim().slice(-50));
+  assert.deepEqual(bad, [], "text on the accent colour uses --nvu-accent-ink");
+  assert.ok(!/color:#04140d;/.test(app), "the sign-in again buttons use the accent's own ink");
+  const fs = /var css="\.nvfs-overlay[\s\S]*?css\+=cssExtra;/.exec(app)[0];
+  assert.ok(!/#eafff5|#0f2e22|#3a6b5a|#6b8f80|#bfe8d7|#8fd8b9|color:#fff/.test(fs), "the booked card has no fixed colours left");
+  assert.ok(fs.includes(".nvfs-awb{font-weight:800;font-size:15px;color:var(--nvu-ink);"), "the tracking number is the main ink");
+  const ck = /'#nvck \.nvck-top\{[\s\S]*?'@media \(max-width:560px\)\{#nvck/.exec(app)[0];
+  assert.ok(!/color:#(6b7d74|9fb3ab|7c8b86|0b1512)|background:#eafff5/.test(ck), "the search palette follows the theme");
+  assert.ok(html.includes('id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green-ink)"') && !/color:var\(--green\)"/.test(html), "--green has no dark value, so it is not a text colour");
+  assert.ok(html.includes(".nv-notice-warm strong{ color:var(--nvu-warn-fg) !important; }") && html.includes(".nv-w2-rail li.is-empty strong,.nv-w2-rail li.is-empty em{color:var(--nvu-ink-3)}"));
+  assert.ok(html.includes("opacity:.48 !important;"), "placeholders stay faint on purpose (19 Aug 2026): do not 'fix' them here");
+  ok("colours: text on a themed background comes from the same token set");
+}
+console.log("COLOUR CHECKS PASSED");

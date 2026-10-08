@@ -111,7 +111,7 @@
     .mark{width:38px;height:38px;border-radius:var(--r-md);flex:none;
       background:url(/assets/icon-192.png) center/contain no-repeat;box-shadow:var(--glow-1);}
     .brand-text strong{display:block;font-size:15px;line-height:1.05;color:#071d17;}
-    .brand-text span{display:block;color:#60786e;font-size:12px;margin-top:2px;white-space:nowrap;}
+    .brand-text span{display:block;color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;}
     .nav-tabs{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;max-width:100%;min-width:0;}
     .nav-tabs::-webkit-scrollbar{display:none;}
     .tab-btn,.action-btn,.ghost-btn{display:inline-flex;align-items:center;justify-content:center;text-align:center;min-height:38px;height:auto;border-radius:var(--r-md);padding:9px 13px;color:var(--ink);background:transparent;transition:transform var(--speed),background var(--speed),color var(--speed),box-shadow var(--speed);white-space:normal;line-height:1.3;overflow-wrap:anywhere;word-break:break-word;}
@@ -1300,7 +1300,7 @@
   .nv-mh-btn{
     position:relative; overflow:hidden;
     padding:12px 26px; border:0; border-radius:var(--r-xl); cursor:pointer;
-    background:linear-gradient(140deg,#14c77b,var(--nvu-accent)); color:#fff;
+    background:var(--nvu-accent); color:var(--nvu-accent-ink);
     font-size:14.5px; font-weight:800; letter-spacing:-.01em;
     box-shadow:var(--glow-1);
     transition:transform .16s ease, opacity .2s ease, box-shadow .2s ease;
@@ -1633,8 +1633,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     border-left:3px solid var(--amber) !important;
     color:var(--ink) !important;
   }
+  /* The heading and chip take the warning TEXT colour (--nvu-warn-fg). --amber
+     is the rail colour: as text on the light panel it measured 3.4:1. */
   .nv-notice-warm h3,
-  .nv-notice-warm strong{ color:var(--amber) !important; }
+  .nv-notice-warm strong{ color:var(--nvu-warn-fg) !important; }
   .nv-notice-warm p,
   .nv-notice-warm .footer-note,
   .nv-notice-warm .section-head p{ color:var(--muted) !important; }
@@ -1658,7 +1660,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
      A translucent tint is theme-independent by construction: it darkens over the
      light card and lightens over the dark one. Same approach as the inline-cream
      correction further down. */
-  .nv-notice-warm .ops-card .chip.warn{ background:rgba(199,121,19,.16) !important; border-color:rgba(199,121,19,.34) !important; color:var(--amber) !important; }
+  .nv-notice-warm .ops-card .chip.warn{ background:rgba(199,121,19,.12) !important; border-color:rgba(199,121,19,.34) !important; color:var(--nvu-warn-fg) !important; }
 
   /* ═══ Toast + change-highlight: never white ═══════════════════════════
      .toast used background:var(--ink) with color:white. In the dark theme
@@ -1877,7 +1879,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   .nv-wd-line{ flex:0 0 26px; height:2px; background:var(--line-strong); border-radius:var(--r-xs); margin-bottom:15px; }
 
   .nv-wd-done{ width:100%; margin-top:16px; padding:13px 18px; border:0; border-radius:var(--r-xl); cursor:pointer;
-    background:linear-gradient(140deg,#14c77b,var(--nvu-accent)); color:#fff; font-size:14.5px; font-weight:800;
+    background:var(--nvu-accent); color:var(--nvu-accent-ink); font-size:14.5px; font-weight:800;
     animation:nvWdRise .5s cubic-bezier(.22,1,.36,1) .6s both; }
 
   @media (max-width:560px){
@@ -2039,7 +2041,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   border:1px solid rgba(212,87,78,.38);background:rgba(212,87,78,.09);
   font-size:13px;line-height:1.5;color:var(--ink)}
 .nvdr-why span{display:block;font-size:10.5px;font-weight:800;letter-spacing:.08em;
-  text-transform:uppercase;color:#d4574e;margin-bottom:4px}
+  text-transform:uppercase;color:var(--nvu-bad-fg,#b3261e);margin-bottom:4px}
 /* Standalone assistant entry. Deliberately NOT a .client-tab: the role
    filter sets style.display on every .client-tab, and something in this
    portal hides several of them. This must always be reachable. */
@@ -2667,7 +2669,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=c7003fe2" defer></script>
+  <script src="client-app.min.js?v=83decf95" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2975,7 +2977,7 @@ try{
                   </div>
                   <textarea id="nvPasteInput" aria-label="Paste a WhatsApp or SMS order to fill the booking form" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
                   <div class="mt-8"><button class="ghost-btn" id="nvPasteFillBtn" type="button">Fill form from paste</button></div>
-                  <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green)"></div>
+                  <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green-ink)"></div>
                 </div>
                 <div id="nvRiskWarning" class="footer-note" role="alert" aria-live="assertive" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
                 <div class="form-grid">
@@ -3023,7 +3025,7 @@ try{
                   <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
                 </div>
                 <div id="nvBookReview" class="nv-book-review" hidden aria-live="polite"></div>
-                <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
+                <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green-ink)"></div>
                 </form>
               </div>
             </section>
@@ -4351,7 +4353,7 @@ html[data-theme="dark"] .nv-ls td.idx{ color:#666 !important; }
    removed -- the order value still matters for the return charge -- with the
    reason spelled out beside it so no one has to infer it from the status. */
 .nv-cod-prepaid{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.02em;
-  padding:1px 7px;border-radius:999px;background:var(--nvu-good-bg,#e7f5ee);color:#0c7c59;white-space:nowrap}
+  padding:1px 7px;border-radius:999px;background:var(--nvu-good-bg,#e7f5ee);color:var(--nvu-good-fg,#0c7c59);white-space:nowrap}
 /* ── Wallet v2 ───────────────────────────────────────────────────────
    One balance, one place, with the settlement timeline underneath it.
    Replaces a layout that printed the same figure eight times across 2,845px
@@ -4612,7 +4614,9 @@ html[data-theme="dark"] .nv-ls td.idx{ color:#666 !important; }
   overflow-wrap:anywhere;color:var(--nvu-ink)}
 .nv-w2-rail em{display:block;font-style:normal;font-size:10.5px;line-height:1.3;
   color:var(--nvu-ink-2);margin-top:2px}
-.nv-w2-rail li.is-empty strong,.nv-w2-rail li.is-empty em{opacity:.42}
+/* 9 Oct 2026: an empty stage was faded to 42%, which left "Rs 0" and its
+   caption at about 2:1. It is quieter through colour now, and still readable. */
+.nv-w2-rail li.is-empty strong,.nv-w2-rail li.is-empty em{color:var(--nvu-ink-3)}
 
 /* The rail is the one place in the portal where colour shows PROGRESS rather
    than state, so it runs as a ramp: slate (not your money yet) -> blue (being
@@ -4927,7 +4931,9 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
   .nvrv-submit{
     width:100%; margin-top:16px; padding:15px 18px;
     border:0; border-radius:var(--r-xl); cursor:pointer;
-    background:linear-gradient(140deg,#14c77b,var(--nvu-accent)); color:#fff;
+    /* 9 Oct 2026: was white on a gradient ending in #14c77b, which is 2.2:1.
+       The accent and its own ink are a tested pair in both themes. */
+    background:var(--nvu-accent); color:var(--nvu-accent-ink);
     font-size:15px; font-weight:800; letter-spacing:-.01em;
     -webkit-tap-highlight-color:transparent;
     transition:transform .16s ease, box-shadow .2s ease, opacity .2s ease;
@@ -5782,7 +5788,7 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 .nv-sw-err{min-height:18px;margin:10px 0 0;font-size:13px;font-weight:700;color:var(--nvu-bad-fg,#b3261e)}
 .nv-sw-go{width:100%;min-height:48px;margin-top:4px;font-size:15px}
 .nv-sw-done{text-align:center;animation:nvSwIn .25s ease-out}
-.nv-sw-tick{width:52px;height:52px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-accent);color:#fff;font-size:26px;font-weight:900}
+.nv-sw-tick{width:52px;height:52px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-accent);color:var(--nvu-accent-ink);font-size:26px;font-weight:900}
 .nv-sw-sub{margin:6px 0 12px;color:var(--nvu-ink-2);line-height:1.5}
 .nv-sw-steps{text-align:left;margin:0 auto 14px;max-width:520px;padding-left:20px;line-height:1.55;font-size:13.5px}
 .nv-sw-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
