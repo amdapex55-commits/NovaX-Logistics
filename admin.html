@@ -5908,13 +5908,13 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <p>Client bookings reflect here instantly because client and admin read the same parcel ledger.</p>
                   </div>
                 </div>
-                <div class="filter-bar">
-                  <div class="field"><label>Search</label><input id="adminOrderSearch" placeholder="AWB, consignee, shipper, city, address"></div>
+                <div class="filter-bar nv-ord-filters">
+                  <div class="field nv-ord-f-search"><label>Search</label><input id="adminOrderSearch" placeholder="AWB, consignee, shipper, city, address"></div>
                   <!-- FIX: with 122+ clients this was an unscrollable dropdown.
                        The <select> stays (other code reads and sets its value,
                        e.g. viewShopifyParcelsForClient), and this box filters
                        it down as you type. -->
-                  <div class="field"><label>Client</label>
+                  <div class="field nv-ord-f-client"><label>Client</label>
                     <input id="adminOrderClientSearch" placeholder="Type to find a client" oninput="nvFilterClientSelect()" autocomplete="off">
                     <select id="adminOrderClientFilter" class="mt-6" aria-label="Client"></select>
                   </div>
@@ -5928,7 +5928,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table class="orders-compact-table">
-                      <thead><tr><th>AWB</th><th>Consignee &amp; address</th><th>Status</th><th>COD &amp; payment</th><th>Timer</th><th>Shipper</th><th>Last process</th><th>Actions</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Deliver to</th><th>Status</th><th>COD &amp; payment</th><th>Shipper</th><th>Last process</th><th></th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
                   </div>
@@ -10651,30 +10651,28 @@ html,body{ background:var(--bg); color:var(--ink); }
         const process = lastProcess(p);
         const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
-          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${nvEscAttrJs(p.awb)}')">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.updated)}</span><br><span class="footer-note">${escLabelText(p.weight || "0.8 kg")}</span></td>
-            <td><strong>${escLabelText(p.consignee)}</strong><br><span class="footer-note">${escLabelText(p.phone || "phone pending")}</span><div class="addr-compact footer-note">${escLabelText(p.address || "Address pending")}</div><span class="footer-note">${escLabelText(p.city)}</span></td>
-            <td>
+          <tr class="nv-ord-row ${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${nvEscAttrJs(p.awb)}')">
+            <td class="nv-ord-awb"><strong>${p.awb}</strong><span class="nv-ord-sub">${escLabelText(p.updated)} · ${escLabelText(p.weight || "0.8 kg")}</span></td>
+            <td class="nv-ord-to"><strong>${escLabelText(p.consignee)}</strong><span class="nv-ord-sub">${escLabelText(p.phone || "phone pending")} · ${escLabelText(p.city)}</span><span class="nv-ord-sub nv-ord-addr">${escLabelText(p.address || "Address pending")}</span></td>
+            <td class="nv-ord-status">
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>
-              <div class="footer-note">${alert.label}</div>
+              <span class="nv-ord-sub">${agingLabel(agingHours(p))} ${p.status === "Parcel now in transit" ? "in transit" : "in this status"}</span>
+              ${alert.level !== "ok" ? `<span class="nv-ord-sub nv-ord-late">${alert.label}</span>` : (alert.label === "Within SLA" ? `<span class="nv-ord-sub">Within SLA</span>` : "")}
             </td>
             <td class="nv-money-cell"><strong>${money(p.cod)}</strong>${nvPaidPill(p)}${nvPayConflictChip(p)}</td>
-            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
-            <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span><br><span class="footer-note">${parcelOrigin(p)}</span></td>
-            <td>
-              ${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
-              <span class="footer-note">${escLabelText(process.branch)} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
-              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${escLabelText(p.returnProof || "Return proof required before manager acceptance.")}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${nvEscAttrJs(p.awb)}')">Add Proof</button>` : ""}
+            <td class="nv-ord-from"><strong>${escLabelText(client.name)}</strong><span class="nv-ord-sub">${shortClientCode(client)} · ${parcelOrigin(p)}</span></td>
+            <td class="nv-ord-last">
+              ${process.scanned ? `<strong>${escLabelText(process.by)}</strong><span class="nv-ord-sub">${escLabelText(process.at)}</span>` : `<span class="nv-ord-sub" style="margin-top:0">Not yet scanned</span>`}
+              <span class="nv-ord-sub">${escLabelText(process.branch)}</span>
+              ${/refused|return/i.test(p.status) ? `<details class="nv-ord-proof"${window.__nvProofOpen === p.awb ? " open" : ""} onclick="event.stopPropagation()" ontoggle="window.__nvProofOpen = this.open ? '${nvEscAttrJs(p.awb)}' : (window.__nvProofOpen === '${nvEscAttrJs(p.awb)}' ? '' : window.__nvProofOpen)"><summary class="${p.returnProof ? "done" : ""}">${p.returnProof ? "Return proof added" : "Return proof needed"}</summary><input id="proof-${p.awb}" aria-label="Return proof" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${nvEscAttrJs(p.awb)}')">Save proof</button></details>` : ""}
             </td>
-            <td>
-              <div class="inline-actions" style="flex-wrap:wrap;gap:5px">
-                <button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button>
-                ${p.status === "New booked" ? `<button class="ghost-btn" style="padding:5px 9px;font-size:11.5px;color:#e0604b;border-color:#e0604b" onclick="event.stopPropagation(); nvAdminDeleteParcel('${nvEscAttrJs(p.awb)}')">Delete</button>` : ""}
-              </div>
+            <td class="nv-ord-act">
+              <button class="ghost-btn" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button>
+              ${p.status === "New booked" ? `<button class="ghost-btn nv-ord-del" onclick="event.stopPropagation(); nvAdminDeleteParcel('${nvEscAttrJs(p.awb)}')">Delete</button>` : ""}
             </td>
           </tr>
         `;
-      }).join("") + nvMoreHtml("orders", 8) || `<tr><td colspan="8">No parcels match these filters.</td></tr>`;
+      }).join("") + nvMoreHtml("orders", 7) || `<tr><td colspan="7" class="nv-ord-empty">No parcels match these filters.</td></tr>`;
 
       const reportRows = state.parcels.filter(p => {
         const client = clientById(p.clientId);
@@ -21048,6 +21046,49 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 .brand-text span{font-size:12px}
 .nv-settle-row .nm small{font-size:12px}
 .nv-money-cell .nv-money-unbilled{font-size:11.5px}
+
+/* Orders > View All. Each row was unreadable for three reasons: every Refused
+   row was tinted red and pulsing (the tint is for an SLA breach, and a status
+   chip already says Refused), no cell could wrap so the table ran off the
+   right edge and cut off Edit, and a return-proof box sat open inside every
+   returned row. Now: one name line and one or two quiet lines per cell, the
+   red bar only for a real SLA breach, and return proof folded away. */
+#admin-orders .orders-compact-table{width:100%;min-width:900px;border-collapse:collapse}
+#admin-orders .orders-compact-table th{padding:10px 12px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;text-align:left;color:var(--muted);white-space:nowrap}
+#admin-orders .orders-compact-table td{padding:12px;font-size:13px;line-height:1.4;vertical-align:top;white-space:normal;border-bottom:1px solid var(--line)}
+#admin-orders .orders-compact-table td strong{display:block;font-size:13.5px;font-weight:700;color:var(--ink)}
+#admin-orders .nv-ord-sub{display:block;margin-top:3px;font-size:12px;line-height:1.4;color:var(--muted)}
+#admin-orders .orders-compact-table td.nv-ord-awb,#admin-orders .orders-compact-table td.nv-ord-status,#admin-orders .orders-compact-table td.nv-ord-act{white-space:nowrap}
+/* Edit stays in reach when a narrow screen makes the table scroll sideways. */
+#admin-orders .orders-compact-table td.nv-ord-act,#admin-orders .orders-compact-table th:last-child{position:sticky;right:0;background:var(--panel);box-shadow:-1px 0 0 var(--line)}
+#admin-orders .nv-ord-awb strong{font-variant-numeric:tabular-nums}
+#admin-orders .nv-ord-to{min-width:190px;max-width:320px}
+#admin-orders .nv-ord-from{min-width:120px;max-width:190px}
+#admin-orders .nv-ord-last{min-width:150px;max-width:210px}
+#admin-orders .nv-ord-status .status{white-space:nowrap}
+#admin-orders .nv-ord-late{color:var(--nvu-bad-fg);font-weight:700}
+#admin-orders .nv-money-cell .nv-money{margin-top:6px}
+#admin-orders .orders-compact-table tr.nv-ord-row{background:transparent !important;box-shadow:none;animation:none;cursor:pointer}
+#admin-orders .orders-compact-table tr.nv-ord-row.alert-row{box-shadow:inset 3px 0 0 var(--amber)}
+#admin-orders .orders-compact-table tr.nv-ord-row.alert-row.critical{box-shadow:inset 3px 0 0 var(--red)}
+#admin-orders .orders-compact-table tr.nv-ord-row:hover{background:rgba(127,140,134,.09) !important}
+#admin-orders .nv-ord-act .ghost-btn{display:block;width:100%;min-width:62px;min-height:0;padding:6px 12px;font-size:12px;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+#admin-orders .nv-ord-act .ghost-btn + .ghost-btn{margin-top:6px}
+#admin-orders .nv-ord-act .nv-ord-del{color:#e0604b;border-color:#e0604b}
+#admin-orders .nv-ord-empty{padding:28px 12px;text-align:center;color:var(--muted)}
+#admin-orders .nv-ord-proof{margin-top:6px}
+#admin-orders .nv-ord-proof summary{display:inline-block;list-style:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--nvu-bad-fg);text-decoration:underline;text-underline-offset:2px}
+#admin-orders .nv-ord-proof summary::-webkit-details-marker{display:none}
+#admin-orders .nv-ord-proof summary.done{color:var(--muted);font-weight:600}
+#admin-orders .nv-ord-proof input{display:block;width:100%;min-width:180px;margin:8px 0 6px;font-size:12.5px;padding:8px 10px}
+#admin-orders .nv-ord-proof .ghost-btn{min-height:0;padding:6px 12px;font-size:12px}
+@media (min-width:761px){
+  #admin-orders .nv-ord-filters{grid-template-columns:repeat(6,minmax(0,1fr))}
+  #admin-orders .nv-ord-filters .nv-ord-f-search,#admin-orders .nv-ord-filters .nv-ord-f-client{grid-column:span 3}
+  #admin-orders .nv-ord-f-client{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:8px;align-items:end}
+  #admin-orders .nv-ord-f-client label{grid-column:1/-1}
+  #admin-orders .nv-ord-f-client > *{margin-top:0}
+}
 @media (max-width:760px){
   .nav-tabs .tab-btn:not(.active){background:rgba(255,255,255,.06)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
   .nav-tabs .tab-btn{font-size:13px!important}
