@@ -220,7 +220,8 @@ window.nvCount=function(n,one,many){
        untouched. A demo that reimplements the portal proves nothing about
        the portal.
 
-       The five parcels are chosen to walk the money loop end to end, which
+       The five current parcels (and two older ones that fill the first
+       invoice) are chosen to walk the money loop end to end, which
        is the thing a fifty-courier aggregator structurally cannot copy:
        delivered and paid into the wallet, out for delivery, in transit, a
        refusal handled honestly, and one waiting for pickup. Showing the
@@ -238,7 +239,7 @@ window.nvCount=function(n,one,many){
           consignee:o.consignee, phone:o.phone, city:"Karachi", address:o.address,
           cod_amount:o.cod, fee:225, exception:o.exception||null,
           booked_at:iso(now-o.age), updated_at:iso(now-o.upd),
-          invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-6*H):null,
+          invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-(o.invoicedAgo||6*H)):null,
           rider_id:o.rider||null, pricing_mode:null, distance_km:null,
           quoted_fee:null, rate_version:null,
           meta:{ weight:o.kg||"0.5 kg", service:"COD Standard", branch:"Karachi Hub",
@@ -268,10 +269,20 @@ window.nvCount=function(n,one,many){
                      exception:"Consignee refused at doorstep - asked to reattempt Saturday" }),
             parcel({ awb:"N9000005", status:"New booked", consignee:"Maryam Khan",
                      phone:"0300-0000005", address:"Flat 12, Clifton Block 2, Karachi",
-                     cod:4300, age:3*H, upd:3*H, kg:"1.5 kg" })
+                     cod:4300, age:3*H, upd:3*H, kg:"1.5 kg" }),
+            /* 9 Oct 2026: the two parcels on the older invoice. It used to name
+               two that were not in this list, so the invoice opened with a
+               "rows differ from the totals" note: the first invoice a visitor
+               from the homepage sees. Rs 2,750 + Rs 2,500 COD, Rs 225 each. */
+            parcel({ awb:"N9000006", status:"Delivered", consignee:"Zara Malik",
+                     phone:"0300-0000006", address:"House 8, Block 13D, Gulshan-e-Iqbal, Karachi",
+                     cod:2750, age:7*D, upd:3*D+6*H, invoice:"demo-inv-0", invoicedAgo:3*D, rider:"demo-rider" }),
+            parcel({ awb:"N9000007", status:"Delivered", consignee:"Omar Sheikh",
+                     phone:"0300-0000007", address:"Flat 5, Bahadurabad, Karachi",
+                     cod:2500, age:7*D, upd:3*D+5*H, invoice:"demo-inv-0", invoicedAgo:3*D, rider:"demo-rider" })
           ],
           invoices: [{ id:"demo-inv-0", code:"INV-DEMO000", client_id:CID,
-            parcel_refs:["N8990101","N8990102"], cod_total:5250, fee_total:450, net_payable:4800,
+            parcel_refs:["N9000006","N9000007"], cod_total:5250, fee_total:450, net_payable:4800,
             due_to_novax:0, invoice_type:"COD Settlement", status:"Pushed to wallet",
             created_at:iso(now-3*D), wallet_pushed_at:iso(now-3*D), meta:{} },
             { id:"demo-inv-1", code:"INV-DEMO001", client_id:CID,
@@ -939,9 +950,15 @@ window.nvCount=function(n,one,many){
         /* Shown once, 25s in -- long enough to have actually looked around,
            early enough to catch them while still interested. Dismissing is
            final: a demo that nags is a demo people close. */
+        /* 9 Oct 2026: "once" used to mean once per page load, so a visitor who
+           reloaded or came back to the tab was asked again 25 seconds in. It
+           is remembered for the visit now; a blocked action after that
+           explains itself with a short message instead. */
         var invited = false;
+        try{ invited = sessionStorage.getItem("nvDemoInvited") === "1"; }catch(e){}
         window.__nvDemoInvite = function(title, body){
           if (invited) return; invited = true;
+          try{ sessionStorage.setItem("nvDemoInvited", "1"); }catch(e){}
           if (title) document.getElementById("nvdTitle").textContent = title;
           if (body)  document.getElementById("nvdBody").textContent  = body;
           ov.classList.add("on");
@@ -22658,7 +22675,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     } else {
       var m = msg.match(/n\s?9\d{6}/i), hit = m ? parcels.find(function(p){ return p.awb.toLowerCase() === m[0].replace(/\s/g,"").toLowerCase(); }) : null;
       if(m && hit) answer = line(hit);
-      else if(m) answer = "I can't find " + m[0].toUpperCase() + " in this demo workspace. The sample parcels are N9000001 to N9000005.";
+      else if(m) answer = "I can't find " + m[0].toUpperCase() + " in this demo workspace. The sample parcels are N9000001 to N9000007.";
       else if(/owe|owed|wallet|balance|paisa|paise|payout|withdraw|money|cod/.test(msg))
       { var moving = parcels.filter(function(p){ return /transit|out for delivery|received at destination|collected|warehouse/i.test(p.status); });
         var movingCod = moving.reduce(function(t,p){ return t + Number(p.cod_amount || 0); }, 0);
