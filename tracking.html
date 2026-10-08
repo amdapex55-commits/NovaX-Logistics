@@ -155,7 +155,8 @@
     margin:18px -16px 0;padding:12px 16px;border-top:1.5px dashed rgba(255,255,255,.28);background:rgba(0,0,0,.18);}
   .tk-stub::before,.tk-stub::after{content:"";position:absolute;top:-9px;width:18px;height:18px;border-radius:50%;background:var(--bg);}
   .tk-stub::before{left:-9px;} .tk-stub::after{right:-9px;}
-  .tk-awb{min-width:0;font:800 17px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;overflow-wrap:anywhere;}
+  .tk-awb{min-width:0;font:800 17px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;overflow-wrap:anywhere;
+    -webkit-user-select:text;user-select:text;}
   .tk-awb small{display:block;margin-bottom:5px;font:800 10.5px/1 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.7);}
   .tk-copy{flex:none;min-height:44px;padding:0 16px;border-radius:12px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:750;line-height:1;
@@ -540,13 +541,22 @@
   }
   window.nvCopyAwb=function(btn){
     var v=btn.getAttribute("data-awb")||"";
-    var done=function(){ var t=btn.textContent; btn.textContent="Copied"; setTimeout(function(){btn.textContent=t;},1400); };
-    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(done,function(){}); return; }
-    try{
-      var ta=document.createElement("textarea"); ta.value=v; ta.setAttribute("readonly","");
-      ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
-      ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done();
-    }catch(e){}
+    var label=btn.getAttribute("data-label")||btn.textContent; btn.setAttribute("data-label",label);
+    var say=function(t){ btn.textContent=t; setTimeout(function(){ btn.textContent=label; },1600); };
+    /* The older way, used when the browser has no clipboard API or refuses it
+       (some in-app browsers do). A refusal used to do nothing at all, so the
+       button looked broken. */
+    var fallback=function(){
+      var ok=false;
+      try{
+        var ta=document.createElement("textarea"); ta.value=v; ta.setAttribute("readonly","");
+        ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+        ta.select(); ok=document.execCommand("copy"); document.body.removeChild(ta);
+      }catch(e){ ok=false; }
+      say(ok?"Copied":"Press and hold the number");
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(function(){ say("Copied"); },fallback); return; }
+    fallback();
   };
   window.nvShare=function(btn){
     var v=btn.getAttribute("data-awb")||"";
