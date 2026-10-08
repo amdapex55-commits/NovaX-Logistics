@@ -11315,7 +11315,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${moneyBox("Status", user.status, "login state")}
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
-          <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
+          ${nvUserSectionsHtml(user, !(typeof nvLimited === "function" && nvLimited()))}
           ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="revokeUserAccess('${nvEscAttrJs(user.id)}')">Revoke Access</button></div>` : ""}
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
@@ -14276,6 +14276,52 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (field) field.style.display = /rider/i.test(side) ? "" : "none";
       nvUserPermNote();
     }
+    /* Edit Users: what a login can reach, and for a staff login the ticks to
+       change it. A full admin has no ticks: role Admin sees everything. */
+    const NV_STAFF_SECTIONS = [["orders-view", "Orders view all/report"], ["orders-book", "Create booking"], ["orders-processing", "Order processing"],
+      ["manifest", "Manifest"], ["demanifest", "Demanifest"], ["pickups", "Pickup requests"], ["support-tickets", "Support tickets"],
+      ["clients", "Clients (view, CNIC review)"], ["riders", "Riders (view only)"], ["support-desk", "Support Desk"]];
+    function nvUserIsStaff(user) { return /admin/i.test(String(user.accessSide || "")) && !/^admin$/i.test(String(user.role || "").trim()); }
+    function nvUserSectionsHtml(user, canEdit) {
+      if (!/admin/i.test(String(user.accessSide || ""))) return `<div class="footer-note" style="margin-top:8px">Allowed controls: ${escLabelText((user.permissions || []).join(", ") || "dashboard")}.</div>`;
+      if (!nvUserIsStaff(user)) return `<div class="footer-note" style="margin-top:8px"><b>Full admin.</b> Sees and can do everything, including money, payouts and users.</div>`;
+      const has = k => (user.permissions || []).indexOf(k) > -1;
+      const id = nvEscAttrJs(user.id);
+      return `<div class="footer-note" style="margin-top:8px"><b>Staff login, not an admin.</b> Sees only the ticked sections. Money, payouts, users and settings are refused by the database.</div>` +
+        `<div class="filter-bar perm-grid" style="margin-top:8px" data-user-sections="${escLabelText(user.id)}">` +
+        NV_STAFF_SECTIONS.map(s => `<label class="check-line"><input type="checkbox" value="${s[0]}"${has(s[0]) ? " checked" : ""}${canEdit ? "" : " disabled"}> ${s[1]}</label>`).join("") + `</div>` +
+        (canEdit ? `<div class="inline-actions" style="margin-top:8px"><button class="action-btn" onclick="nvSaveUserSections('${id}', this)">Save sections</button></div>` : "");
+    }
+    /* Saves the ticks and reports the server's real answer: a row rule that
+       refuses a write answers "0 rows", not an error, so the returned row is
+       what counts. */
+    function nvSaveUserSections(userId, btn) {
+      const user = (state.users || []).find(u => u.id === userId);
+      const box = [...document.querySelectorAll("[data-user-sections]")].find(el => el.getAttribute("data-user-sections") === userId);
+      if (!user || !box) return;
+      if (!user._uuid) { toast("This user is not saved to the server yet. Reload and try again.", "error"); return; }
+      let perms = [...box.querySelectorAll("input:checked")].map(i => i.value);
+      if ((perms.indexOf("manifest") > -1 || perms.indexOf("demanifest") > -1) && perms.indexOf("orders-processing") < 0) perms.push("orders-processing");
+      if (!perms.length) { toast("Tick at least one section, or use Revoke Access.", "error"); return; }
+      const hadDesk = (user.permissions || []).indexOf("support-desk") > -1;
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      Promise.resolve(window.__nvSb.from("staff_users").update({ permissions: perms }).eq("id", user._uuid).select("id"))
+        .then(r => {
+          if (btn) { btn.disabled = false; btn.textContent = "Save sections"; }
+          if (!r || r.error || !r.data || !r.data.length) { toast("Sections were not saved" + (r && r.error ? ": " + r.error.message : ". Reload and try again."), "error"); return; }
+          user.permissions = perms;
+          try { if (typeof nvRefresh === "function") nvRefresh(["staff_users"]); } catch (e) {}
+          toast(`${user.name || user.email}: sections saved. They apply the next time this person loads the admin portal.`, "success");
+          if (!hadDesk && perms.indexOf("support-desk") > -1) {
+            Promise.resolve(window.__nvSb.rpc("cs_admin_invite", { p_name: user.name || user.email, p_email: user.email, p_phone: null })).then(x => {
+              if (x && x.error && !/already/i.test(x.error.message || "")) toast("Saved, but the Support Desk invite failed: " + x.error.message + " Add them under Support Desk > Team.", "error");
+            }, () => {});
+          }
+          renderAdmin();
+        }, e => { if (btn) { btn.disabled = false; btn.textContent = "Save sections"; } toast("Sections were not saved: " + ((e && e.message) || e), "error"); });
+    }
+    window.nvSaveUserSections = nvSaveUserSections;
+
     /* Says, before Create is pressed, what kind of login this will be. */
     function nvUserPermNote() {
       const note = document.getElementById("userPermNote"); if (!note) return;
