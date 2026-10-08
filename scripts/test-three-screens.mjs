@@ -246,3 +246,27 @@ console.log("STORE CONNECTIONS, TEAM, MENU NAMES, SUPPORT TAB AND BOOKING NOTE C
   ok("colours: text on a themed background comes from the same token set");
 }
 console.log("COLOUR CHECKS PASSED");
+
+// Payout fees (9 Oct 2026): a flat fee for each withdrawal, never a share of
+// the amount. The database, the portal, the admin page and the public pages
+// must all quote the same three numbers.
+{
+  const read = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+  const sql = read("sql_novax_payout_flat_fees_20261009.sql"), admin = read("admin.html"), home = read("index.html"), cod = read("when-is-cod-paid.html"), agent = read("supabase/functions/novax-site-agent/index.ts");
+  const db = /case p_speed when 'instant' then (\d+) when '12h' then (\d+) else (\d+) end/.exec(sql).slice(1).map(Number);
+  assert.deepEqual(db, [500, 100, 0], "the database charges Rs 500 / Rs 100 / nothing");
+  const portal = JSON.parse(/const WALLET_FEE=(\{[^}]*\});/.exec(app)[1]);
+  assert.deepEqual([portal.instant, portal["12h"], portal["24h"]], db, "the portal previews what the database charges");
+  const adminFee = new Function(/function walletFee\(speed\) \{[\s\S]*?\n    \}/.exec(admin)[0] + "; return walletFee;")();
+  assert.deepEqual([adminFee("instant"), adminFee("12h"), adminFee("24h")], db, "so does the admin page");
+  assert.deepEqual([...home.matchAll(/<tr data-fee="(\d+)"><th scope="row">([^<]+)</g)].map((m) => m[2] + "=" + m[1]), ["Nova Saver=0", "Nova Express=100", "Nova Bolt=500"], "and the homepage table");
+  for (const [name, src] of [["portal", app], ["portal page", html], ["admin", admin], ["homepage", home], ["COD page", cod], ["site assistant", agent]]) {
+    assert.ok(!/0\.[137] ?%|data-pct|walletFeePct|walletFeeRate/.test(src), name + " quotes no percentage fee");
+    assert.ok(src.includes("Nova Saver") && src.includes("Nova Express") && src.includes("Nova Bolt"), name + " names the three speeds");
+  }
+  assert.ok(/var NV_FLAT_FEES_FROM="2026-10-09 \d\d:\d\d";/.test(app) && /const NV_FLAT_FEES_FROM = "2026-10-09 \d\d:\d\d";/.test(admin), "the change time is set");
+  assert.equal(/var NV_FLAT_FEES_FROM="([^"]+)"/.exec(app)[1], /const NV_FLAT_FEES_FROM = "([^"]+)"/.exec(admin)[1], "portal and admin agree on when it changed");
+  assert.ok(sql.includes("if v_fee > 0 and p_amount < v_fee + 1 then") && app.includes("function walletSpeedMin(s){ return walletFee(s)+1; }"), "a paid speed needs its fee plus Rs 1, on the server and in the preview");
+  ok("payout fees: flat Rs 0 / 100 / 500 in the database, portal, admin, homepage, COD page and site assistant");
+}
+console.log("PAYOUT FEE CHECKS PASSED");

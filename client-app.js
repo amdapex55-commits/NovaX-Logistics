@@ -289,8 +289,8 @@ window.nvCount=function(n,one,many){
             { id:"demo-l-w1", client_id:CID, entry_type:"withdrawal_requested", amount:-4800,
               affects_balance:true, status:"Requested", reference_type:"withdrawal", reference_id:"demo-wd-1",
               reference_code:"demo-wd-1", created_at:iso(now-3*D+2*H),
-              note:"Withdrawal requested: Rs 4800 reserved, 4795.20 net after Rs 4.80 fee (24h)." },
-            { id:"demo-l-w2", client_id:CID, entry_type:"payout_fee", amount:-4.8,
+              note:"Withdrawal requested: Rs 4800 reserved, 4800 net after Rs 0 fee (24h)." },
+            { id:"demo-l-w2", client_id:CID, entry_type:"payout_fee", amount:0,
               affects_balance:false, status:"Info", reference_type:"withdrawal", reference_id:"demo-wd-1",
               reference_code:"demo-wd-1", created_at:iso(now-3*D+2*H),
               note:"NovaX payout fee for this withdrawal (informational only, already netted into the amount above)." },
@@ -302,7 +302,7 @@ window.nvCount=function(n,one,many){
               affects_balance:true, status:"Credited", created_at:iso(now-4*D),
               note:"Welcome credit" }
           ],
-          withdrawals: [{ id:"demo-wd-1", client_id:CID, amount:4800, fee:4.8, net:4795.2,
+          withdrawals: [{ id:"demo-wd-1", client_id:CID, amount:4800, fee:0, net:4800,
             iban:"PK40MEZN0000001123456702", speed:"24h", status:"Paid",
             created_at:iso(now-3*D+2*H), paid_at:iso(now-2*D), paid_txn_id:"FT2609DEMO4471" }],
           payment_logs: [], pickup_requests: [],
@@ -323,7 +323,7 @@ window.nvCount=function(n,one,many){
            shim's pattern match, so only the read side needs answers. */
         rpcs: {
           client_wallet_summary: [{ available_balance:3425, pending_payout:0,
-            paid_this_month:4795.2, lifetime_withdrawn:4795.2 }],
+            paid_this_month:4800, lifetime_withdrawn:4800 }],
           client_wallet_incoming: [{ delivered_uninvoiced:5849, parcels:2 }],
           client_bank_details: [],
           client_pickup_locations_list: [{ id:"demo-loc", label:"Shop 14, Tariq Road",
@@ -425,15 +425,15 @@ window.nvCount=function(n,one,many){
           return '<label>'+f[0]+'<span>'+(f[1]||'')+'</span></label>'; }).join("") + '</div>'; },
         chip: function(t, cls){ return '<span class="nvob-chip '+(cls||'')+'">'+t+'</span>'; }
       };
-      /* The wallet's own names and fees, with the 7 Oct 2026 values as the
+      /* The wallet's own names and fees, with the 9 Oct 2026 values as the
          fallback if the wallet code has not loaded. */
       function speed(code, name, win, fee){
         try{
-          if (typeof walletSpeedName === "function" && typeof walletSpeedWindow === "function" && typeof walletFeePct === "function") {
-            name = walletSpeedName(code); win = walletSpeedWindow(code); fee = walletFeePct(code);
+          if (typeof walletSpeedName === "function" && typeof walletSpeedWindow === "function" && typeof walletFeeText === "function") {
+            name = walletSpeedName(code); win = walletSpeedWindow(code); fee = walletFeeText(code);
           }
         }catch(e){}
-        return [name + " · " + win, "Fee " + fee, ""];
+        return [name + " · " + win, fee === "Free" ? "Free" : "Fee " + fee, ""];
       }
       /* The homepage sends visitors here with "See the portal, no signup", and
          they were greeted with "Your workspace is live" and an empty wallet
@@ -476,7 +476,7 @@ window.nvCount=function(n,one,many){
           n:"Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg." },
         { k:"Your money", t:"Withdraw to your bank", nav:"money",
           b:"Send your balance to your own bank account whenever it suits you. Choose how fast; the fee is shown before you confirm.",
-          v: m.rows([speed("24h","Saver","24-48 hours","0.1%"), speed("12h","Standard","12-24 hours","0.3%"), speed("instant","Express","12 hours","0.7%")]) },
+          v: m.rows([speed("24h","Nova Saver","48-72 hours","Free"), speed("12h","Nova Express","24 hours","Rs 100"), speed("instant","Nova Bolt","6-12 hours","Rs 500")]) },
         { k:"When you need more", t:"It is all in the menu", nav:"fab",
           b:"Stuck on anything? Tap NovaX AI on any screen, or message a person on WhatsApp 0312 3922558.",
           v: m.list([["Bulk booking","Many orders in one upload"],["Your store","Shopify or WooCommerce"],
@@ -2470,11 +2470,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
          the browser. Server now returns potential_saving. */
       var saving=(d.potential_saving!=null)?Number(d.potential_saving):null;
       var nudge="";
-      if(best==="standard"&&saving!==null&&saving>0){
-        nudge='<p class="footer-note" style="margin-top:8px">Using <strong>Standard (24h)</strong> payouts for the same amount this month would have cost '+
-              escLabelText(money(std))+' instead of '+escLabelText(money(payout))+' &mdash; a saving of <strong>'+escLabelText(money(saving))+'</strong>.</p>';
+      if(best==="standard"&&payout>0){
+        /* 9 Oct 2026: said what the cheapest speed "would have cost" from the
+           old percentages. Nova Saver is free now, so the note is one fact. */
+        nudge='<p class="footer-note" style="margin-top:8px"><strong>Nova Saver</strong> payouts are free. This month you paid '+
+              escLabelText(money(payout))+' in payout fees.</p>';
       }else if(best==="already_optimal"){
-        nudge='<p class="footer-note" style="margin-top:8px">You are already on the lowest-fee payout option for this month. Nothing to change.</p>';
+        nudge='<p class="footer-note" style="margin-top:8px">You paid no payout fees this month.</p>';
       }
 
       host.style.display="block";
@@ -7321,7 +7323,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var set = function(id, v){ var e=document.getElementById(id); if(e) e.textContent=v; };
         set("nvWdAmount", money(o.net));
         set("nvWdGross",  money(o.gross));
-        set("nvWdFee",    o.fee > 0 ? "\u2212 " + money(o.fee) + " (" + o.pct + ")" : "None");
+        set("nvWdFee",    o.fee > 0 ? "\u2212 " + money(o.fee) + " (" + o.pct + ")" : "Free");
         set("nvWdNet",    money(o.net));
         set("nvWdSpeed",  o.speedLabel);
         set("nvWdIban",   o.iban);
@@ -7859,38 +7861,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     /* Wallet */
-    const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };
-    function walletFeeRate(s){ return WALLET_FEE[s] ?? 0.001; }
-    function walletFeePct(s){ return s==="instant"?"0.7%":s==="12h"?"0.3%":"0.1%"; }
-    /* The payout fee is computed server-side by request_wallet_withdrawal as
-         v_rate := case p_speed when 'instant' then 0.007 when '12h' then 0.003 else 0.001 end;
-         v_fee  := round(p_amount * v_rate, 2);
-       -- to two decimals, i.e. paisa. The browser previewed it with
-       Math.round(), i.e. whole rupees, so the figure a merchant confirmed
-       could differ from the figure actually recorded by up to 50 paisa (on
-       Rs 21,120 at 0.3%: preview Rs 63, recorded Rs 63.36). The rates
-       themselves always agreed; only the rounding drifted. This mirrors the
-       server exactly so the preview and the receipt can never disagree.
-       The server remains authoritative -- wherever the RPC returns fee/net,
-       those values are used in preference to this. */
-    function nvPayoutFee(amount, speed){
-      return Math.round(Number(amount||0) * walletFeeRate(speed) * 100) / 100;
-    }
+    /* 9 Oct 2026: a payout fee is a flat number of rupees for each
+       withdrawal, never a share of the amount. The server charges it in
+       nv_payout_fee() and refuses a paid speed unless at least Rs 1 is left
+       after the fee:
+         24h      Nova Saver    48-72 hours       free
+         12h      Nova Express  within 24 hours   Rs 100
+         instant  Nova Bolt     6-12 hours        Rs 500
+       The stored codes are unchanged. This mirrors the server so the preview
+       and the receipt agree; wherever the RPC returns fee/net, those values
+       are used in preference to this. */
+    const WALLET_FEE={ "24h":0, "12h":100, "instant":500 };
+    function walletFee(s){ return WALLET_FEE[s] ?? 0; }
+    function walletFeeText(s){ var f=walletFee(s); return f>0?("Rs "+f.toLocaleString("en-PK")):"Free"; }
+    /* The smallest amount a speed accepts: its fee plus the Rs 1 minimum. */
+    function walletSpeedMin(s){ return walletFee(s)+1; }
+    function nvPayoutFee(amount, speed){ return walletFee(speed); }
 
-    /* 7 Oct 2026: the three speeds got names and slower windows; the fees
-       did not change. The stored codes are still "instant" / "12h" / "24h",
-       so only the wording moved. A withdrawal requested before the change
-       keeps the name it was sold under: pass its request time (Pakistan
-       time, "YYYY-MM-DD HH:MM") as `at`. With no time, the new name. */
-    function walletSpeedIsOld(at){
+    /* The speeds have changed twice. A withdrawal keeps the name it was sold
+       under, so pass its request time (Pakistan time, "YYYY-MM-DD HH:MM") as
+       `at`; with no time, today's name.
+         era 1  before 7 Oct 2026 20:55   Instant 2-3 hours / 12 hours / 24 hours
+         era 2  until NV_FLAT_FEES_FROM   Express / Standard / Saver, percentage fees
+         era 3  since                     Nova Bolt / Nova Express / Nova Saver, flat fees
+       The fee shown for a past withdrawal is always the one stored on it. */
+    var NV_FLAT_FEES_FROM="2026-10-09 03:37";
+    function walletSpeedEra(at){
+      if(window.__NOVAX_DEMO) return 3;
       var t=String(at||"").replace("T"," ").slice(0,16);
-      return /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t) && t<"2026-10-07 20:55";
+      if(!/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t)) return 3;
+      return t<"2026-10-07 20:55" ? 1 : (t<NV_FLAT_FEES_FROM ? 2 : 3);
     }
-    function walletSpeedName(s){ return s==="instant"?"Express":s==="12h"?"Standard":"Saver"; }
-    function walletSpeedWindow(s){ return s==="instant"?"12 hours":s==="12h"?"12-24 hours":"24-48 hours"; }
-    function walletSpeedEta(s){ return s==="instant"?"within 12 hours":s==="12h"?"in 12-24 hours":"in 24-48 hours"; }
+    function walletSpeedIsOld(at){ return walletSpeedEra(at)<3; }
+    function walletSpeedName(s){ return s==="instant"?"Nova Bolt":s==="12h"?"Nova Express":"Nova Saver"; }
+    function walletSpeedWindow(s){ return s==="instant"?"6-12 hours":s==="12h"?"24 hours":"48-72 hours"; }
+    function walletSpeedEta(s){ return s==="instant"?"in 6-12 hours":s==="12h"?"within 24 hours":"in 48-72 hours"; }
     function walletSpeedLabel(s, at){
-      if(walletSpeedIsOld(at)) return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours";
+      var era=walletSpeedEra(at);
+      if(era===1) return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours";
+      if(era===2) return s==="instant"?"Express \u00b7 12 hours":s==="12h"?"Standard \u00b7 12-24 hours":"Saver \u00b7 24-48 hours";
       return walletSpeedName(s)+" \u00b7 "+walletSpeedWindow(s);
     }
     function walletBalance(id){ return Number(clientById(id).walletBalance||0); }
@@ -8367,7 +8376,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         x.sub=w?((walletSpeedIsOld(w.createdAt)?walletSpeedLabel(w.speed,w.createdAt):walletSpeedName(w.speed))+" payout"):"Payout";
         var stage=w?nvwPayoutStage(st):"pending";
         x.tag=stage==="paid"?["Completed","good"]:stage==="returned"?["Returned","info"]:stage==="pending"?["Processing","warn"]:[st,""];
-        x.rows=[["Amount",moneyExact(Math.abs(amt))], ["Payout fee"+(w?" ("+walletFeePct(w.speed)+")":""), fee>0?("− "+moneyExact(fee)):"None"],
+        x.rows=[["Amount",moneyExact(Math.abs(amt))], ["Payout fee", fee>0?("− "+moneyExact(fee)):"Free"],
                 ["You receive",moneyExact(w?Number(w.net||0):Math.abs(amt)-fee)], ["To",nvwBankLine(w&&w.iban)],
                 ["Speed",w?walletSpeedLabel(w.speed,w.createdAt):"—"], ["Requested",nvNiceDate(l.createdAt)],
                 (w&&w.paidAt)?["Paid",nvNiceDate(w.paidAt)]:null, (w&&w.paidTxnId)?["Bank reference",w.paidTxnId]:null,
@@ -8740,7 +8749,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* ── Withdraw, like a transfer ─────────────────────────────────────── */
     function nvwEta(speed){
-      var hours=speed==="instant"?12:speed==="12h"?24:48;
+      var hours=speed==="instant"?12:speed==="12h"?24:72;
       var by=new Date(Date.now()+hours*3600e3).toLocaleString("en-GB",{ weekday:"short", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
       return walletSpeedEta(speed)+" (by "+by+")";
     }
@@ -8748,9 +8757,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var d=new Date();
       return d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })+" "+d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
     }
-    /* A portal tab left open keeps the code it loaded. On 7 Oct 2026 the
-       payout speeds changed, and a tab opened before that could go on
-       offering the old ones. When the withdraw sheet opens, ask for the page
+    /* A portal tab left open keeps the code it loaded. The payout speeds
+       changed on 7 Oct 2026 and their fees on 9 Oct, and a tab opened before
+       that could go on offering the old ones. When the withdraw sheet opens, ask for the page
        afresh; if it names a newer bundle than the one running, the tab
        reloads before any speed is shown. Once per newer bundle, and never
        when the browser cannot remember that it did, so it cannot loop. */
@@ -8934,13 +8943,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       function renderSpeed(){
         var amt=value(), sec=$('[data-wd="speed"]');
+        /* A paid speed needs its fee plus Rs 1. One the amount cannot cover is
+           shown, switched off, with the amount that would unlock it. */
+        if(amt<walletSpeedMin(S.speed)) S.speed="24h";
         sec.innerHTML=
           '<div class="nvw-wd-sum"><span>You are withdrawing</span><b>'+escLabelText(moneyExact(amt))+'</b></div>'+
           '<div class="nvw-speeds" role="radiogroup" aria-label="Payout speed">'+["24h","12h","instant"].map(function(sp){
-            var on=sp===S.speed;
-            return '<button type="button" role="radio" aria-checked="'+on+'" class="nvw-speed'+(on?' is-on':'')+'" data-wd-speed="'+sp+'">'+
+            var on=sp===S.speed, ok=amt>=walletSpeedMin(sp);
+            return '<button type="button" role="radio" aria-checked="'+on+'" class="nvw-speed'+(on?' is-on':'')+'" data-wd-speed="'+sp+'"'+(ok?'':' disabled')+'>'+
               '<i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i>'+
-              '<span><b>'+escLabelText(walletSpeedLabel(sp))+'</b><em>Fee '+walletFeePct(sp)+' · '+escLabelText(moneyExact(nvPayoutFee(amt,sp)))+'</em></span></button>';
+              '<span><b>'+escLabelText(walletSpeedLabel(sp))+'</b><em>'+
+                (ok ? (walletFee(sp)>0 ? 'Fee '+escLabelText(moneyExact(walletFee(sp))) : 'Free')
+                    : 'Withdraw '+escLabelText(moneyExact(walletSpeedMin(sp)))+' or more to use this')+'</em></span></button>';
           }).join("")+'</div>'+
           '<div class="nvw-receive"><span>You will receive</span><b data-wd-net>'+escLabelText(moneyExact(amt-nvPayoutFee(amt,S.speed)))+'</b></div>'+
           '<div class="nvw-wd-to"><span>To</span>'+nvwBankCardHtml(bd)+'</div>'+
@@ -9045,7 +9059,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!t) return;
         if(t.hasAttribute("data-wd-key")){ press(t.getAttribute("data-wd-key")); nvwBuzz(8); return; }
         if(t.hasAttribute("data-wd-pct")){ setPct(Number(t.getAttribute("data-wd-pct"))); nvwBuzz(8); return; }
-        var sp=t.getAttribute("data-wd-speed"); if(!sp || S.busy || sp===S.speed) return;
+        var sp=t.getAttribute("data-wd-speed"); if(!sp || S.busy || sp===S.speed || t.disabled || value()<walletSpeedMin(sp)) return;
         var amt=value(), was=amt-nvPayoutFee(amt,S.speed);
         S.speed=sp;
         Array.prototype.forEach.call(sh.querySelectorAll("[data-wd-speed]"),function(b){
@@ -9426,10 +9440,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       else if(serverBalance<0) blockReason=`You owe ${money(Math.abs(serverBalance))} in delivery charges -- clear this before withdrawing.`;
       else if(serverBalance<=0) blockReason="You have Rs 0 available to withdraw right now.";
       else if(!(rawAmt>0)) blockReason="Enter an amount greater than 0.";
+      else if(walletFee(speed)>0 && rawAmt<walletSpeedMin(speed)) blockReason=walletSpeedName(speed)+" costs "+money(walletFee(speed))+". Withdraw at least "+money(walletSpeedMin(speed))+", or choose Nova Saver, which is free.";
       else if(amountTooHigh) blockReason="Amount cannot be more than your available balance ("+money(serverBalance)+").";
       const canConfirm=!blockReason;
       summary.style.display="block";
-      summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
+      summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Payout fee",fee>0?money(fee):"Free",walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
         `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+escLabelText(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+escLabelText(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+escLabelText(blockReason)+"</b>")}</div>`+
         `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request withdrawal":escLabelText(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request withdrawal"}</button>`;
       /* Kept hidden rather than deleted: this writer is unconditional, and the
@@ -9610,7 +9625,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{
           nvShowWithdrawDrawer({
             gross: amt, fee: res.fee, net: res.net,
-            pct: walletFeePct(speed),
+            pct: walletSpeedName(speed),
             speedLabel: walletSpeedLabel(speed),
             iban: (typeof maskIban==="function" ? maskIban(iban) : String(iban||"").slice(-6).padStart(10,"•")),
             eta: walletSpeedEta(speed)
@@ -22647,7 +22662,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       else if(/owe|owed|wallet|balance|paisa|paise|payout|withdraw|money|cod/.test(msg))
       { var moving = parcels.filter(function(p){ return /transit|out for delivery|received at destination|collected|warehouse/i.test(p.status); });
         var movingCod = moving.reduce(function(t,p){ return t + Number(p.cod_amount || 0); }, 0);
-        answer = rs(w.available_balance) + " is available to withdraw now. " + rs(movingCod) + " of COD is on " + moving.length + " parcel" + (moving.length === 1 ? "" : "s") + " still moving to customers. The fastest payout, Express, reaches your bank within 12 hours for 0.7%."; }
+        answer = rs(w.available_balance) + " is available to withdraw now. " + rs(movingCod) + " of COD is on " + moving.length + " parcel" + (moving.length === 1 ? "" : "s") + " still moving to customers. Nova Saver sends it to your bank free in 48-72 hours; the fastest, Nova Bolt, takes 6-12 hours for a flat Rs 500."; }
       else if(/need|attention|problem|issue|refus|stuck|late/.test(msg)){
         var bad = parcels.filter(function(p){ return p.status === "Refused" || p.exception; });
         answer = bad.length ? bad.map(line).join(" ") : "Nothing needs you right now.";

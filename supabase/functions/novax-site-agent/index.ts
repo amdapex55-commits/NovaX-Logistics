@@ -77,10 +77,11 @@ GETTING PAID (be precise about this)
 - COD collected from the customer is credited to the seller's NovaX wallet within
   15 MINUTES of the parcel being delivered. Not days, not weeks.
 - Moving money from the NovaX wallet to a bank account is a separate withdrawal the
-  seller requests, and it has a speed and a small fee:
-    Saver (24-48 hours) = 0.1% fee, Standard (12-24 hours) = 0.3% fee,
-    Express (within 12 hours) = 0.7% fee. There is no instant option: never promise one.
-- Never say withdrawals are free. The "no extra charges" promise is about shipping:
+  seller requests. It has three speeds, each with a FLAT fee whatever the amount:
+    Nova Saver (48-72 hours) = free, Nova Express (within 24 hours) = Rs 100,
+    Nova Bolt (6-12 hours) = Rs 500. No fee is a percentage of the amount.
+    There is no instant option: never promise one.
+- Only Nova Saver is free; never say every withdrawal is free. The "no extra charges" promise is about shipping:
   no GST, no COD withholding tax, no hidden charges. Keep the two separate.
 
 DELIVERY TIME

@@ -22,7 +22,8 @@ function page({ demo=false, reduce=true } = {}){
     "var NV_BOTTOM_TABS=[{id:'dashboard',label:'Home',ico:'H'},{id:'newBooking',label:'Book',ico:'+'},{id:'money',label:'Wallet',ico:'R'},{id:'tickets',label:'Support',ico:'S'}];",
     "function showClientTab(t){ window.__tabs.push(t); }",
     "function nvOnboardMarkDone(c){ window.__done.push(c); }",
-    ["walletSpeedName","walletSpeedWindow","walletFeePct","nvOnboardCards","nvObWhere","nvOnboardBuild"].map(fn).join("\n"),
+    /const WALLET_FEE=\{[^}]*\};/.exec(app)[0],
+    ["walletFee","walletFeeText","walletSpeedName","walletSpeedWindow","nvOnboardCards","nvObWhere","nvOnboardBuild"].map(fn).join("\n"),
     "window.__cards=nvOnboardCards; window.__build=nvOnboardBuild;"
   ].join("\n"));
   const $ = (q) => w.document.querySelector(q);
@@ -48,7 +49,7 @@ function page({ demo=false, reduce=true } = {}){
     assert.ok(all.includes(line), "the cards say: " + line);
   }
   ok("price, pickup hours, free pickup, delivery times and the COD line match the approved emails word for word");
-  for (const s of ["Saver · 24-48 hours Fee 0.1%", "Standard · 12-24 hours Fee 0.3%", "Express · 12 hours Fee 0.7%"]) assert.ok(all.includes(s), s);
+  for (const s of ["Nova Saver · 48-72 hours Free", "Nova Express · 24 hours Fee Rs 100", "Nova Bolt · 6-12 hours Fee Rs 500"]) assert.ok(all.includes(s), s);
   ok("the three payout speeds come from the wallet's own names and fees");
   assert.ok(!/instant|2-3 hours|15 minutes|Create AWB/i.test(all), "no stale wording");
   assert.ok(!/[<]script|undefined|NaN/.test(cards.map(c => c.v).join("")));

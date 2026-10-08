@@ -6464,7 +6464,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
                   <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1"></div>
                   <div class="field"><label>IBAN</label><input id="walletIban" placeholder="PKxx xxxx xxxx xxxx xxxx xxxx"></div>
-                  <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">Saver · 24-48 hours (0.1% fee)</option><option value="12h">Standard · 12-24 hours (0.3% fee)</option><option value="instant">Express · 12 hours (0.7% fee)</option></select></div>
+                  <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">Nova Saver · 48-72 hours (free)</option><option value="12h">Nova Express · 24 hours (Rs 100 fee)</option><option value="instant">Nova Bolt · 6-12 hours (Rs 500 fee)</option></select></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" onclick="requestWalletWithdrawal()">Request Withdrawal</button></div>
               </div>
@@ -8846,24 +8846,36 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
 
-    function walletFeeRate(speed) {
-      if (speed === "instant") return 0.007;
-      if (speed === "12h") return 0.003;
-      return 0.001;
+    /* 9 Oct 2026: payout fees are flat rupees for each withdrawal, never a
+       share of the amount. The server charges them (nv_payout_fee):
+         24h      Nova Saver    48-72 hours       free
+         12h      Nova Express  within 24 hours   Rs 100
+         instant  Nova Bolt     6-12 hours        Rs 500 */
+    function walletFee(speed) {
+      if (speed === "instant") return 500;
+      if (speed === "12h") return 100;
+      return 0;
     }
 
-    /* 7 Oct 2026: the speeds got names and slower windows, fees unchanged.
-       The stored codes stay "instant" / "12h" / "24h". A withdrawal requested
-       before the change shows today's name and what it was sold as, so staff
-       still pay it on that promise: pass its request time (Pakistan time,
-       which is what dtpart gives) as `at`. */
-    function walletSpeedIsOld(at) {
+    /* The speeds have changed twice and the stored codes never did. A
+       withdrawal requested before a change shows today's name and what it
+       was sold as, so staff still pay it on that promise: pass its request
+       time (Pakistan time, which is what dtpart gives) as `at`.
+         era 1  before 7 Oct 2026 20:55   Instant 2-3 hours / 12 hours / 24 hours
+         era 2  until NV_FLAT_FEES_FROM   Express / Standard / Saver, percentage fees
+         era 3  since                     Nova Bolt / Nova Express / Nova Saver, flat fees */
+    const NV_FLAT_FEES_FROM = "2026-10-09 03:37";
+    function walletSpeedEra(at) {
       const t = String(at || "").replace("T", " ").slice(0, 16);
-      return /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t) && t < "2026-10-07 20:55";
+      if (!/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t)) return 3;
+      return t < "2026-10-07 20:55" ? 1 : (t < NV_FLAT_FEES_FROM ? 2 : 3);
     }
+    function walletSpeedIsOld(at) { return walletSpeedEra(at) < 3; }
     function walletSpeedLabel(speed, at) {
-      const name = speed === "instant" ? "Express \u00b7 12 hours" : speed === "12h" ? "Standard \u00b7 12-24 hours" : "Saver \u00b7 24-48 hours";
-      if (!walletSpeedIsOld(at)) return name;
+      const name = speed === "instant" ? "Nova Bolt \u00b7 6-12 hours" : speed === "12h" ? "Nova Express \u00b7 24 hours" : "Nova Saver \u00b7 48-72 hours";
+      const era = walletSpeedEra(at);
+      if (era === 3) return name;
+      if (era === 2) return name + ", sold as " + (speed === "instant" ? "Express \u00b7 12 hours" : speed === "12h" ? "Standard \u00b7 12-24 hours" : "Saver \u00b7 24-48 hours") + " before the 9 Oct change";
       return name + ", sold as " + (speed === "instant" ? "Instant 2-3 hours" : speed === "12h" ? "12 hours" : "24 hours") + " before the 7 Oct change";
     }
 
@@ -8908,7 +8920,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const now = Date.now();
         const recentInstant = rows.filter(w => w.speed === "instant" && (now - new Date(String(w.createdAt).replace(" ", "T")).getTime()) <= 7 * 24 * 3600 * 1000);
         if (recentInstant.length >= 3) {
-          alerts.push({ clientName, label: "Repeated Express withdrawals", detail: `${recentInstant.length} Express (0.7%) withdrawals in the last 7 days.` });
+          alerts.push({ clientName, label: "Repeated Nova Bolt withdrawals", detail: `${recentInstant.length} Nova Bolt (fastest) withdrawals in the last 7 days.` });
         }
         rows.forEach(w => {
           if (w.balanceBefore > 0 && Number(w.amount) === Number(w.balanceBefore)) {
@@ -8982,7 +8994,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (previous && previous.iban && withdrawal.iban && previous.iban !== withdrawal.iban) softReasons.push("IBAN changed recently");
       const withdrawalTime = new Date(String(withdrawal.createdAt).replace(" ", "T")).getTime();
       const instantNearbyCount = siblingRows.filter(item => item.speed === "instant" && Math.abs(new Date(String(item.createdAt).replace(" ", "T")).getTime() - withdrawalTime) <= 24 * 3600 * 1000).length;
-      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) softReasons.push("2+ Express (0.7%) withdrawals in 24 hours");
+      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) softReasons.push("2+ Nova Bolt (fastest) withdrawals in 24 hours");
       const reasons = hardReasons.concat(softReasons);
       return { locked: reasons.length > 0, reasons, hardReasons, softReasons };
     }
@@ -11665,7 +11677,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           moneyBox("Pending payouts", money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.amount || 0), 0)), `${pendingWithdrawals.length} request(s)`),
           moneyBox("Paid payouts", money(paidWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0)), `${paidWithdrawals.length} settled`),
           moneyBox("Withdraw fee revenue", money(feeRevenue), "all speeds"),
-          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "12h + instant only")
+          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "Nova Express + Nova Bolt")
         ].join("");
       }
 
@@ -11676,7 +11688,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           moneyBox("Mismatched wallets", String(mismatchedReconciliations.length), mismatchedReconciliations.length ? "needs reconciliation" : "none right now"),
           moneyBox("Pending payouts", String(pendingWithdrawals.length), `${money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0))} due`),
           moneyBox("Locked payouts", String(lockedPayoutsCount), lockedPayoutsCount ? "cannot be paid yet" : "none locked"),
-          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "12h + instant only"),
+          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "Nova Express + Nova Bolt"),
           moneyBox("Payouts missing proof", String(missingProofCount), missingProofCount ? "audit these" : "all settled payouts have proof")
         ].join("");
       }
@@ -11824,7 +11836,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (revenueList) {
         revenueList.innerHTML = `
           <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
-          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>Saver (24-48 hours) = 0.1%, Standard (12-24 hours) = 0.3%, Express (12 hours) = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>Flat fees since 9 Oct 2026: Nova Saver (48-72 hours) is free, Nova Express (within 24 hours) is Rs 100, Nova Bolt (6-12 hours) is Rs 500. The fee is deducted from the requested withdrawal amount.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
         `;
       }

@@ -29,8 +29,8 @@ function page(o={}){
   w.__calls=[];w.__toasts=[];w.__tabs=[];w.__forms=[];w.__docs=[];w.__prompts=[];w.__receipts=[];
   const rpcs=o.rpcs||{};
   w.__nvSb={rpc:async(n,a)=>{w.__calls.push([n,a]);if(rpcs[n])return rpcs[n](a);
-    if(n==='request_wallet_withdrawal_idem')return{data:{id:'11111111-2222-4333-8444-555555555555',status:'Pending admin payout',fee:Math.round(a.p_amount*({ '24h':0.001,'12h':0.003,instant:0.007 }[a.p_speed])*100)/100,
-      net:a.p_amount-Math.round(a.p_amount*({ '24h':0.001,'12h':0.003,instant:0.007 }[a.p_speed])*100)/100},error:null};
+    if(n==='request_wallet_withdrawal_idem')return{data:{id:'11111111-2222-4333-8444-555555555555',status:'Pending admin payout',fee:({ '24h':0,'12h':100,instant:500 }[a.p_speed]),
+      net:a.p_amount-({ '24h':0,'12h':100,instant:500 }[a.p_speed])},error:null};
     return{data:null,error:null};}};
   w.__NOVAX_DEMO=!!o.demo;
   try{ w.localStorage.setItem('nvWalletHidden',o.hidden?'1':'0'); }catch(e){}
@@ -41,8 +41,9 @@ function page(o={}){
     'var __withdrawInFlight=false;',
     'var NV_KYC='+JSON.stringify(o.kyc?{data:{status:o.kyc}}:{data:null})+';',
     'const PKR=new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0});',
-    'const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };',
-    ...['money','moneyExact','walletFeeRate','nvPayoutFee','walletFeePct','walletSpeedIsOld','walletSpeedName','walletSpeedWindow','walletSpeedEta','walletSpeedLabel','nvIbanChecksumOk','validateIbanValue','maskIban','escLabelText'].map(fn),
+    /const WALLET_FEE=\{[^}]*\};/.exec(app)[0],
+    /var NV_FLAT_FEES_FROM="[^"]*";/.exec(app)[0],
+    ...['money','moneyExact','walletFee','walletFeeText','walletSpeedMin','nvPayoutFee','walletSpeedEra','walletSpeedIsOld','walletSpeedName','walletSpeedWindow','walletSpeedEta','walletSpeedLabel','nvIbanChecksumOk','validateIbanValue','maskIban','escLabelText'].map(fn),
     'function nvNiceDate(v){return String(v||"");}',
     'function clientById(id){return {id:id,walletBalance:'+(o.balance!=null?o.balance:3425)+'};}',
     'function toast(m){window.__toasts.push(m);} function showClientTab(t){window.__tabs.push(t);} function nvOpenWalletForms(f){window.__forms.push(f);}',
@@ -117,6 +118,29 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   p.dom.window.close();
 }
 
+/* ─── withdraw: a paid speed needs its fee plus Rs 1 ─────────────────── */
+{
+  const p=page();
+  p.w.eval('state.walletWithdrawSpeed="instant"; nvwOpenWithdraw()');await wait();
+  ['3','0','0'].forEach(p.key);
+  p.sheet().querySelector('[data-nvw="wd-next"]').click();await wait();
+  const sh=p.sheet(), b=c=>sh.querySelector('[data-wd-speed="'+c+'"]');
+  assert.equal(b('instant').disabled,true);assert.equal(b('12h').disabled,false);assert.equal(b('24h').disabled,false);
+  assert.match(b('instant').textContent.replace(/\u00a0/g,' '),/Withdraw Rs 501 or more to use this/);
+  assert.equal(b('24h').getAttribute('aria-checked'),'true','a remembered speed the amount cannot cover falls back to the free one');
+  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 300');
+  b('instant').click();await wait(200);
+  assert.equal(b('24h').getAttribute('aria-checked'),'true');assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 300');
+  b('12h').click();await wait(520);
+  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 200');
+  ok('Rs 300: Nova Bolt is switched off with the amount that unlocks it, Nova Express leaves Rs 200, Nova Saver all of it');
+  assert.equal(p.w.eval('walletFee("24h")+"|"+walletFee("12h")+"|"+walletFee("instant")+"|"+nvPayoutFee(99999999,"12h")+"|"+nvPayoutFee(1,"instant")'),'0|100|500|100|500');
+  assert.equal(p.w.eval('[walletSpeedLabel("instant","2026-10-01 10:00"),walletSpeedLabel("12h","2026-10-08 12:00"),walletSpeedLabel("24h","2099-01-01 00:00"),walletSpeedLabel("instant")].join("|")'),
+    'Instant 2-3 hours|Standard · 12-24 hours|Nova Saver · 48-72 hours|Nova Bolt · 6-12 hours');
+  ok('the fee never depends on the amount; a past withdrawal keeps the name it was sold under');
+  p.dom.window.close();
+}
+
 /* ─── withdraw: speed, live "you will receive", hold to confirm, success ─ */
 {
   const p=page();
@@ -126,12 +150,16 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   const sh=p.sheet();
   assert.equal(sh.querySelector('[data-wd="speed"]').hidden,false);
   assert.equal(sh.querySelectorAll('[data-wd-speed]').length,3);
-  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,248.75');
+  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,250');
+  assert.deepEqual([...sh.querySelectorAll('[data-wd-speed]')].map(b=>b.textContent.replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim()),
+    ['Nova Saver · 48-72 hoursFree','Nova Express · 24 hoursFee Rs 100','Nova Bolt · 6-12 hoursFee Rs 500']);
+  sh.querySelector('[data-wd-speed="12h"]').click();await wait(520);
+  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,150');
   assert.match(sh.querySelector('.nvw-bank').textContent.replace(/\u00a0/g,' '),/Meezan/);assert.match(sh.querySelector('.nvw-bank-num').textContent.replace(/\u00a0/g,' '),/PK40 MEZN •••• •••• 6702/);
   sh.querySelector('[data-wd-speed="instant"]').click();await wait(520);
-  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,241.25');
+  assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 750');
   assert.equal(sh.querySelector('[data-wd-speed="instant"]').getAttribute('aria-checked'),'true');
-  ok('speed: fee and "you will receive" update live (24h 1,248.75 -> instant 1,241.25), bank card shown');
+  ok('speed: flat fees, and "you will receive" updates live (Saver 1,250 -> Express 1,150 -> Bolt 750), bank card shown');
   const hold=sh.querySelector('[data-wd-hold]');
   hold.click();await wait();assert.match(sh.querySelector('[data-wd-err2]').textContent.replace(/\u00a0/g,' '),/Keep holding/);assert.equal(rpcCalls(p).length,0);
   hold.dispatchEvent(new p.w.Event('pointerdown',{bubbles:true}));await wait(500);
@@ -145,7 +173,7 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   await wait(100);
   assert.equal(sh.querySelector('[data-wd="done"]').hidden,false);
   assert.match(sh.querySelector('.nvw-done').textContent.replace(/\u00a0/g,' '),/Withdrawal requested/);
-  assert.match(sh.querySelector('.nvw-done-sub').textContent.replace(/\u00a0/g,' '),/Meezan ••6702 · within 12 hours \(by /);
+  assert.match(sh.querySelector('.nvw-done-sub').textContent.replace(/\u00a0/g,' '),/Meezan ••6702 · in 6-12 hours \(by /);
   const steps=[...sh.querySelectorAll('.nvw-track li')].map(l=>l.className);assert.deepEqual(steps,['is-done','is-now','is-next']);
   assert.ok(p.w.__calls.some(c=>c[0]==='reload'));assert.equal(p.w.eval('state.walletWithdrawals.length'),1);
   assert.equal(p.w.eval('state.walletWithdrawSpeed'),'instant');
