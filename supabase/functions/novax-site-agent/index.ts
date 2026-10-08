@@ -96,7 +96,7 @@ REFUSED OR RETURNED PARCELS
   there is NO extra return fee, and no COD is collected on it.
 
 SHOPIFY
-- Sellers install the NovaX app from the API tab in their NovaX portal and connect it with a
+- Sellers install the NovaX app from Store connections in their NovaX portal and connect it with a
   one-time code. New Shopify orders to Karachi, Lahore, Islamabad or Rawalpindi become NovaX
   bookings with an AWB automatically; orders to other cities are skipped with the reason shown.
 - The order is marked fulfilled in Shopify with the AWB as tracking once a rider collects it.

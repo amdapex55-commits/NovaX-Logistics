@@ -2667,7 +2667,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=681fb209" defer></script>
+  <script src="client-app.min.js?v=c7003fe2" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2762,8 +2762,8 @@ try{
             <button type="button" class="account-pill" id="nvAcctBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="nvAcctMenu"><span class="account-dot"></span><span id="topAccountName">Client</span><svg class="nv-acct-chev" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="m5 8 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="nv-acct-menu" id="nvAcctMenu" role="menu" hidden>
               <button type="button" role="menuitem" data-acct="profile">Profile</button>
-              <button type="button" role="menuitem" data-acct="subAccounts">Team and sub accounts</button>
-              <button type="button" role="menuitem" data-acct="integrations">Store connections and API</button>
+              <button type="button" role="menuitem" data-acct="subAccounts">Team</button>
+              <button type="button" role="menuitem" data-acct="integrations">Store connections</button>
               <button type="button" role="menuitem" data-acct="theme" id="nvAcctTheme">Dark mode</button>
               <button type="button" role="menuitem" data-acct="logout" class="nv-acct-out">Log out</button>
             </div>
@@ -2841,7 +2841,7 @@ try{
               <button class="client-tab nv-on-nav" data-client-tab="money">NovaX Wallet</button>
               <button class="client-tab nv-on-nav" data-client-tab="tickets">Support tickets</button>
               <p class="nv-menu-h">Shipping</p>
-              <button class="client-tab" data-client-tab="awbLabel">AWB label</button>
+              <button class="client-tab" data-client-tab="awbLabel">Labels and pickup</button>
               <button class="client-tab" data-client-tab="loadSheet">Load sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk booking</button>
               <button class="client-tab" data-client-tab="swap">Nova Swap</button>
@@ -2850,8 +2850,8 @@ try{
               <button class="client-tab" data-client-tab="recover">Nova Recover</button>
               <button class="client-tab" data-client-tab="reports">Reports</button>
               <button class="client-tab" data-client-tab="profile">Profile</button>
-              <button class="client-tab" data-client-tab="subAccounts">Sub accounts</button>
-              <button class="client-tab" data-client-tab="integrations">API</button>
+              <button class="client-tab" data-client-tab="subAccounts">Team</button>
+              <button class="client-tab" data-client-tab="integrations">Store connections</button>
               <!-- The "support" tab is where the Autopilot console lives, and it
                    had no entry in this menu at all: the only ways in were the
                    floating launcher and #nvAiEntry, and #nvAiEntry is
@@ -3146,38 +3146,40 @@ try{
                 <div id="bulkPreviewList"></div>
               </div>
             </section>
-            <!-- STORE INTEGRATIONS -->
+            <!-- STORE CONNECTIONS (8 Oct 2026). One card per store, each with its
+                 own status and numbered steps. Every id and handler is the same
+                 as in the old six-panel layout; only the arrangement changed.
+                 WooCommerce and "your own website" are folded until they are
+                 used (renderIntegrations opens a connected one). -->
             <section class="client-module" id="client-integrations">
               <div class="panel">
-                <div class="section-head"><div><h3>Store integrations</h3><p>Connect your online store to auto-import orders as new bookings. Each imported order starts its journey when a rider scans it for pickup.</p></div></div>
+                <div class="section-head"><div><h3>Store connections</h3><p>Connect your online store and each new order becomes a NovaX booking by itself. A booking starts its journey when a rider scans the parcel at pickup.</p></div></div>
               </div>
-              <div class="panel mt-14" id="nvShopifyAppPanel">
-                <div class="section-head"><div><h3>Shopify</h3><p>Install the <b>NovaX Logistics</b> app from your Shopify admin, then paste the code below into it. That is the whole setup — no webhooks, no signing secrets, and nothing of yours to paste in here.</p></div><span class="chip good">Live</span></div>
+
+              <div class="panel mt-14 nvsc" id="nvShopifyAppPanel">
+                <div class="nvsc-hd"><span class="nvsc-mark is-shopify" aria-hidden="true">S</span><div class="nvsc-t"><h3>Shopify</h3><p>Install the <b>NovaX Logistics</b> app and paste one code into it. No webhooks, no signing secrets, and nothing of yours to paste in here.</p></div><span class="chip" id="nvShopifyChip" hidden></span></div>
                 <div id="nvShopifyStores" class="mt-12"></div>
-                <div class="field mt-12">
-                  <p class="footer-note" id="nvShopifyConnectIntro">Install the NovaX app in Shopify and press <b>Get my code</b> there. It brings you here and shows your connect code. A code is single use and lasts 20 minutes.</p>
-                  <div class="inline-actions mt-8"><button class="ghost-btn" id="nvShopifyCodeBtn" onclick="nvShopifyConnectPopup(true)">Show my connect code</button></div>
-                  <p class="footer-note mt-8" id="nvShopifyCodeOut"></p>
-                </div>
+                <ol class="nvsc-steps" id="nvShopifyConnectIntro">
+                  <li>Install the <b>NovaX Logistics</b> app from your Shopify admin.</li>
+                  <li>Press <b>Get my code</b> in the app. It brings you here and shows your connect code.</li>
+                  <li>Paste the code into the app. A code is single use and lasts 20 minutes.</li>
+                </ol>
+                <div class="inline-actions mt-8"><button class="ghost-btn" id="nvShopifyCodeBtn" onclick="nvShopifyConnectPopup(true)">Show my connect code</button></div>
+                <p class="footer-note mt-8" id="nvShopifyCodeOut"></p>
+                <details class="nvsc-old"><summary>Using the old Shopify webhook setup?</summary><p class="footer-note">The link-and-signing-secret flow has been replaced by the NovaX app above. Existing connections keep working, but install the app when you get a moment — it needs no webhook, no signing secret, and no Admin API token.</p></details>
               </div>
 
-              <!-- Tracking-page branding moved to the Profile tab (29 Sep 2026). -->
-              <div class="panel mt-14 nv-pf-moved">
-                <div class="section-head"><div><h3>Your tracking page</h3><p>Your logo, name and colour on your customers' tracking link are now set in <b>Profile</b>.</p></div><button type="button" class="ghost-btn" onclick="showClientTab('profile')">Open profile</button></div>
-              </div>
-
-              <div class="grid two mt-14">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Using the old Shopify webhook setup?</h3><p>The link-and-signing-secret flow has been replaced by the NovaX app above. Existing connections keep working, but install the app when you get a moment — it needs no webhook, no signing secret, and no Admin API token.</p></div><span class="chip">Retired</span></div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
+              <details class="panel mt-14 nvsc nvsc-fold" id="nvWooPanel">
+                <summary class="nvsc-hd"><span class="nvsc-mark is-woo" aria-hidden="true">W</span><div class="nvsc-t"><h3>WooCommerce</h3><p>An order is booked once, when it reaches Processing.</p></div><span class="chip" id="wooStatusChip">Not connected</span></summary>
+                <div class="nvsc-body">
+                  <div class="nvpk-step"><i>1</i><b>Enter your store and its REST API key</b></div>
+                  <p class="footer-note">Make the key in WooCommerce &rarr; Settings &rarr; Advanced &rarr; REST API, with <b>Read/Write</b> permission.</p>
                   <div class="field"><label for="wooStoreUrl">Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
                   <div class="field"><label for="wooKey">Consumer Key</label><input id="wooKey" aria-label="WooCommerce key" placeholder="ck_..."></div>
                   <div class="field"><label for="wooSecret">Consumer Secret</label><input id="wooSecret" aria-label="WooCommerce secret" type="password" autocomplete="off" spellcheck="false" placeholder="cs_..."><button type="button" class="ghost-btn" style="margin-top:6px;min-height:34px;padding:4px 10px;font-size:12px" onclick="var i=document.getElementById('wooSecret');var on=i.type==='password';i.type=on?'text':'password';this.textContent=on?'Hide secret':'Show secret'">Show secret</button></div>
                   <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('woocommerce')">Save connection</button></div>
                   <div class="field" id="wooWebhookResult" style="display:none;margin-top:10px">
-                    <label>Your WooCommerce Webhook Setup</label>
+                    <div class="nvpk-step"><i>2</i><b>Add two webhooks in WooCommerce</b></div>
                     <p class="footer-note">Go to WooCommerce &rarr; Settings &rarr; Advanced &rarr; Webhooks &rarr; Add webhook, twice, with the same two values below: one with Topic <b>Order created</b> and one with Topic <b>Order updated</b>. Status: <b>Active</b>. An order is booked once, when it reaches <b>Processing</b>; orders outside Karachi, Lahore, Islamabad and Rawalpindi are not booked. Weight starts at 0.5 kg; the charge is corrected when we weigh the parcel. Every NovaX update is then written back to the order as a private note with the tracking link, and the order is marked <b>Completed</b> when it is delivered. For that, create the REST API key with <b>Read/Write</b> permission (WooCommerce &rarr; Settings &rarr; Advanced &rarr; REST API).</p>
                     <label class="mt-8">Delivery URL</label>
                     <div class="inline-actions"><input id="wooIntakeUrlOut" readonly style="flex:1" aria-label="WooCommerce webhook delivery URL"><button class="ghost-btn" onclick="copyFieldValue('wooIntakeUrlOut')">Copy</button></div>
@@ -3185,23 +3187,27 @@ try{
                     <div class="inline-actions"><input id="wooSecretOut" aria-label="Generated WooCommerce signing secret" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooSecretOut')">Copy</button></div>
                   </div>
                 </div>
-              </div>
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>Custom web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
+              </details>
+
+              <details class="panel mt-14 nvsc nvsc-fold" id="nvWebPanel">
+                <summary class="nvsc-hd"><span class="nvsc-mark is-web" aria-hidden="true">&lt;/&gt;</span><div class="nvsc-t"><h3>Your own website (API)</h3><p>For a store your developer built, not Shopify or WooCommerce. Your site sends orders to NovaX, and NovaX sends status changes back.</p></div><span class="chip" id="webStatusChip">Not connected</span></summary>
+                <div class="nvsc-body">
+                  <div class="nvpk-step"><i>1</i><b>Tell us where to send status changes</b></div>
                 <div class="grid two">
-                  <div class="field"><label for="webEndpoint">Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
-                  <div class="field"><label for="webKey">API Key (optional, sent as Bearer token)</label><div class="nv-secret-row"><input id="webKey" type="password" autocomplete="off" spellcheck="false" placeholder="api key or bearer token" style="flex:1"><button type="button" class="ghost-btn nv-reveal" data-nv-reveal="webKey" aria-pressed="false">Show</button></div></div>
+                  <div class="field"><label for="webEndpoint">Status update URL (NovaX posts each status change here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
+                  <div class="field"><label for="webKey">API key (optional, sent as a Bearer token)</label><div class="nv-secret-row"><input id="webKey" type="password" autocomplete="off" spellcheck="false" placeholder="api key or bearer token" style="flex:1"><button type="button" class="ghost-btn nv-reveal" data-nv-reveal="webKey" aria-pressed="false">Show</button></div></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('web')">Save connection</button></div>
                 <div class="field" id="webWebhookResult" style="display:none;margin-top:10px">
-                  <label>Your Order Push Setup</label>
-                  <p class="footer-note">Give this to your developer. Your site should POST new orders as JSON to the URL below, with header <b>X-NovaX-Signature</b> set to the hex HMAC-SHA256 of the raw JSON body using the secret below.</p>
+                  <div class="nvpk-step"><i>2</i><b>Give these to your developer</b></div>
+                  <p class="footer-note">Your site should POST new orders as JSON to the URL below, with header <b>X-NovaX-Signature</b> set to the hex HMAC-SHA256 of the raw JSON body using the secret below.</p>
                   <label class="mt-8">Order Push URL</label>
                   <div class="inline-actions"><input id="webIntakeUrlOut" readonly style="flex:1" aria-label="Order intake URL for your website"><button class="ghost-btn" onclick="copyFieldValue('webIntakeUrlOut')">Copy</button></div>
                   <label class="mt-8">Signing Secret</label>
                   <div class="inline-actions"><input id="webSecretOut" aria-label="Generated web signing secret" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webSecretOut')">Copy</button></div>
                 </div>
-              </div>
+                </div>
+              </details>
             </section>
             <!-- FULL REPORT -->
             <section class="client-module" id="client-reports">
@@ -3448,6 +3454,16 @@ try{
                     <summary class="section-head"><div><h3>Recent changes</h3><p>Every change to this profile, newest first.</p></div></summary>
                     <div id="nvPfHistory" class="nv-pf-hist"><p class="footer-note">No changes yet.</p></div>
                   </details>
+
+                  <!-- Moved here from the NovaX AI tab on 8 Oct 2026: it is a
+                       fact about the account, and Profile is where those live. -->
+                  <details class="panel mt-14 nv-pf-sec" data-nv-fold="phone" open>
+                    <summary class="section-head"><div><h3>What NovaX sends you</h3><p>So you know exactly what to expect.</p></div></summary>
+                    <div class="nv-notif-facts">
+                      <div><span class="chip good">On</span><div><b>Account emails</b><p class="footer-note">To your login email: when your account is ready, when your first parcel is booked, when your CNIC is checked, and when a payout is sent to your bank. If you haven't booked a parcel yet, up to three reminders in your first week, each with a link to stop them.</p></div></div>
+                      <div><span class="chip">Not yet</span><div><b>Parcel-by-parcel updates by WhatsApp, SMS or email</b><p class="footer-note">Not available yet. Your dashboard shows every parcel's status live, and each parcel's tracking link shows the same to your customer.</p></div></div>
+                    </div>
+                  </details>
                 </div>
 
                 <aside class="nv-pf-side" aria-label="Preview">
@@ -3474,19 +3490,24 @@ try{
                 <button type="button" class="action-btn" id="nvPfSave">Save changes</button>
               </div>
             </section>
+            <!-- TEAM (8 Oct 2026; was "Sub accounts"). The tab id, the invite button
+                 id and the list id are unchanged. The four role lines are the
+                 same sentences nvRolePermissionSummary() gives, and
+                 test-three-screens.mjs holds the two together. -->
             <section class="client-module" id="client-subAccounts">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Sub accounts</h3><p>Owners, finance, warehouse staff, and support users get separate permissions.</p></div><button class="action-btn" id="inviteUserBtn">Invite user</button></div>
-                  <div class="ops-list" id="subAccountList"></div>
+              <div class="panel">
+                <div class="section-head"><div><h3>Team</h3><p>Give each person their own login instead of sharing your password. Their role decides what they can open.</p></div><button class="action-btn" id="inviteUserBtn">Add a team member</button></div>
+                <div class="ops-list" id="subAccountList"></div>
+              </div>
+              <div class="panel mt-14">
+                <div class="section-head"><div><h3>What each role can do</h3><p>You pick the role when you add someone.</p></div></div>
+                <div class="nvtm-roles">
+                  <div><b>Owner</b><span>Everything, including the Wallet, withdrawals and the team.</span></div>
+                  <div><b>Finance</b><span>Wallet, invoices and reports. Cannot book parcels or withdraw.</span></div>
+                  <div><b>Warehouse</b><span>Booking, labels, pickups and load sheets. No Wallet or reports.</span></div>
+                  <div><b>Support</b><span>Follows parcels and answers support tickets. No booking, no Wallet.</span></div>
                 </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Permission rules</h3><p>Finance can see settlements. Warehouse can book. Support can track.</p></div></div>
-                  <div class="money-grid">
-                    <div class="money-box"><span>Maker Checker</span><strong>On</strong><div class="footer-note">Payouts require approval.</div></div>
-                    <div class="money-box"><span>Manual Status Edit</span><strong>Blocked</strong><div class="footer-note">Only reversal entries allowed.</div></div>
-                  </div>
-                </div>
+                <p class="footer-note mt-12">Only an Owner can withdraw money, change the bank account, or add and remove team members.</p>
               </div>
             </section>
             <!-- AI SUPPORT -->
@@ -3565,21 +3586,9 @@ try{
                   <button class="nvai-req" id="nvAiReqMore">Request more from admin</button>
                 </div>
               </div>
-              <!-- Business name moved to the Profile tab (29 Sep 2026), with the
-                   logo, contact details and tracking-link branding. -->
-              <div class="panel mt-14 nv-pf-moved">
-                <div class="section-head"><div><h3>Your business name</h3><p>Your name, logo, phone and address now live together in <b>Profile</b>, and are used everywhere from there.</p></div><button type="button" class="ghost-btn" onclick="showClientTab('profile')">Open profile</button></div>
-              </div>
-              <!-- Notifications, told straight (29 Sep 2026). The WhatsApp / SMS /
-                   Email switches were saved but nothing ever read them -- no
-                   channel sends parcel updates yet. The old controls stay in the
-                   page, hidden, so loadClientNotificationPrefs() keeps working. -->
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>What NovaX sends you</h3><p>So you know exactly what to expect.</p></div></div>
-                <div class="nv-notif-facts">
-                  <div><span class="chip good">On</span><div><b>Account emails</b><p class="footer-note">To your login email: when your account is ready, when your first parcel is booked, when your CNIC is checked, and when a payout is sent to your bank. If you haven't booked a parcel yet, up to three reminders in your first week, each with a link to stop them.</p></div></div>
-                  <div><span class="chip">Not yet</span><div><b>Parcel-by-parcel updates by WhatsApp, SMS or email</b><p class="footer-note">Not available yet. Your dashboard shows every parcel's status live, and each parcel's tracking link shows the same to your customer.</p></div></div>
-                </div>
+              <!-- "What NovaX sends you" moved to Profile on 8 Oct 2026. The old
+                   WhatsApp / SMS / Email switches stay in the page, hidden, so
+                   loadClientNotificationPrefs() keeps working when this tab opens. -->
                 <div hidden aria-hidden="true">
                 <div class="section-head"><div><h3>Notification preferences</h3><p>Choose how you want to hear about your parcels. WhatsApp/SMS/Email sending is coming soon -- your choices are saved now so nothing needs to change later.</p></div></div>
                 <p class="footer-note">These preferences are saved for future messaging. WhatsApp, SMS and email updates are not active yet; check your portal for live status.</p>
@@ -3592,7 +3601,6 @@ try{
                 <p class="footer-note" id="notifPrefStatus" role="status">Loading your current settings&hellip;</p>
                 <div class="inline-actions mt-10"><button class="action-btn" id="notifPrefSaveBtn" onclick="saveClientNotificationPrefs()" disabled>Save preferences</button></div>
                 </div>
-              </div>
             </section>
           </div>
         </div>
@@ -6578,6 +6586,80 @@ button.nv-recover-promo{width:100%;font:inherit;text-align:left;cursor:pointer;-
 body:not(.nv-rc-fresh) .nv-recover-promo,
 body:not(.nv-rc-fresh) #clientMenu .nv-recover-promo,
 #client-dashboard:has(#nvRcStart) > .nv-recover-promo{display:none!important}
+
+/* ═══ 8 Oct 2026: Store connections, Team, customer history at booking ═══
+   Store connections is one card per store: a mark, what it does, its real
+   status, then numbered steps. WooCommerce and "your own website" are
+   <details>, folded until used. The step bubbles reuse .nvpk-step. */
+.nvsc-hd{display:flex;align-items:flex-start;gap:12px}
+.nvsc-mark{flex:none;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-weight:850;font-size:16px;color:#fff;background:#33414f}
+.nvsc-mark.is-shopify{background:#4f7a33}
+.nvsc-mark.is-woo{background:#7f54b3}
+.nvsc-mark.is-web{font-size:12px;letter-spacing:-.04em}
+.nvsc-t{flex:1 1 0;min-width:0}
+.nvsc-t h3{margin:0 0 3px}
+.nvsc-t p{margin:0;font-size:13px;line-height:1.5;color:var(--nvu-ink-2)}
+.nvsc-hd>.chip{flex:none;align-self:flex-start;white-space:nowrap;width:auto}
+.nvsc-hd>.chip:not(.good){box-shadow:inset 0 0 0 1px var(--nvu-line-2)}
+#client-integrations>.panel:first-child .section-head{margin-bottom:0}
+#nvShopifyChip[hidden]{display:none!important}
+#nvShopifyCodeOut:empty{display:none}
+.nvsc-steps{margin:14px 0 4px;padding:0;list-style:none;counter-reset:nvsc;display:grid;gap:10px}
+.nvsc-steps li{counter-increment:nvsc;position:relative;padding:2px 0 0 36px;min-height:26px;font-size:13.5px;line-height:1.5;color:var(--ink)}
+.nvsc-steps li::before{content:counter(nvsc);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;background:var(--nvu-accent);color:var(--nvu-accent-ink)}
+.nvsc-old{margin-top:14px;padding-top:12px;border-top:1px solid var(--nvu-line)}
+.nvsc-old>summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--nvu-ink-2)}
+.nvsc-old>p{margin:8px 0 0}
+.nvsc-fold>summary{list-style:none;cursor:pointer;position:relative;padding-right:28px}
+.nvsc-fold>summary::-webkit-details-marker{display:none}
+.nvsc-fold>summary::after{content:"";position:absolute;right:6px;top:12px;width:9px;height:9px;border-right:2px solid var(--nvu-ink-2);border-bottom:2px solid var(--nvu-ink-2);transform:rotate(45deg);transition:transform .15s}
+.nvsc-fold[open]>summary::after{transform:rotate(-135deg);top:17px}
+.nvsc-fold>summary:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:4px;border-radius:8px}
+.nvsc-body .nvpk-step:first-child{margin-top:14px}
+.nvsc-body .field{margin-top:10px}
+@media (max-width:560px){
+  .nvsc-hd{flex-wrap:wrap}
+  .nvsc-t{flex-basis:calc(100% - 60px)}
+  .nvsc-hd>.chip{margin-left:52px}
+}
+@media (prefers-reduced-motion:reduce){ .nvsc-fold>summary::after{transition:none} }
+
+/* "Store connections" is longer than "API" was. In the phone menu's two
+   columns it wraps to a second line like "Labels and pickup" does, instead
+   of being cut at the cell edge. */
+#clientMenu .client-tab[data-client-tab="integrations"]{white-space:normal!important}
+
+/* Team: the four roles in plain words, and an empty state that is a note,
+   not a second button. */
+.nvtm-roles{display:grid;gap:8px}
+.nvtm-roles>div{display:grid;grid-template-columns:104px minmax(0,1fr);gap:10px;align-items:baseline;padding:11px 13px;border:1px solid var(--nvu-line);border-radius:12px;background:var(--nvu-bg-2)}
+.nvtm-roles b{font-size:13.5px;color:var(--ink)}
+.nvtm-roles span{font-size:13px;line-height:1.5;color:var(--nvu-ink-2)}
+@media (max-width:480px){ .nvtm-roles>div{grid-template-columns:minmax(0,1fr);gap:2px} }
+.nvtm-empty{padding:16px;border:1px dashed var(--nvu-line-2);border-radius:14px}
+.nvtm-empty strong{display:block;font-size:14.5px;margin-bottom:4px;color:var(--ink)}
+.nvtm-empty p{margin:0;font-size:13px;line-height:1.5;color:var(--nvu-ink-2)}
+
+/* The add-a-team-member form: same fields as before, drawn like the rest
+   of the portal's forms. Styles only; its ids and handlers are untouched. */
+#nvInviteModal>.ops-card{padding:18px;border-radius:18px;max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow:auto}
+#nvInviteModal .ops-card-head{align-items:center;margin-bottom:6px}
+#nvInviteModal .ops-card-head strong{font-size:17px}
+#nvInviteModal #nvInviteClose{width:auto;min-height:38px;padding:6px 14px}
+#nvInviteModal label.footer-note{display:block;margin:10px 0 5px;font-size:12.5px;font-weight:700;color:var(--ink)}
+#nvInviteModal input,#nvInviteModal select{min-height:46px;padding:10px 12px;border:1px solid var(--nvu-line-2);border-radius:12px;background:var(--nvu-bg-2);color:var(--ink);font:inherit;font-size:16px;margin-bottom:0!important}
+#nvInviteModal input:focus,#nvInviteModal select:focus{outline:2px solid var(--nvu-accent);outline-offset:1px}
+#nvInviteModal .nv-secret-row{align-items:stretch;gap:8px;margin-bottom:0!important}
+#nvInviteModal p.footer-note{margin:10px 0 0}
+#nvInviteModal #nvInviteSend{width:100%}
+
+/* New booking: what happened to this customer's earlier parcels. */
+.nv-chist{display:grid;gap:2px;padding:9px 12px;border-radius:10px;border:1px solid var(--nvu-line);background:var(--nvu-bg-2);font-size:12.5px;line-height:1.45;color:var(--nvu-ink-2)}
+.nv-chist b{font-size:13px;font-weight:750;color:var(--ink)}
+.nv-chist.warn{background:var(--nvu-warn-bg);border-color:var(--nvu-warn-ln);color:var(--nvu-warn-fg)}
+.nv-chist.warn b{color:var(--nvu-warn-fg)}
+.nv-chist.good{background:var(--nvu-good-bg);border-color:var(--nvu-good-ln)}
+.nv-chist.good b{color:var(--nvu-good-fg)}
 </style>
 
 <script>

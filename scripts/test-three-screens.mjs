@@ -13,7 +13,7 @@ const section = (id, next) => html.slice(html.indexOf('id="' + id + '"'), html.i
 
 // Bulk booking
 {
-  const s = section("client-bulkBooking", "<!-- STORE INTEGRATIONS -->");
+  const s = section("client-bulkBooking", "<!-- STORE CONNECTIONS");
   ["downloadBulkTemplateBtn","bulkCsvInput","bulkCsvHelp","bulkUploadBtn","bulkFileTile","bulkFileName","bulkFileHint","bulkValidationList","bulkPreviewPanel","bulkPreviewList","bulkPrintAllBtn"].forEach(once);
   assert.equal((s.match(/class="nvbk-step"/g) || []).length, 3, "three steps");
   assert.match(s, /<input id="bulkCsvInput" type="file" accept="\.csv,text\/csv" class="nvbk-input"/, "the browser's own file control is hidden behind the tile");
@@ -79,12 +79,12 @@ console.log("THREE SCREENS CHECKS PASSED");
 
   // Profile: sections that fold, nothing removed.
   const p = section("client-profile", 'id="client-subAccounts"');
-  assert.equal((p.match(/<details class="panel[^"]* nv-pf-sec"/g) || []).length, 8, "seven sections and the preview");
-  assert.equal((p.match(/<\/details>/g) || []).length, 8);
-  assert.equal((p.match(/<summary class="section-head">/g) || []).length, 8);
-  assert.equal((p.match(/nv-pf-sec"[^>]* open>/g) || []).length, 8, "all open in the page itself, so nothing is hidden without the script");
+  assert.equal((p.match(/<details class="panel[^"]* nv-pf-sec"/g) || []).length, 9, "eight sections and the preview");
+  assert.equal((p.match(/<\/details>/g) || []).length, 9);
+  assert.equal((p.match(/<summary class="section-head">/g) || []).length, 9);
+  assert.equal((p.match(/nv-pf-sec"[^>]* open>/g) || []).length, 9, "all open in the page itself, so nothing is hidden without the script");
   assert.match(p, /<details class="panel nv-pf-sec" open>\s*<summary class="section-head"><div><h3>Business profile<\/h3>/, "the first section never starts shut");
-  assert.equal((p.match(/data-nv-fold="phone"/g) || []).length, 6);
+  assert.equal((p.match(/data-nv-fold="phone"/g) || []).length, 7);
   assert.match(p, /id="nvKycPanel" data-nv-fold="phone-verified" open>/, "the CNIC section starts shut only once verified");
   ["nvPfLogo","nvPfName","nvPfAccent","nvPfPhone","nvPfWa","nvPfEmail","nvPfWeb","nvPfType","nvPfAddr","nvPfTrackOn","nvPfCity","nvPfCityReq","nvKycPanel","nvKycSend","nvKycReplace","nvPfHistory","nvPfSaveBar","nvPfSave","nvPfDiscard","nvPfPvTrack"].forEach(once);
   const fold = fnSrc("nvPfFoldOnce");
@@ -129,3 +129,96 @@ console.log("INVOICE, PROFILE AND WALLET CARD CHECKS PASSED");
   ok("AI button: before it returns it checks what lies under its spot, and stays tucked over a button, link or field");
 }
 console.log("BULK RESULTS, HOME FIGURES, WORDING, CHIPS AND AI BUTTON CHECKS PASSED");
+
+// Store connections, Team, the customer history note and the menu names
+// (8 Oct 2026). Every id the code drives is still there exactly once.
+{
+  // Store connections
+  const s = section("client-integrations", "<!-- FULL REPORT -->");
+  ["nvShopifyAppPanel","nvShopifyChip","nvShopifyStores","nvShopifyConnectIntro","nvShopifyCodeBtn","nvShopifyCodeOut","nvWooPanel","wooStatusChip","wooStoreUrl","wooKey","wooSecret","wooWebhookResult","wooIntakeUrlOut","wooSecretOut","nvWebPanel","webStatusChip","webEndpoint","webKey","webWebhookResult","webIntakeUrlOut","webSecretOut"].forEach((id) => { once(id); assert.ok(s.includes('id="' + id + '"'), id + " is inside Store connections"); });
+  for (const h of ['onclick="nvShopifyConnectPopup(true)"', "onclick=\"connectStore('woocommerce')\"", "onclick=\"connectStore('web')\"", "copyFieldValue('wooIntakeUrlOut')", "copyFieldValue('wooSecretOut')", "copyFieldValue('webIntakeUrlOut')", "copyFieldValue('webSecretOut')"]) assert.ok(s.includes(h), "handler kept: " + h);
+  assert.equal((s.match(/class="panel[^"]*\bnvsc\b/g) || []).length, 3, "one card per store");
+  assert.ok(!s.includes('<span class="chip good">Live</span>') && s.includes('<span class="chip" id="nvShopifyChip" hidden></span>'), "no Live badge before a store is connected");
+  assert.ok(!s.includes("nv-pf-moved") && !s.includes(">Retired<"), "the two leftover panels are gone");
+  assert.ok(s.includes("Using the old Shopify webhook setup?") && s.includes("Existing connections keep working"), "the old-setup note is kept, folded");
+  assert.ok(s.includes("An order is booked once, when it reaches <b>Processing</b>") && s.includes("Weight starts at 0.5 kg"), "the WooCommerce facts are word for word");
+  assert.ok(app.includes('badge.textContent=liveN?(liveN===1?"Connected":liveN+" stores connected"):"Not connected";'), "the Shopify badge is what the server answered");
+  assert.ok(app.includes('x.status==="uninstalled"?"App removed"'), "a removed app is named in plain words");
+  assert.ok(!app.includes('" &middot; "+c.importedCount'), "no HTML entity written as text");
+  assert.ok(app.includes('if(d && c && c.connected && d.dataset.nvAuto!=="1"){ d.dataset.nvAuto="1"; d.open=true; }'), "a connected store opens its own card once");
+  ok("store connections: three cards, real status, numbered steps, every field and handler kept");
+
+  // Team
+  const t = section("client-subAccounts", "<!-- AI SUPPORT -->");
+  once("inviteUserBtn"); once("subAccountList");
+  assert.ok(t.includes("<h3>Team</h3>") && !/Maker Checker|Manual Status Edit|Sub accounts/.test(t), "plain words");
+  const sum = new Function(/function nvRolePermissionSummary\(role\)\{[\s\S]*?\n    \}/.exec(app)[0] + "; return nvRolePermissionSummary;")();
+  for (const r of ["Owner", "Finance", "Warehouse", "Support"]) assert.ok(t.includes("<b>" + r + "</b><span>" + sum(r) + "</span>"), "the page and the code say the same about " + r);
+  assert.ok(!app.includes("subAccountEmptyInvite") && !app.includes('<span class="chip">empty</span>'), "one invite button, no 'empty' tag");
+  assert.ok(app.includes('data-nv-revoke="') && app.includes('sb.rpc("revoke_staff_user",{ p_staff_id:id })'), "removing access still calls the same server function");
+  {
+    // Draw the real list for an empty team and for three kinds of row.
+    const src = /function renderSubAccounts\(\)\{[\s\S]*?\n    \}\n/.exec(app)[0];
+    const draw = (rows) => {
+      const host = { innerHTML: "", querySelectorAll: () => [] };
+      new Function("document", "__nvStaffRows", "__nvStaffLoading", "__nvStaffError", "NOVAX_ROLE_TABS", "nvRolePermissionSummary", "escLabelText", "nvDateTime", "revokeSubAccountUser", src + "renderSubAccounts();")(
+        { getElementById: () => host }, rows, false, null, { Owner: [], Finance: [], Warehouse: [], Support: [] }, sum, (x) => String(x).replace(/[&<>"]/g, ""), (x) => "on " + x, () => {});
+      return host.innerHTML;
+    };
+    const empty = draw([]);
+    assert.ok(empty.includes("It is just you so far") && !empty.includes("<button"), "the empty team is a note, not a second button");
+    const list = draw([{ id: "a1", name: "Sara", email: "sara@example.com", role: "Finance", status: "Active", last_active_at: "5 Oct" },
+                       { id: "b2", name: "", email: "ali@example.com", role: "Warehouse", status: "pending", last_active_at: null },
+                       { id: "c3", name: "Old", email: "old@example.com", role: "Support", status: "revoked", last_active_at: null }]);
+    assert.ok(list.includes('<span class="chip good">Active</span>') && list.includes('<span class="chip warn">Pending</span>') && list.includes('<span class="chip bad">Access removed</span>'));
+    assert.ok(list.includes("Last active on 5 Oct") && list.includes("Has not signed in yet") && list.includes("<strong>Finance</strong> — " + sum("Finance")));
+    assert.equal((list.match(/data-nv-revoke="/g) || []).length, 2, "no Remove access button on a login already removed");
+    assert.ok(list.includes('data-nv-revoke="a1">Remove access</button>'));
+  }
+  ok("team: renamed, the four roles in the code's own words, one way to add someone");
+
+  // Menu names
+  for (const b of ['data-client-tab="awbLabel">Labels and pickup<', 'data-client-tab="subAccounts">Team<', 'data-client-tab="integrations">Store connections<', 'data-acct="subAccounts">Team<', 'data-acct="integrations">Store connections<']) assert.ok(html.includes(b), b);
+  assert.ok(app.includes('["awbLabel","Labels and pickup","Print AWB labels, request a pickup"]') && app.includes('["subAccounts","Team","Logins for your staff, sub accounts"]') && app.includes('["integrations","Store connections","Shopify, WooCommerce, API integrations"]'), "search finds them by the new and the old words");
+  assert.ok(!/AWB tab|AWB Label tab|Open AWB Tab|the API tab|Open Integrations/.test(app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")), "no message still names the old tabs");
+  const mail = readFileSync(new URL("../supabase/functions/novax-email-drain/templates.ts", import.meta.url), "utf8");
+  assert.ok(!mail.includes("AWB label tab") && mail.includes("from Labels and pickup, in the menu"), "the emails name the tab as the menu does");
+  ok("menu: Labels and pickup, Team, Store connections, in the menu, the search, the messages and the emails");
+
+  // Support tab and Profile
+  const supAt = html.indexOf('id="client-support"'), sup = html.slice(supAt, html.indexOf("</section>", supAt));
+  assert.ok(!sup.includes("Your business name") && !html.includes("nv-pf-moved\">"), "the pointer panels are gone");
+  ["notifPrefWhatsapp","notifPrefSms","notifPrefEmail","notifPrefEventsGrid","notifPrefStatus","notifPrefSaveBtn"].forEach((id) => { once(id); assert.ok(sup.includes('id="' + id + '"'), id + " stays on the tab that loads it"); });
+  const prof = section("client-profile", 'id="nvPfSaveBar"');
+  assert.ok(prof.includes("<h3>What NovaX sends you</h3>") && prof.includes("<b>Account emails</b>") && !sup.includes("What NovaX sends you</h3>"), "the notification facts live in Profile");
+  ok("support tab: only the assistant; what NovaX sends you is in Profile");
+
+  // Customer history at booking
+  once("consigneeHistoryBadge");
+  assert.ok(app.includes('var back=Number(d.refused||0)+Number(d.returned||0)+inStatus(["Return in transit"]);') && app.includes("if(back>0){"), "a returned parcel counts, not only one still marked Refused");
+  {
+    // Run the real function on each kind of history.
+    const src = /function nvConsigneeBadge\(\)\{[\s\S]*?\n    \}\n/.exec(app)[0];
+    const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
+    const run = async (data) => {
+      const host = { style: {}, innerHTML: "" }, input = { value: "0300 1234567" };
+      const window = { __nvSb: { rpc: () => Promise.resolve({ data, error: null }) }, nvCount: win.nvCount };
+      const document = { getElementById: (id) => (id === "bookingPhone" ? input : host) };
+      new Function("document", "window", "nvSetHtml", "nvCount", "var NV_CONSIGNEE_LAST='';" + src + "nvConsigneeBadge();")(document, window, (h, x) => { h.innerHTML = x; }, win.nvCount);
+      await new Promise((r) => setTimeout(r, 5));
+      return host.style.display === "none" ? "" : host.innerHTML.replace(/<[^>]+>/g, " ").replace(/&#\d+;/g, "").replace(/\s+/g, " ").trim();
+    };
+    assert.equal(await run({ total_parcels: 2, delivered: 1, refused: 0, returned: 1, recent: [] }), "1 parcel to this customer came back, 1 delivered Refused or returned. Call to confirm the order before you book it.");
+    assert.equal(await run({ total_parcels: 1, delivered: 0, refused: 0, returned: 0, recent: [{ status: "Return in transit" }] }), "This customer's last parcel came back Refused or returned. Call to confirm the order before you book it.");
+    assert.equal(await run({ total_parcels: 3, delivered: 0, refused: 1, returned: 2, recent: [] }), "All 3 parcels to this customer came back Refused or returned. Call to confirm the order before you book it.");
+    assert.equal(await run({ total_parcels: 3, delivered: 3, refused: 0, returned: 0, recent: [] }), "3 parcels delivered to this customer before");
+    assert.equal(await run({ total_parcels: 1, delivered: 0, refused: 0, returned: 0, recent: [{ status: "Parcel now in transit" }] }), "1 parcel to this number on the way now Check this is not the same order twice.");
+    assert.equal(await run({ total_parcels: 1, delivered: 0, refused: 0, returned: 0, recent: [{ status: "Cancelled by client" }] }), "", "a cancelled booking is not a history");
+    assert.equal(await run({ total_parcels: 0, delivered: 0, refused: 0, returned: 0, recent: [] }), "", "a new customer shows nothing");
+    assert.equal(await run({ error: "no_client" }), "");
+  }
+  assert.ok(app.includes("Call to confirm the order before you book it."));
+  assert.ok(html.includes(".nv-chist.warn{background:var(--nvu-warn-bg)"));
+  ok("booking: the note warns when this customer's earlier parcels came back");
+}
+console.log("STORE CONNECTIONS, TEAM, MENU NAMES, SUPPORT TAB AND BOOKING NOTE CHECKS PASSED");

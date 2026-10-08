@@ -193,7 +193,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       stepsTitle: 'Three steps, start to finish',
       steps: [
         ['Book it.', "Enter your customer's name, phone, city, address and COD amount. Got the order on WhatsApp or Instagram? Tap Paste order and the form fills in for you."],
-        ['Print the label.', 'Print the AWB label from the AWB label tab and stick it on the parcel.'],
+        ['Print the label.', 'Print the AWB label from Labels and pickup, in the menu, and stick it on the parcel.'],
         ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
       ],
       note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,
@@ -276,7 +276,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       stepsTitle: 'Three steps, start to finish',
       steps: [
         ['Book it.', "Enter your customer's name, phone, city, address and COD amount. Got the order on WhatsApp or Instagram? Tap Paste order and the form fills in for you."],
-        ['Print the label.', 'Print the AWB label from the AWB label tab and stick it on the parcel.'],
+        ['Print the label.', 'Print the AWB label from Labels and pickup, in the menu, and stick it on the parcel.'],
         ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
       ],
       note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,

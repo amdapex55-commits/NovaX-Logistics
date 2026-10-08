@@ -455,7 +455,7 @@ window.nvCount=function(n,one,many){
              '<div class="nvob-arrow" aria-hidden="true">↓</div>' +
              m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
         { k:"Step 2 of 3", t:"Print the label", nav:"more",
-          b:"Open AWB label, print it and stick it on the parcel. It carries the tracking number, a barcode and a QR code.",
+          b:"Open Labels and pickup, print the label and stick it on the parcel. It carries the tracking number, a barcode and a QR code.",
           v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Hina Raza · Karachi · COD Rs 3,450</small></div>' +
              '<div class="nvob-btns">'+m.chip("Print","go")+m.chip("Download PDF")+'</div>' },
         { k:"Step 3 of 3", t:"Request pickup", nav:"more",
@@ -480,7 +480,7 @@ window.nvCount=function(n,one,many){
         { k:"When you need more", t:"It is all in the menu", nav:"fab",
           b:"Stuck on anything? Tap NovaX AI on any screen, or message a person on WhatsApp 0312 3922558.",
           v: m.list([["Bulk booking","Many orders in one upload"],["Your store","Shopify or WooCommerce"],
-                     ["Sub accounts","Logins for your team"],["Reports","Every parcel, CSV or PDF"],
+                     ["Team","Logins for your staff"],["Reports","Every parcel, CSV or PDF"],
                      ["Nova Swap","An exchange in one visit"],["API","For your own system"]]) }
       ];
     }
@@ -2041,15 +2041,32 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
           if(!d||d.error){ host.style.display="none"; host.innerHTML=""; return; }
           var total=Number(d.total_parcels||0);
           var del=Number(d.delivered||0);
-          var ref=Number(d.refused||0);
+          /* 8 Oct 2026: a parcel only sits in "Refused" for a day or two, then
+             it becomes a return. Counting refused alone meant this warning
+             showed on none of the 1,102 parcels booked in 60 days. Refused and
+             returned are both "came back", which is what the merchant needs to
+             know before booking this number again. */
+          var recent=Array.isArray(d.recent)?d.recent:[];
+          var inStatus=function(list){ return recent.filter(function(x){ return list.indexOf(String(x&&x.status||""))>-1; }).length; };
+          /* The server's two counts miss a return that is still on its way
+             back, so that one is read from the recent rows. */
+          var back=Number(d.refused||0)+Number(d.returned||0)+inStatus(["Return in transit"]);
+          var moving=inStatus(["New booked","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Reattempt"]);
           if(total<=0){ host.style.display="none"; host.innerHTML=""; return; }
           var html;
-          if(ref>0){
-            html='<span class="chip warn" style="font-size:11.5px">&#9888; '+ref+' refusal'+(ref===1?"":"s")+
-                 ' before &middot; '+del+'/'+total+' delivered &mdash; consider confirming by call</span>';
+          if(back>0){
+            html='<div class="nv-chist warn" role="status"><b>&#9888; '+
+                 (del>0 ? nvCount(back,"parcel","parcels")+" to this customer came back, "+del+" delivered"
+                        : (back===1?"This customer's last parcel came back":"All "+back+" parcels to this customer came back"))+
+                 '</b><span>Refused or returned. Call to confirm the order before you book it.</span></div>';
+          }else if(del>0){
+            html='<div class="nv-chist good" role="status"><b>&#10003; '+nvCount(del,"parcel","parcels")+' delivered to this customer before</b></div>';
+          }else if(moving>0){
+            html='<div class="nv-chist" role="status"><b>'+nvCount(moving,"parcel","parcels")+
+                 ' to this number on the way now</b><span>Check this is not the same order twice.</span></div>';
           }else{
-            html='<span class="chip good" style="font-size:11.5px">&#10003; '+del+'/'+total+
-                 ' delivered to this customer</span>';
+            /* Only cancelled bookings: nothing worth saying. */
+            host.style.display="none"; host.innerHTML=""; return;
           }
           nvSetHtml(host, html);
           host.style.display="block";
@@ -5975,7 +5992,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ window.print(); }
         catch(printErr){
           stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
-          try{ nvConfirmPrinted(valid.map(p=>p.awb), null, true); }catch(e){ toast("This browser could not open a print window. Use Download PDF on the AWB tab.","error"); }
+          try{ nvConfirmPrinted(valid.map(p=>p.awb), null, true); }catch(e){ toast("This browser could not open a print window. Use Download PDF in Labels and pickup.","error"); }
           return;
         }
         // NovaX fix (Autopilot AWB printing v1): the old fixed 500ms
@@ -6067,7 +6084,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         : ("No print window was detected for "+what+". If it did not open, download the PDF instead. Did it print?");
       var yesB=document.getElementById("nvPrintConfirmYes"); if(yesB) yesB.style.display=failed?"none":"";
       var pdfB=document.getElementById("nvPrintConfirmPdf");
-      if(pdfB) pdfB.onclick=function(){ host.style.display="none"; try{ nvDownloadLabelsPdf(awbs, null); }catch(e){ toast("Could not build the PDF. Open the AWB tab and try Download PDF.","error"); } };
+      if(pdfB) pdfB.onclick=function(){ host.style.display="none"; try{ nvDownloadLabelsPdf(awbs, null); }catch(e){ toast("Could not build the PDF. Open Labels and pickup and try Download PDF.","error"); } };
       host.style.display="flex";
       if(nvConfirmPrinted._t) clearTimeout(nvConfirmPrinted._t);
       nvConfirmPrinted._t=setTimeout(function(){ host.style.display="none"; },20000);
@@ -10618,7 +10635,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const dupeWindowMs=15000;
       const now=Date.now();
       const possibleDupe=(state.parcels||[]).find(p=>p.clientId===clientId && p.consignee===consignee && Number(p.cod)===cod && p.address===address && p.phone===phone && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
-      if(possibleDupe){ toast(`Looks like a duplicate \u2014 ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
+      if(possibleDupe){ toast(`Looks like a duplicate \u2014 ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check Labels and pickup before booking again.`,"error"); return; }
 
       const riskWarnEl=document.getElementById("nvRiskWarning");
       const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), consignee:consignee, recentDuplicate:false };
@@ -10772,7 +10789,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(confirmLine){ confirmLine.textContent=`Still syncing ${awb} with the server. I\u2019ll keep watching in the background.`; }
         setTimeout(()=>{ pollBookingConfirmation(awb, isFirstParcel, tries+1); },5000);
       }
-      else if(confirmLine){ confirmLine.textContent=`Still syncing ${awb} with the server. Check the AWB tab shortly.`; }
+      else if(confirmLine){ confirmLine.textContent=`Still syncing ${awb} with the server. Check Labels and pickup shortly.`; }
     }
 
     function resetBookingForm(){
@@ -13639,15 +13656,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       Promise.resolve(client.rpc("nvsh_my_stores")).then(function(r){
         if(r && r.error) return;
         var rows=(r&&r.data)||[];
-        nvShopifyConnectUi(rows.some(function(x){ return x.status==="active"; }));
+        var liveN=rows.filter(function(x){ return x.status==="active"; }).length;
+        nvShopifyConnectUi(liveN>0);
+        /* The card's badge said "Live" whether or not any store was
+           connected. It now says what the server just answered, and stays
+           hidden until it has. */
+        var badge=document.getElementById("nvShopifyChip");
+        if(badge){
+          badge.hidden=false;
+          badge.className="chip "+(liveN?"good":"");
+          badge.textContent=liveN?(liveN===1?"Connected":liveN+" stores connected"):"Not connected";
+        }
         if(!rows.length){ box.innerHTML=""; return; }
-        box.innerHTML='<div class="ops-card"><strong>Connected stores</strong>'+rows.map(function(x){
+        box.innerHTML='<div class="ops-card"><strong>Your stores</strong>'+rows.map(function(x){
           var name=String(x.shop_domain||"").replace(/[&<>"]/g,"");
           var when=x.linked_at?new Date(x.linked_at).toLocaleDateString():"";
           var live=x.status==="active";
+          var st=live?"Connected":(x.status==="uninstalled"?"App removed":String(x.status||"").replace(/[&<>"]/g,""));
           return '<p class="footer-note mt-8">'+
-            '<span class="chip '+(live?"good":"")+'">'+(live?"Connected":String(x.status||"").replace(/[&<>"]/g,""))+'</span> '+
-            name+' &middot; '+(x.orders_booked||0)+' order'+((x.orders_booked||0)===1?"":"s")+' booked'+
+            '<span class="chip '+(live?"good":"")+'">'+st+'</span> '+
+            name+' &middot; '+nvCount(x.orders_booked||0,"order","orders")+' booked'+
             (when?' &middot; since '+when:'')+'</p>';
         }).join("")+'</div>';
       }).catch(function(){});
@@ -14259,10 +14287,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // it has its own backend-verified status via client_shopify_status(),
       // so it must never be overwritten to "Not connected" by this generic
       // loop. Only WooCommerce and Custom Web/API still use the chip() path.
-      const chip=(p,id)=>{ const c=storeConn(p); const el=document.getElementById(id); if(!el) return; const on=c&&c.connected; el.textContent=on?("Connected"+(c.importedCount?(" &middot; "+c.importedCount+" imported"):"")):"Not connected"; el.className="chip "+(on?"good":""); };
+      const chip=(p,id)=>{ const c=storeConn(p); const el=document.getElementById(id); if(!el) return; const on=c&&c.connected; el.textContent=on?("Connected"+(c.importedCount?(" \u00b7 "+c.importedCount+" imported"):"")):"Not connected"; el.className="chip "+(on?"good":""); };
       chip("woocommerce","wooStatusChip"); chip("web","webStatusChip");
       const prefill={woocommerce:"wooStoreUrl",web:"webEndpoint"};
       Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
+      /* 8 Oct 2026: the WooCommerce and own-website cards are folded until
+         they are used. A connected one opens itself once; after that it is
+         the merchant's to open and close. */
+      [["woocommerce","nvWooPanel"],["web","nvWebPanel"]].forEach(function(x){
+        const c=storeConn(x[0]), d=document.getElementById(x[1]);
+        if(d && c && c.connected && d.dataset.nvAuto!=="1"){ d.dataset.nvAuto="1"; d.open=true; }
+      });
       /* The legacy Shopify link/secret/token panel is gone: merchants install
          the NovaX app and paste a connect code instead. shopifyCheckStatus()
          drove that panel's four step chips and has nothing left to update. */
@@ -15403,11 +15438,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvRoleTabs(){ return NOVAX_ROLE_TABS[nvClientRole()]; }
     function nvCanUseTab(id){ return nvRoleTabs().indexOf(id)>-1; }
     function nvIsOwnerSeat(){ return nvClientRole()==="Owner"; }
+    /* 8 Oct 2026: reworded to what each seat can actually open today
+       (NOVAX_ROLE_TABS above, and nv_client_money_allowed() on the server).
+       The old lines named "order logs" and "WhatsApp replies", which no
+       longer exist. client.html prints the same four sentences. */
     function nvRolePermissionSummary(role){
-      if(role==="Finance") return "Invoices, payments and reports. No booking, no withdrawals.";
-      if(role==="Warehouse") return "New booking, bulk booking, AWB labels and pickups only.";
-      if(role==="Support") return "Tracking, order logs and WhatsApp replies only.";
-      return "Full access, including the Wallet and withdrawals.";
+      if(role==="Finance") return "Wallet, invoices and reports. Cannot book parcels or withdraw.";
+      if(role==="Warehouse") return "Booking, labels, pickups and load sheets. No Wallet or reports.";
+      if(role==="Support") return "Follows parcels and answers support tickets. No booking, no Wallet.";
+      return "Everything, including the Wallet, withdrawals and the team.";
     }
     var __nvRoleApplying=false;
     function nvApplyRolePermissions(){
@@ -15469,21 +15508,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       var rows=__nvStaffRows||[];
       if(!rows.length){
-        host.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>No sub accounts yet</strong><span class="chip">empty</span></div><p>Invite your finance, warehouse or support staff so each person logs in with their own limited permissions instead of sharing your password.</p><div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="subAccountEmptyInvite">Invite user</button></div></div>';
-        var b0=document.getElementById("subAccountEmptyInvite");
-        if(b0) b0.addEventListener("click",openInviteUserModal);
+        /* One way in: the "Add a team member" button in the heading just
+           above. This box used to repeat it, under a chip that said "empty". */
+        host.innerHTML='<div class="nvtm-empty"><strong>It is just you so far</strong><p>Add your finance, warehouse or support staff. Each person signs in with their own login and sees only what their role allows.</p></div>';
         return;
       }
+      var STATUS={ active:["good","Active"], revoked:["bad","Access removed"], pending:["warn","Pending"], invited:["warn","Invited"] };
       host.innerHTML=rows.map(function(r){
         var role=NOVAX_ROLE_TABS[r.role]?r.role:"Support";
         var st=String(r.status||"active").toLowerCase();
-        var chip=(st==="active")?"good":((st==="revoked")?"bad":"warn");
-        var last=r.last_active_at?nvDateTime(r.last_active_at):"never";
-        return '<div class="ops-card"><div class="ops-card-head"><strong>'+escLabelText(r.name||r.email||"Team member")+'</strong><span class="chip '+chip+'">'+escLabelText(st)+'</span></div>'
+        var known=STATUS[st]||["warn",st.charAt(0).toUpperCase()+st.slice(1)];
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+escLabelText(r.name||r.email||"Team member")+'</strong><span class="chip '+known[0]+'">'+escLabelText(known[1])+'</span></div>'
           +'<p class="footer-note">'+escLabelText(r.email||"-")+'</p>'
           +'<p><strong>'+escLabelText(role)+'</strong> — '+escLabelText(nvRolePermissionSummary(role))+'</p>'
-          +'<p class="footer-note">Last active '+escLabelText(last)+'</p>'
-          +((st==="revoked")?"":'<div class="inline-actions" style="margin-top:6px"><button class="ghost-btn" data-nv-revoke="'+escLabelText(r.id)+'">Revoke</button></div>')
+          +'<p class="footer-note">'+(r.last_active_at?'Last active '+escLabelText(nvDateTime(r.last_active_at)):'Has not signed in yet')+'</p>'
+          +((st==="revoked")?"":'<div class="inline-actions" style="margin-top:6px"><button class="ghost-btn" data-nv-revoke="'+escLabelText(r.id)+'">Remove access</button></div>')
           +'</div>';
       }).join("");
       host.querySelectorAll("[data-nv-revoke]").forEach(function(b){
@@ -15520,7 +15559,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).catch(function(e){ __nvStaffLoading=false; __nvStaffError=String((e&&e.message)||e); renderSubAccounts(); nvRoleRetry(); });
     }
     function openInviteUserModal(){
-      if(!nvIsOwnerSeat()){ toast("Only the account Owner can invite users."); return; }
+      if(!nvIsOwnerSeat()){ toast("Only the account Owner can add team members."); return; }
       var wrap=document.getElementById("nvInviteModal");
       if(!wrap){
         wrap=document.createElement("div");
@@ -15651,15 +15690,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     async function revokeSubAccountUser(id){
       if(!id) return;
-      if(!nvIsOwnerSeat()){ toast("Only the account Owner can revoke access."); return; }
-      if(!(await window.nvAsk({ title:"Revoke access?", body:"This user will no longer be able to sign in to your portal.", ok:"Revoke access", danger:true }))) return;
+      if(!nvIsOwnerSeat()){ toast("Only the account Owner can remove access."); return; }
+      if(!(await window.nvAsk({ title:"Remove this person\u2019s access?", body:"They will no longer be able to sign in to your portal.", ok:"Remove access", danger:true }))) return;
       var sb=window.__nvSb;
-      if(!sb||!sb.rpc){ toast("Not revoked: no server connection right now."); return; }
+      if(!sb||!sb.rpc){ toast("Access not removed: no server connection right now."); return; }
       sb.rpc("revoke_staff_user",{ p_staff_id:id }).then(function(res){
-        if(res&&res.error){ toast("Not revoked: "+(res.error.message||"revoke_staff_user(p_staff_id uuid) is not deployed yet.")); return; }
-        toast("Access revoked.");
+        if(res&&res.error){ toast("Access not removed: "+(res.error.message||"please try again.")); return; }
+        toast("Access removed.");
         loadSubAccounts();
-      }).catch(function(e){ toast("Not revoked: "+String((e&&e.message)||e)); });
+      }).catch(function(e){ toast("Access not removed: "+String((e&&e.message)||e)); });
     }
     var __nvInviteBtn=document.getElementById("inviteUserBtn");
     if(__nvInviteBtn) __nvInviteBtn.addEventListener("click",openInviteUserModal);
@@ -17965,7 +18004,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           var recentNew=freshNew.length-staleNew.length;
           if(recentNew>0){
-            nextHtml+='<div class="nv-c-item"><strong>'+recentNew+' of '+b.next.length+' new booking'+(b.next.length===1?"":"s")+' ready to hand over</strong><span>'+(b.next.length>freshNew.length?'The other '+(b.next.length-freshNew.length)+' need you first \u2014 see Needs you now':'Print the labels, then a rider collects them')+'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
+            nextHtml+='<div class="nv-c-item"><strong>'+recentNew+' of '+b.next.length+' new booking'+(b.next.length===1?"":"s")+' ready to hand over</strong><span>'+(b.next.length>freshNew.length?'The other '+(b.next.length-freshNew.length)+' need you first \u2014 see Needs you now':'Print the labels, then a rider collects them')+'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">Labels and pickup</button></div></div>';
           }
         }
         if(b.missing.length){
@@ -19284,7 +19323,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(a.type==="attach_proof"){ addMsg("Please reply here with your proof (photo, screenshot, or details) and our team will review it.","b"); return; }
       if(a.type==="show_journey"){
         var awb=a.awb; var p=(typeof state!=="undefined"&&state.parcels||[]).find(function(x){ return String(x.awb||"").toUpperCase()===String(awb||"").toUpperCase(); });
-        if(!p){ addMsg("I don't have the journey steps for "+(awb||"that AWB")+" locally yet \u2014 open the AWB tab to see full details.","b"); return; }
+        if(!p){ addMsg("I don't have the journey steps for "+(awb||"that AWB")+" locally yet \u2014 open Labels and pickup to see full details.","b"); return; }
         var steps=(p.steps&&p.steps.length)?p.steps.join(" \u2192 "):(p.status||"No steps recorded yet");
         addMsg("Journey for "+p.awb+": "+steps,"b");
         return;
@@ -19342,7 +19381,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       if(a.type==="copy_customer_message"){
-        if(!a.awb){ addMsg("I don't have an AWB to copy a message for yet \u2014 open a parcel first.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); return; }
+        if(!a.awb){ addMsg("I don't have an AWB to copy a message for yet \u2014 open a parcel first.","b",[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }]); return; }
         if(typeof copyExceptionMessage==="function") copyExceptionMessage(a.awb);
         return;
       }
@@ -19396,32 +19435,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(a.type==="preview_awb_label"){
         var pvRes=resolveOwnAwbs(a.awb?[a.awb]:[]);
-        if(!pvRes.valid.length){ addMsg("I could not find "+(a.awb||"that AWB")+" in your account. Please check the tracking number.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); return; }
+        if(!pvRes.valid.length){ addMsg("I could not find "+(a.awb||"that AWB")+" in your account. Please check the tracking number.","b",[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }]); return; }
         var pvP=pvRes.valid[0];
         try{ state.lastGeneratedAwb=pvP.awb; saveState(); }catch(e){}
         if(typeof openAwbModal==="function") openAwbModal(pvP.awb);
         else if(typeof showClientTab==="function") showClientTab("awbLabel");
         addMsg("Here's the label preview for "+pvP.awb+" \u2014 confirm it's the right parcel before printing.","b",[
           { label:"Print This AWB", kind:"local", type:"print_awb", awb:pvP.awb },
-          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+          { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }
         ]);
         return;
       }
       if(a.type==="print_awb"){
         var prA=safePrintAwbs(a.awb?[a.awb]:[]);
-        if(prA.ok) addMsg("Opening the print dialog for "+prA.awbs.join(", ")+" now.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]);
+        if(prA.ok) addMsg("Opening the print dialog for "+prA.awbs.join(", ")+" now.","b",[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }]);
         return;
       }
       if(a.type==="preview_pending_awbs" || a.type==="print_pending_awbs"){
         try{
           var plr=buildPendingLabelsReply();
           addMsg(plr.reply,"b",plr.actions);
-        }catch(e){ console.warn(e); addMsg("Couldn't check pending labels \u2014 try the AWB Label tab directly.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); }
+        }catch(e){ console.warn(e); addMsg("Couldn't check pending labels \u2014 try Labels and pickup directly.","b",[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }]); }
         return;
       }
       if(a.type==="print_pending_awbs_confirmed"){
         var prB=safePrintAwbs(a.awbs||[]);
-        if(prB.ok) addMsg("Printing "+prB.count+" pending label"+(prB.count===1?"":"s")+" now.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]);
+        if(prB.ok) addMsg("Printing "+prB.count+" pending label"+(prB.count===1?"":"s")+" now.","b",[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }]);
         return;
       }
       if(a.type==="open_wallet_withdraw"){
@@ -19965,7 +20004,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"Sorry about that. Share the AWB and I'll check its exact status." };
     }
     if(has(NV_KW.integrations)){
-      return { reply:"Shopify, WooCommerce and custom API orders can sync into NovaX automatically \u2014 set this up from the API tab.", actions:[{ label:"Open Integrations", kind:"local", type:"go_integrations" }] };
+      return { reply:"Shopify, WooCommerce and custom API orders can sync into NovaX automatically \u2014 set this up in Store connections.", actions:[{ label:"Open Store connections", kind:"local", type:"go_integrations" }] };
     }
     if(has(NV_KW.reports)){
       return { reply:"Full reports with CSV export are under Full Report \u2014 filter by date range or status there.", actions:[{ label:"Open Reports", kind:"local", type:"go_reports" }] };
@@ -19988,7 +20027,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(has(NV_KW.tracking)){
       return { reply:"Share the AWB / tracking ID and I'll pull its exact status, city and next step.", actions:[
         { label:"Paste Order", kind:"local", type:"paste_whatsapp_order" },
-        { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+        { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }
       ] };
     }
 
@@ -20043,7 +20082,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var missingLabel=resolved.invalid.join(", ")||"that AWB";
       if(!opts.silent){
         addMsg(opts.notFoundMessage||("I could not find "+missingLabel+" in your account. Please check the tracking number."),"b",[
-          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+          { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }
         ]);
       }
       return { ok:false, count:0, awbs:[], error:"No matching AWB found for this client." };
@@ -20057,8 +20096,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var run=function(){
       var result=(typeof printLabels==="function")?printLabels(validAwbs):{ ok:false, count:0, awbs:[], error:"Print function unavailable." };
       if(!result||!result.ok){
-        addMsg("I couldn't open the print preview for "+(validAwbs.length>1?"those labels":validAwbs[0])+" \u2014 try the AWB Label tab directly.","b",[
-          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+        addMsg("I couldn't open the print preview for "+(validAwbs.length>1?"those labels":validAwbs[0])+" \u2014 try Labels and pickup directly.","b",[
+          { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }
         ]);
       }
       if(typeof opts.onDone==="function"){ try{ opts.onDone(result); }catch(e){} }
@@ -20075,20 +20114,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   function buildAwbPrintReply(awb){
     var pool=(typeof myParcels==="function")?myParcels():[];
     var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb||"").toUpperCase(); });
-    if(!p) return { reply:"I could not find "+awb+" in your account. Please check the tracking number.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+    if(!p) return { reply:"I could not find "+awb+" in your account. Please check the tracking number.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
     var already=p.awbPrinted||p.labelPrinted;
     var reply=already?("This label was already printed, but you can reprint "+p.awb+" if needed."):("I found "+p.awb+". I'll open the label preview first so you don't print the wrong parcel.");
     return { reply:reply, actions:[
       { label:"Preview Label", kind:"local", type:"preview_awb_label", awb:p.awb },
       { label:"Print This AWB", kind:"local", type:"print_awb", awb:p.awb },
-      { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+      { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }
     ] };
   }
 
   function buildPendingLabelsReply(){
     var pool=(typeof myParcels==="function")?myParcels():[];
     var unprintedList=pool.filter(function(p){ return typeof isUnprintedLabel==="function"?isUnprintedLabel(p):false; }).map(function(p){ return p.awb; });
-    if(!unprintedList.length) return { reply:"All AWB labels are already printed.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+    if(!unprintedList.length) return { reply:"All AWB labels are already printed.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
     if(unprintedList.length===1) return { reply:"I found 1 pending label: "+unprintedList[0]+". I'll open the preview first so you can confirm before printing.", actions:[
       { label:"Preview Label", kind:"local", type:"preview_awb_label", awb:unprintedList[0] },
       { label:"Print This AWB", kind:"local", type:"print_awb", awb:unprintedList[0] }
@@ -20097,7 +20136,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var more=unprintedList.length-shown.length;
     return { reply:"I found "+unprintedList.length+" printable AWBs: "+shown.join(", ")+(more>0?" and "+more+" more":"")+". I'll print only after you confirm \u2014 do you want to print all?", actions:[
       { label:"Print All Pending", kind:"local", type:"print_pending_awbs_confirmed", awbs:unprintedList },
-      { label:"Open AWB Tab", kind:"local", type:"go_awb_label" },
+      { label:"Open Labels and pickup", kind:"local", type:"go_awb_label" },
       { label:"Cancel", kind:"local", type:"cancel_confirm" }
     ] };
   }
@@ -20182,12 +20221,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var isQuestion=/\?|kaise|kyun|why|\bhow\b/i.test(lower);
 
     if(!isQuestion && (has(["return karna","return karwa","return chahiye","return this","return parcel","request return"]) || (lower.indexOf("return")!==-1 && awb))){
-      if(!targetAwbRisky) return { reply:"Which AWB would you like to return? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      if(!targetAwbRisky) return { reply:"Which AWB would you like to return? Please share the tracking ID.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
       return buildReturnConfirm(targetAwbRisky);
     }
 
     if(!isQuestion && has(["reattempt","dobara deliver","dubara deliver","dobara bhejo","dubara bhejo"])){
-      if(!targetAwbRisky) return { reply:"Which AWB needs a reattempt? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      if(!targetAwbRisky) return { reply:"Which AWB needs a reattempt? Please share the tracking ID.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
       return buildReattemptConfirm(targetAwbRisky);
     }
 
@@ -20243,7 +20282,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["send customer update","message customer","update the customer","customer ko batao","customer ko message"])){
-      if(!targetAwbRisky) return { reply:"Which AWB's customer should I message? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      if(!targetAwbRisky) return { reply:"Which AWB's customer should I message? Please share the tracking ID.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
       return { reply:"I can open a WhatsApp draft to update the customer for "+targetAwbRisky+". Confirm?", actions:[
         { label:"Confirm Send", kind:"local", type:"confirm_action" },
         { label:"Cancel", kind:"local", type:"cancel_confirm" }
@@ -20298,7 +20337,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["copy customer message","copy message"])){
-      if(!targetAwb) return { reply:"Which AWB's customer message should I copy? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      if(!targetAwb) return { reply:"Which AWB's customer message should I copy? Please share the tracking ID.", actions:[{ label:"Open Labels and pickup", kind:"local", type:"go_awb_label" }] };
       return { reply:"Copying the customer message for "+targetAwb+".", actions:[{ label:"Copy message", kind:"local", type:"copy_customer_message", awb:targetAwb }] };
     }
 
@@ -21673,16 +21712,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var TABS=[
       ["dashboard","Dashboard","Overview, alerts and today's cockpit"],
       ["newBooking","New booking","Book a single parcel"],
-      ["awbLabel","AWB label","Print labels, request a pickup"],
+      ["awbLabel","Labels and pickup","Print AWB labels, request a pickup"],
       ["bulkBooking","Bulk booking","Import a CSV of orders"],
       ["swap","Nova Swap","Exchange an item: new one out, old one back"],
       ["recover","Nova Recover","We call customers who refused and sell the order again"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
       ["money","NovaX Wallet","Balance, payments, invoices, withdrawals and ledger"],
-      ["integrations","Integrations","Shopify, WooCommerce, API"],
+      ["integrations","Store connections","Shopify, WooCommerce, API integrations"],
       ["tickets","Support tickets","Raise and track issues"],
-      ["subAccounts","Sub accounts","Team access"]
+      ["subAccounts","Team","Logins for your staff, sub accounts"]
     ];
     window.NovaXCmdK.init({
       accent:"var(--nvu-accent)",

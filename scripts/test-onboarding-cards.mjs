@@ -52,7 +52,7 @@ function page({ demo=false, reduce=true } = {}){
   ok("the three payout speeds come from the wallet's own names and fees");
   assert.ok(!/instant|2-3 hours|15 minutes|Create AWB/i.test(all), "no stale wording");
   assert.ok(!/[<]script|undefined|NaN/.test(cards.map(c => c.v).join("")));
-  for (const s of ["Paste order","AWB label","Request pickup","Bulk booking","Shopify","WooCommerce","Sub accounts","Reports","Nova Swap","API","NovaX AI","0312 3922558","tracking link"]) assert.ok(all.includes(s), "mentions " + s);
+  for (const s of ["Paste order","Labels and pickup","Request pickup","Bulk booking","Shopify","WooCommerce","Team","Reports","Nova Swap","API","NovaX AI","0312 3922558","tracking link"]) assert.ok(all.includes(s), "mentions " + s);
   ok("covers paste order, labels, pickup, tracking link, refusals, wallet, withdrawal, bulk, stores, team, reports, swap and help");
 }
 

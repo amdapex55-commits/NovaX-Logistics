@@ -707,7 +707,7 @@ Deno.serve(async (req: Request) => {
 
   if (intent === "print_awb") {
     return json(req, {
-      reply: "Opening your AWB Label tab — print any pending labels before pickup.",
+      reply: "Opening Labels and pickup — print any pending labels before pickup.",
       intent: "print_awb",
       actions: [{ label: "Print AWBs", kind: "local", type: "go_awb_label" } as Action],
     });
