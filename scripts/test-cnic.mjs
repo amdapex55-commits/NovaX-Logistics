@@ -186,7 +186,9 @@ async function signupPage(o={}){
   const w=dom.window,d=w.document,$=id=>d.getElementById(id);
   const fill=()=>{const v={merchantStoreName:'Test Store',merchantName:'Test Owner',merchantPhone:'03001234567',merchantAddress:'Shop 1, Tariq Road',
       merchantProduct:'Clothing',merchantEmail:'owner@test.invalid',merchantPassword:'Kx9!mudBrick42',merchantPasswordConfirm:'Kx9!mudBrick42'};
-    Object.entries(v).forEach(([k,x])=>{$(k).value=x;});$('merchantCity').value='Karachi';};
+    Object.entries(v).forEach(([k,x])=>{$(k).value=x;});$('merchantCity').value='Karachi';
+    /* The Merchant Agreement tick (added 4 Oct 2026) is required before an account is made. */
+    const acc=$('merchantAccept');if(acc)acc.checked=true;};
   const submit=async(ms=250)=>{$('fSignup').dispatchEvent(new w.Event('submit',{cancelable:true}));await wait(ms);};
   const tiles=()=>d.querySelectorAll('#merchantCnic input[type=file]');
   return{dom,w,d,$,sb,fill,submit,tiles,errors};
