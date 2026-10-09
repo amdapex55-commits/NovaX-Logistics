@@ -861,6 +861,19 @@
     '.nvr-ct:hover{background:var(--nvu-bg)}.nvr-ct.is-on{background:var(--nvu-bg);border-color:var(--nvu-accent)}',
     '.nvr-ct-n{display:flex;flex-direction:column;min-width:0}.nvr-ct-n b{font-size:14px}.nvr-ct-n em{font-style:normal;font-size:12px;color:var(--nvu-ink-3)}',
     '.nvr-ct-v{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}.nvr-ct-v em{display:none}',
+    /* The Cities card sits beside another card on a wide screen, so the room it
+       has is not the room the window has: at 1280 it is 413px wide and its
+       five-column table left 28px for the city's name. The card now measures
+       itself and stacks each city (name, then the bar, then the three figures)
+       whenever it is too narrow for the table. The phone rule below stays for
+       browsers that cannot measure a card. */
+    '.nvr-cities{container-type:inline-size;container-name:nvrct}',
+    '@container nvrct (max-width:560px){',
+      '.nvr-ct-head{display:none}',
+      '.nvr-ct{grid-template-columns:auto auto auto minmax(0,1fr);grid-template-areas:"n n n n" "bar bar bar bar";gap:8px 26px;padding:12px 8px}',
+      '.nvr-ct-n{grid-area:n;flex-direction:row;align-items:baseline;gap:8px}.nvr-ct .nvr-stack{grid-area:bar}',
+      '.nvr-ct-v{display:flex;flex-direction:column}.nvr-ct-v em{display:block;font-style:normal;font-size:11px;font-weight:650;color:var(--nvu-ink-3)}',
+    '}',
     '.nvr-reasons{display:grid;gap:10px;margin-top:8px}',
     '.nvr-rs{display:grid;grid-template-columns:150px 1fr 32px;align-items:center;gap:10px;font-size:13.5px}',
     '.nvr-rs-bar{height:8px;border-radius:999px;background:var(--nvu-track);overflow:hidden}.nvr-rs-bar i{display:block;height:100%;background:#e0604b;border-radius:999px}',
@@ -885,6 +898,7 @@
     '.nvr-search kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:600 11px/1 ui-monospace,monospace;color:var(--nvu-ink-3);border:1px solid var(--nvu-line-2);border-radius:6px;padding:3px 6px}',
     '.nvr-tools select{height:42px;border-radius:12px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg);color:var(--nvu-ink);padding:0 12px;font:inherit;font-size:16px;flex:0 1 auto}',
     '.nvr-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;margin-bottom:8px}.nvr-tabs::-webkit-scrollbar{display:none}',
+    '@media (min-width:641px){.nvr-tabs{flex-wrap:wrap;overflow-x:visible}}',
     '.nvr-tab{appearance:none;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--nvu-line);background:transparent;color:var(--nvu-ink-2);font:inherit;font-size:13px;font-weight:700;cursor:pointer}',
     '.nvr-tab span{font-size:11.5px;font-weight:750;min-width:20px;height:20px;padding:0 6px;border-radius:999px;display:inline-grid;place-items:center;background:var(--nvu-track);color:var(--nvu-ink-2);font-variant-numeric:tabular-nums}',
     '.nvr-tab.is-on{background:var(--nvu-ink);color:var(--nvu-bg);border-color:var(--nvu-ink)}.nvr-tab.is-on span{background:rgba(127,127,127,.28);color:inherit}',
@@ -914,7 +928,7 @@
       '.nvr-ct-n{grid-area:n;flex-direction:row;align-items:baseline;gap:8px}.nvr-ct .nvr-stack{grid-area:bar}',
       '.nvr-ct-v{display:flex;flex-direction:column}.nvr-ct-v em{display:block;font-style:normal;font-size:11px;font-weight:650;color:var(--nvu-ink-3)}',
     '}',
-    '@media (max-width:900px){.nvr-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);padding-right:24px}.nvr-chips::-webkit-scrollbar{display:none}.nvr-chip{flex:0 0 auto}}',
+    '@media (max-width:900px){.nvr-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;flex:1 1 100%;padding-right:2px}.nvr-chips::-webkit-scrollbar{display:none}.nvr-chip{flex:0 0 auto}}',
     '@media (max-width:640px){',
       '.nvr-bar-r{width:100%;justify-content:space-between;margin-left:0}',
       '.nvr-menu{right:0;left:auto;min-width:min(300px,calc(100vw - 32px))}',

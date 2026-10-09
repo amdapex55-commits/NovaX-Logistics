@@ -2235,6 +2235,16 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        alerts name the exact parcels that need looking at, so each one opens its
        journey. Escaped FIRST, then linked, so nothing from the server can
        inject markup. */
+    /* The server writes its counts with a bracketed s after the noun ("3
+       parcel" + "(s)" + " have not moved") so one sentence serves any number.
+       Say it the way a person would: "3 parcels have not moved", "1 parcel
+       has not moved". */
+    function nvPlainCount(text){
+      return String(text==null?"":text).replace(/\b(\d[\d,]*) ([A-Za-z]+)\(s\)( (have|are))?/g,function(m,n,word,rest,verb){
+        var one=Number(String(n).replace(/,/g,""))===1;
+        return n+" "+word+(one?"":"s")+(verb?" "+(one?(verb==="have"?"has":"is"):verb):"");
+      });
+    }
     function nvLinkAwbs(text){
       var safe=escLabelText(String(text||""));
       return safe.replace(/\b(N\d{6,10})\b/g, function(m){
@@ -2361,8 +2371,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
         if(!it||!it.title) return;
         var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
         html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
-          '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(it.title)+'</div></div>'+
-          (it.body?'<div class="nv-ins-body">'+nvLinkAwbs(it.body)+'</div>':"")+
+          '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(nvPlainCount(it.title))+'</div></div>'+
+          (it.body?'<div class="nv-ins-body">'+nvLinkAwbs(nvPlainCount(it.body))+'</div>':"")+
         '</div>';
       });
 
@@ -4356,7 +4366,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            changing the destination city changes the zone and therefore the
            price, so it goes to ops as a request rather than a direct edit. */
         btns+=`<button class="ghost-btn" type="button" onclick="requestAddressFix('${p.awb}')">Wrong address / city</button>`;
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>What to do next</h3><p>What went wrong with this parcel, the likely cause and the fastest fix.</p></div><span class="chip warn">Needs your decision</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
+        /* The three lines are sentences, so they go in boxes that wrap. They
+           used to be money boxes, whose text is a figure and may never wrap:
+           at drawer width the cause and the action ran out of their boxes.
+           The rider's own words can be the problem line, so each is escaped. */
+        var say=function(label,text){ return `<div class="nv-exc-item"><dt>${label}</dt><dd>${escLabelText(text)}</dd></div>`; };
+        /* Money held by a rider, a late parcel and a parcel on its way back
+           offer no Reattempt or Return, so the card must not ask for a decision. */
+        var chip=hideDeliveryActions?'<span class="chip">Nothing to decide yet</span>':'<span class="chip warn">Needs your decision</span>';
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>What to do next</h3><p>What went wrong with this parcel, the likely cause and the fastest fix.</p></div>${chip}</div><dl class="nv-exc-list">${say("Problem",cls.problem)}${say("Likely cause",cls.cause)}${say("Recommended action",cls.action)}</dl>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -4909,7 +4927,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        console (#nvAiShell) plus the Autopilot panel. */
 
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, wallet ===== */
-    function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ ${p.status&&p.status!=="New booked"?"AWB printed · now "+escLabelText(p.status):"AWB printed — ready for pickup"}${p.awbPrintedAt?" · printed "+escLabelText(nvNiceDate(p.awbPrintedAt)):""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
+    function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700;white-space:normal;max-width:100%;border-radius:12px;line-height:1.3">✅ ${p.status&&p.status!=="New booked"?"AWB printed · now "+escLabelText(p.status):"AWB printed — ready for pickup"}${p.awbPrintedAt?" · printed "+escLabelText(nvNiceDate(p.awbPrintedAt)):""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
     // NovaX fix (CSV injection + quote breaking): every exported CSV cell goes
     // through this helper. Embedded quotes are doubled, the value is always
     // wrapped in quotes so commas/newlines cannot break the column layout, and
@@ -7796,7 +7814,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    var NV_REPORTS_SRC="client-reports.js?v=dd7a7f3a";
+    var NV_REPORTS_SRC="client-reports.js?v=cffd9e43";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },
@@ -15268,6 +15286,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       window.addEventListener("resize",function(){ try{ window.nvSyncMenuScrim(); }catch(e){} });
     }catch(e){}
     document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); try{ window.nvSyncMenuScrim(); }catch(e){} });
+
+    /* Rows of chips that scroll sideways. A row that ran past the edge of a
+       phone looked exactly like one that ended there: the last chip was cut
+       and nothing said "swipe". Each such row now fades on whichever side
+       still has chips and stops fading at the end. This only reads sizes and
+       sets two classes (styled in client.html); it never moves or hides a
+       chip, and if it fails the rows are as they were. */
+    (function nvScrollHints(){
+      try{
+        if(window.__nvScrollHints) return; window.__nvScrollHints=true;
+        var SEL=".nvw-filters,.nvr-tabs,.nvr-chips,#nvAiChips,.nvauto-chips";
+        function paint(el){
+          var room=el.scrollWidth-el.clientWidth;
+          el.classList.toggle("nv-more-r",room-el.scrollLeft>6);
+          el.classList.toggle("nv-more-l",room>6 && el.scrollLeft>6);
+        }
+        function sweep(){
+          try{
+            document.querySelectorAll(SEL).forEach(function(el){
+              if(!el.__nvHint){ el.__nvHint=true; el.addEventListener("scroll",function(){ paint(el); },{ passive:true }); }
+              paint(el);
+            });
+          }catch(e){}
+        }
+        var t=null, later=function(){ if(t) return; t=setTimeout(function(){ t=null; sweep(); },140); };
+        /* A row appears when a screen is drawn, and gets its width when its tab
+           is shown; every tab change starts with a tap. */
+        if("MutationObserver" in window) new MutationObserver(later).observe(document.body,{ childList:true, subtree:true });
+        document.addEventListener("click",later,true);
+        window.addEventListener("resize",later,{ passive:true });
+        sweep();
+      }catch(e){}
+    })();
 
     /* ═══ Value-change motion ═══════════════════════════════════════════
        When a figure changes, pulse it and tint it green (up) or amber

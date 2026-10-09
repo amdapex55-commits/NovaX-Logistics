@@ -318,7 +318,7 @@
     .nv-flow-bars i.out{background:#c7d2fe;}
     .nv-flow-col span{display:block;font-size:10px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere;}
     .ops-card-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:9px;flex-wrap:wrap;}
-    .ops-card-head strong{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
+    .ops-card-head strong{min-width:0;overflow-wrap:break-word;word-break:normal;white-space:normal;}
     .ops-card p{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere;}
     .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
     .field{display:grid;gap:6px;}
@@ -607,6 +607,12 @@
     .parcel-card dd{margin:3px 0 0;font-weight:750;font-size:13px;overflow-wrap:anywhere;word-break:break-word;}
     .wide-scroll{overflow-x:auto;}
     .wide-scroll table{min-width:760px;}
+    /* The 760px above is for the wide parcel tables. The three-column table in
+       the "Collected, awaiting invoice" sheet inherited it inside a 646px
+       sheet, so on a desktop it always scrolled sideways and hid part of the
+       Charge column. It fits its sheet; a long name wraps under the number. */
+    .wide-scroll table.nv-sheet-tbl{min-width:0;}
+    .nv-sheet-tbl td:first-child{overflow-wrap:anywhere;}
     .required-star{color:var(--green-ink);font-weight:900;}
     /* ===== Added feature styling ===== */
     .status-board{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
@@ -2362,8 +2368,13 @@ try{
      Scoped to the date alone -- putting every .awb-field strong in this list
      is what once cut 487px off a Karachi address and 258px off a consignee
      name, per the note above. */
+  /* `.ops-card-head strong` came out of this list on 9 Oct 2026 for the same
+     reason again: it is a card's title, and titles are words. A support
+     ticket's subject ran 950px off a phone and a team member's name 300px.
+     `.money-box strong` stays, so nothing but a figure may be put in a money
+     box: the three sentences of "What to do next" were, and were cut off. */
   .money-box strong,.metric strong,.nv-ins-stat strong,.nv-inc-amt,
-  .nv-doc-box strong,.ops-card-head strong,.awb-field.awb-cod strong,
+  .nv-doc-box strong,.awb-field.awb-cod strong,
   .awb-field.awb-date strong,
   .nv-awb-compact-top strong,.nv-inc-chip{
     overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
@@ -2630,7 +2641,7 @@ try{
   .nv-tk-parcel b{color:var(--nvu-ink);font-weight:750;}
   /* ---- Support tickets v2 ---- */
   .nv-tk-card{margin-bottom:10px;}
-  .nv-tk-card .ops-card-head strong{overflow-wrap:anywhere;}
+  .nv-tk-card .ops-card-head strong{overflow-wrap:break-word;}
   .nv-tk-thread{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
   .nv-tk-msg{padding:8px 10px;border-radius:var(--r-lg);background:var(--panel-soft,var(--nvu-neutral-bg));margin-bottom:8px;font-size:13px;overflow-wrap:anywhere;}
   .nv-tk-msg.mine{background:#eafff5;}
@@ -2672,7 +2683,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=3f59bd03" defer></script>
+  <script src="client-app.min.js?v=032aba3e" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4409,6 +4420,15 @@ html[data-theme="dark"] .nv-ls td.idx{ color:#666 !important; }
 @media (max-width:420px){.nvw-acts.has-dues{gap:2px}.nvw-acts.has-dues .nvw-act{font-size:11px;letter-spacing:-.01em}.nvw-acts.has-dues .nvw-act i{width:46px;height:46px}}
 .nvw-filters{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:2px -2px 8px;padding:2px}
 .nvw-filters::-webkit-scrollbar{display:none}
+/* A row of chips that scrolls sideways fades on the side that still has
+   chips, so a row cut by the edge of the phone reads as "there is more"
+   and not as a broken layout. client-app.js (nvScrollHints) sets the two
+   classes from the row's real scroll position; without it no row fades.
+   Where there is room for a second line (tablet and up) the rows wrap. */
+.nv-more-r{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+.nv-more-l{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px);mask-image:linear-gradient(90deg,transparent,#000 36px)}
+.nv-more-l.nv-more-r{-webkit-mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+@media (min-width:641px){ .nvw-filters{flex-wrap:wrap;overflow-x:visible} }
 .nvw-chip{flex:none;appearance:none;border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink-2);font:inherit;font-size:12.5px;font-weight:700;min-height:36px;padding:0 14px;border-radius:999px;cursor:pointer}
 .nvw-chip.is-on{background:var(--nvu-ink);border-color:var(--nvu-ink);color:var(--nvu-bg)}
 .nvw-chip:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
@@ -6326,6 +6346,13 @@ body.nv-rc-new #clientMenu .client-tab[data-client-tab="recover"]::after{content
   .client-content select,.client-content .field select{min-height:44px}
 }
 /* The decision card inside the parcel drawer. */
+/* The three sentences in "What to do next". They are prose, so they wrap and
+   are sized to be read. They used to be .money-box, whose strong is a money
+   figure that may never wrap, so a sentence ran straight out of its box. */
+.nv-exc-list{display:grid;gap:8px;margin:0;padding:0}
+.nv-exc-item{min-width:0;padding:11px 12px;border:1px solid var(--nvu-line);border-radius:var(--radius);background:var(--nvu-bg)}
+.nv-exc-item dt{margin:0 0 4px;color:var(--nvu-ink-3);font-size:12px;font-weight:600}
+.nv-exc-item dd{margin:0;color:var(--nvu-ink);font-size:14.5px;font-weight:650;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
 .nvdr-decide .review-panel{margin-top:0}
 .nvdr-decide .money-grid{grid-template-columns:1fr}
 .nvdr-decide .section-head{display:block}
@@ -6368,8 +6395,12 @@ body.nv-has-book-bar #quickBookingBtn{display:none}
 .parcel-card.nv-pc{padding:10px 12px 12px 4px}
 .nv-pc-l1{display:flex;align-items:center;gap:6px;min-width:0}
 .nv-pc-sel{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-8px 0;flex:none}
-.nv-pc-awb{flex:1 1 auto;min-width:0;font-size:15px;font-weight:800;letter-spacing:.01em}
-.nv-pc .status{flex:none;white-space:nowrap}
+/* The tracking number keeps its full width; it is the status that gives way.
+   On a 360px phone "Return out for delivery" is 168px wide and left 68px for
+   an 81px number, which then ran into the status. A long status now takes a
+   second line inside its own pill instead. */
+.nv-pc-awb{flex:0 0 auto;font-size:15px;font-weight:800;letter-spacing:.01em}
+.nv-pc .status{flex:0 1 auto;min-width:0;margin-left:auto;white-space:normal;text-align:right;line-height:1.25;border-radius:12px}
 .nv-pc .nv-paid-tape{flex:none}
 .nv-pc-l2{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 0 50px;font-size:13px;color:var(--nvu-ink-2,var(--muted))}
 .nv-pc-who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
