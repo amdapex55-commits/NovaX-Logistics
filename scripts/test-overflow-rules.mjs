@@ -117,7 +117,7 @@ const ok = (m) => console.log("ok - " + m);
   assert.ok(!/[\s,]\.awb-field strong\s*[,{][^}]*white-space:\s*nowrap/.test(admin.replace(/\/\*[\s\S]*?\*\//g, "")), "no rule holds every label field to one line");
   assert.ok(admin.includes('<div class="awb-field awb-date"><span>Booking Date</span>') && admin.includes('<div class="awb-field awb-phone"><span>Phone</span>'), "the date and the phone are marked as the short tokens");
   assert.ok(admin.includes('<div class="awb-field awb-address"><span>Address</span>'), "the address is an ordinary, wrapping field");
-  assert.ok(admin.includes("#adminInvoiceList .log-item:not(details),#recentInvoiceList .log-item:not(details){display:flex;flex-wrap:wrap;"), "invoice rows wrap instead of using the 110px column");
+  assert.ok(admin.includes(":is(#adminInvoiceList,#recentInvoiceList,#clientSummaryList,#clientSignupAuditList) .log-item:not(details){display:flex;flex-wrap:wrap;"), "invoice and client-summary rows wrap instead of using the 110px column");
   assert.ok(admin.includes("@media (max-width:640px){#admin-payments .mini-form{grid-template-columns:1fr!important}}"));
   ok("admin: label fields wrap (only COD, date and phone stay on one line), invoice rows and the Add Invoice form fit");
 }
