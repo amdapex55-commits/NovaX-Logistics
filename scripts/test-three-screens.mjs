@@ -372,3 +372,37 @@ console.log("CUSTOMER ANSWER CHECKS PASSED");
   ok("home line: every parcel at its stop, amber from the one needs-you rule, lists that open and stay open, and no redraw without a change");
 }
 console.log("HOME LINE CHECKS PASSED");
+
+// Audit fixes, 10 Oct 2026.
+{
+  // A reattempt that is already requested shows a note, not a button that can only fail.
+  assert.ok(app.includes('var __ra=(typeof nvReattemptUsed==="function")?nvReattemptUsed(p):"";') && app.includes('? \'<span class="chip" title="\'+escLabelText(nvReattemptDoneMsg(p.awb,__ra))+\'">\'+(__ra==="requested"?"Reattempt requested":"Reattempted once")+\'</span>\''), "parcel row");
+  assert.ok(app.includes('${nvReattemptUsed(p)?`<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvReattemptUsed(p)))}">'), "Action needed card");
+  assert.equal((app.match(/requestRedelivery\(\\?['`]/g) || []).length >= 2, true);
+  ok("reattempt: the parcel row and the Action needed card show \"Reattempt requested\" once one is asked for");
+
+  // Customer answers load without a tab switch, and a lookup that was never sent does not start the two-minute clock.
+  assert.ok(/try\{ nvLineRender\(\); \}catch\(e\)\{\}\s*\/\*[\s\S]*?\*\/\s*try\{ nvCustCheck\(\); \}catch\(e\)\{\}/.test(app), "asked from Home's own render");
+  const chk = /    function nvCustCheck\(force\)\{[\s\S]*?\n    \}\n/.exec(app)[0];
+  assert.ok(chk.indexOf("if(!sb||!sb.rpc) return;") < chk.indexOf("NV_CS.asked=id; NV_CS.at=now;"), "the clock starts only after the connection check");
+  {
+    const pick = (name) => new RegExp("    function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n    \\}\\n").exec(app)[0];
+    const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
+    let writes = 0, html = "";
+    const host = { hidden: true, get innerHTML() { return html; }, set innerHTML(v) { html = v; writes++; } };
+    const api = new Function("document", "localStorage", "state", "activeClientId", "escLabelText", "nvCount",
+      /var NV_CS=\{[^;]*\};/.exec(app)[0] + /var NV_CS_SAY=\{[\s\S]*?\};/.exec(app)[0] + ["nvCustReply", "nvCustWhen", "nvCustPaint"].map(pick).join("") + "return { NV_CS, nvCustPaint };")(
+      { getElementById: () => host }, { getItem: () => null, setItem() {} }, { parcels: [{ awb: "N1", clientId: "c1", consignee: "Hina", status: "Parcel out for delivery" }] }, () => "c1", (x) => String(x), win.nvCount);
+    api.NV_CS.map = { N1: { awb: "N1", choice: "call_first", note: null, at: new Date(Date.now() - 60000).toISOString() } };
+    api.nvCustPaint(); api.nvCustPaint(); api.nvCustPaint();
+    assert.equal(writes, 1, "three renders with the same answers write the card once");
+    api.NV_CS.map.N1 = { awb: "N1", choice: "tomorrow", note: null, at: new Date().toISOString() };
+    api.nvCustPaint(); assert.equal(writes, 2, "a new answer redraws it");
+  }
+  ok("customer answers: loaded on Home's first render, retried until sent, redrawn only when they change");
+
+  assert.ok(app.includes("const net=Math.max(0,useAmt-fee);"), "the older withdraw form never shows a negative amount");
+  assert.ok(app.includes('delivered_at:o.status==="Delivered"?iso(now-o.upd):null,'), "a delivered sample parcel has a delivery time");
+  ok("small fixes: no negative \"You receive\", demo deliveries carry their time");
+}
+console.log("AUDIT FIX CHECKS PASSED");

@@ -239,6 +239,7 @@ window.nvCount=function(n,one,many){
           consignee:o.consignee, phone:o.phone, city:"Karachi", address:o.address,
           cod_amount:o.cod, fee:225, exception:o.exception||null,
           booked_at:iso(now-o.age), updated_at:iso(now-o.upd),
+          delivered_at:o.status==="Delivered"?iso(now-o.upd):null,
           invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-(o.invoicedAgo||6*H)):null,
           rider_id:o.rider||null, pricing_mode:null, distance_km:null,
           quoted_fee:null, rate_version:null,
@@ -3382,6 +3383,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ].join("");
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
       try{ nvLineRender(); }catch(e){}
+      /* Also here, not only on a tab switch: a merchant who signs in and
+         stays on Home must still see what their customers answered. */
+      try{ nvCustCheck(); }catch(e){}
     }
 
     /* ── Home: every parcel on one line (9 Oct 2026) ───────────────────────
@@ -4118,7 +4122,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          neither was reachable from the list they actually look at. */
       var __st=String((p&&p.status)||"");
       if(__st==="Reattempt" || __st==="Consignee not available"){
-        btns.push('<button class="action-btn" type="button" onclick="event.stopPropagation();requestRedelivery(\''+a+'\')">Confirm re-delivery</button>');
+        /* 10 Oct 2026: this button was offered even when a reattempt had
+           already been requested, where pressing it could only answer "a
+           reattempt is already requested". Seven of those were logged in a
+           day, from four parcels. The other screens already showed a note
+           instead of the button; this row and the Action needed card did not. */
+        var __ra=(typeof nvReattemptUsed==="function")?nvReattemptUsed(p):"";
+        btns.push(__ra
+          ? '<span class="chip" title="'+escLabelText(nvReattemptDoneMsg(p.awb,__ra))+'">'+(__ra==="requested"?"Reattempt requested":"Reattempted once")+'</span>'
+          : '<button class="action-btn" type="button" onclick="event.stopPropagation();requestRedelivery(\''+a+'\')">Confirm re-delivery</button>');
       }
       if(__st==="Out of service area" && typeof nvOpenEditParcel==="function"){
         btns.push('<button class="action-btn" type="button" onclick="nvOpenEditParcel(\''+a+'\',event)">Change address</button>');
@@ -7990,7 +8002,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var rows=mine.map(function(p){ var r=nvCustReply(p.awb); return (r&&NV_CS_SAY[r.choice]&&!done.test(String(p.status||""))&&new Date(r.at).getTime()>cut)?{ p:p, r:r }:null; })
                    .filter(Boolean).sort(function(a,b){ return String(b.r.at).localeCompare(String(a.r.at)); });
       var seen=""; try{ seen=localStorage.getItem("nvCustSeen:"+activeClientId())||""; }catch(e){}
-      if(!rows.length || String(rows[0].r.at)<=seen){ host.hidden=true; host.innerHTML=""; return; }
+      if(!rows.length || String(rows[0].r.at)<=seen){ if(!host.hidden||host.innerHTML){ host.hidden=true; host.innerHTML=""; } NV_CS.drawn=""; return; }
+      /* Drawn again only when the answers changed: this is called on every
+         render of Home, and rewriting the card each time would drop the
+         merchant's tap or keyboard focus on it. */
+      var sig=rows.map(function(x){ return x.p.awb+"|"+x.r.choice+"|"+x.r.at+"|"+(x.r.note||""); }).join(";");
+      if(sig===NV_CS.drawn && !host.hidden) return;
+      NV_CS.drawn=sig;
       host.hidden=false;
       host.innerHTML='<div class="section-head"><div><h3>'+nvCount(rows.length,"customer","customers")+' answered on the tracking page</h3>'+
         '<p>What they tapped on their tracking link. The rider sees it too.</p></div>'+
@@ -8017,8 +8035,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var id=state.client&&state.client.id; if(!id) return;
       var now=Date.now();
       if(!force && NV_CS.asked===id && now-NV_CS.at<120000){ nvCustPaint(); return; }
-      NV_CS.asked=id; NV_CS.at=now;
+      /* The two-minute clock starts only once a request has really gone: if
+         the connection was not ready yet, the next render asks again. */
       var sb=window.__nvSb; if(!sb||!sb.rpc) return;
+      NV_CS.asked=id; NV_CS.at=now;
       Promise.resolve(sb.rpc("client_customer_replies",{})).then(function(r){
         if(!r||r.error||!Array.isArray(r.data)) return;
         var m={}; r.data.forEach(function(x){ if(x&&x.awb) m[String(x.awb)]=x; });
@@ -9664,7 +9684,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(ibanInput && !ibanInput.dataset.touched && !ibanInput.value && bd && bd.iban) ibanInput.value=bd.iban;
       const typedIban=(ibanInput&&ibanInput.value||"").trim().toUpperCase();
       const typedIbanErr=validateIbanValue(typedIban);
-      const fee=nvPayoutFee(useAmt,speed); const net=useAmt-fee;
+      const fee=nvPayoutFee(useAmt,speed); const net=Math.max(0,useAmt-fee);
       let blockReason="";
       if(state.__withdrawInFlight) blockReason="Submitting your withdrawal request...";
       else if(typedIbanErr) blockReason=typedIban?typedIbanErr:"Enter the IBAN this payout should go to.";
@@ -17686,7 +17706,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":nvMissingDeliveryInfo(p)?"Missing address or phone":/return/i.test(p.status||"")?"Return journey — review":(typeof isRiderCashHolding==="function"&&isRiderCashHolding(p))?"Rider cash — review":p.exception?"Exception — review":p.status==="Out of service area"?"Service area — review":"Delayed — update available";
         const eAwb=escLabelText(p.awb);
         const canDecide=["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1;
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">${canDecide?`<button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button>`:""}<button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">${canDecide?`${nvReattemptUsed(p)?`<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvReattemptUsed(p)))}">${nvReattemptUsed(p)==="requested"?"Reattempt requested":"Reattempted once"}</span>`:`<button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button>`}<button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button>`:""}<button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
       });
       const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
       /* The landing panel caps the visible rows, and says how many remain.
