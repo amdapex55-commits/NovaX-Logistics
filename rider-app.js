@@ -141,6 +141,15 @@
               /* Nova Recover: a support agent phoned the customer after a refusal and they agreed to take it. */
               (p.meta.recover && p.meta.recover.by && !p.meta.recover.rebookedAs) ? '<p class="swaptag">NOVA RECOVER · customer agreed on the phone' +
                 (p.meta.recover.date ? ' · deliver ' + esc(p.meta.recover.date) : '') + (p.meta.recover.note ? ' · ' + esc(p.meta.recover.note) : '') + '</p>' : "";
+    /* What the customer tapped on their tracking page (9 Oct 2026). Shown as
+       they said it, with the time; the office has not changed the parcel. */
+    var cr = p.customerReply, crSay = cr ? ({
+      home_today:    ["Customer says: home today", "Customer ne kaha: aaj ghar par hoon"],
+      tomorrow:      ["Customer asked: deliver tomorrow", "Customer ne kaha: kal deliver karein"],
+      call_first:    ["Customer asked: call first", "Customer ne kaha: pehle call karein"],
+      wrong_address: ["Customer says the address is wrong", "Customer ne kaha: address ghalat hai"] })[cr.choice] : null;
+    var crWhen = ""; try { if (cr && cr.at) crWhen = new Date(cr.at).toLocaleString("en-GB", { timeZone: "Asia/Karachi", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }); } catch (e) {}
+    if (crSay) tag += '<p class="swaptag custsay">' + esc(LANG === "ur" ? crSay[1] : crSay[0]) + (cr.note ? ' · ' + esc(cr.note) : '') + (crWhen ? ' · ' + esc(crWhen) : '') + '</p>';
     var money2 = (isReturn(p) || p.meta.swapLeg === "back") ? (LANG === "ur" ? "Shipper ko wapsi · kuch collect nahi karna" : "Return to shipper · collect nothing") : p.cod > 0 ? (pay.conflict ? '<span class="error-text">COD/prepaid conflict — marked Prepaid. Call the office.</span>' : "COD " + money(p.cod)) : "Prepaid · collect nothing";
     var att = Number(p.attempts || 0), attTxt = att ? (att + " " + t("attempts") + (att > 1 ? (LANG === "ur" ? "" : "s") : "")) : "";
     var route = (p.origin || "") + " → " + (p.city || "");
@@ -361,7 +370,7 @@
       var view = v.data || {};
       data = { rider: view.rider || { name: "Rider", cities: [] }, parcels: (view.parcels || []).map(function (p) {
           var m = R.mapParcel(p); m.bucket = p.bucket; m.origin = p.origin || "Karachi"; m.attempts = Number(p.attempts || 0);
-          m.shipper = p.shipper || null; m.exception = p.exception || ""; m.rider_id = p.rider_id; m.client_id = p.client_id; m.heldBy = p.held_by || ""; return m;
+          m.shipper = p.shipper || null; m.exception = p.exception || ""; m.customerReply = p.customer_reply || null; m.rider_id = p.rider_id; m.client_id = p.client_id; m.heldBy = p.held_by || ""; return m;
         }), batches: view.batches || [], cash: cash.error ? null : cash.data };
       connected = true; lastSync = Date.now();
       try { localStorage.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }

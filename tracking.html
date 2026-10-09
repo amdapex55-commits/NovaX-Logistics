@@ -204,6 +204,32 @@
   .tl .d{font-size:12.5px;color:var(--ink-3);margin-top:2px;}
   .hist-note{margin:14px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.45;}
 
+  /* ── the customer answers ───────────────────────────────────────────
+     Four big answers on a tokenised link. Tapping one tells the rider and
+     the seller; it never changes the parcel by itself. */
+  .tk-reply-sub{margin:-8px 0 12px;font-size:13.5px;line-height:1.45;color:var(--ink-2);}
+  .tk-reply-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .tk-reply-grid .tk-ans:last-child:nth-child(odd){grid-column:1 / -1;}
+  .tk-ans{min-height:60px;padding:10px 12px;border-radius:14px;border:1px solid var(--line-2);background:var(--panel-2);
+    color:var(--ink);text-align:left;cursor:pointer;font-family:inherit;}
+  .tk-ans b{display:block;font-size:14px;font-weight:800;line-height:1.25;}
+  .tk-ans span{display:block;margin-top:2px;font-size:12.5px;color:var(--ink-2);}
+  .tk-ans.is-on{background:var(--good-bg);border-color:var(--good-fg);box-shadow:inset 0 0 0 1px var(--good-fg);}
+  .tk-ans.is-on b{color:var(--good-fg);}
+  .tk-ans:disabled{opacity:.6;cursor:default;}
+  .tk-ans:active{transform:scale(.985);}
+  .tk-ans:focus-visible,.tk-addr textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .tk-addr{margin-top:12px;}
+  .tk-addr label{display:block;margin-bottom:6px;font-size:13.5px;font-weight:750;color:var(--ink);}
+  .tk-addr textarea{display:block;width:100%;min-height:86px;padding:11px 12px;border-radius:13px;border:1px solid var(--line-2);
+    background:var(--panel-2);color:var(--ink);font-family:inherit;font-size:16px;line-height:1.4;resize:vertical;}
+  .tk-addr textarea::placeholder{color:var(--ink-3);}
+  .tk-addr .act{width:100%;margin-top:8px;}
+  .tk-reply-said{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--good-bg);border:1px solid var(--good-ln);
+    font-size:13.5px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere;}
+  .tk-reply-err{margin:10px 0 0;font-size:13.5px;font-weight:650;line-height:1.45;color:var(--bad-fg);}
+  .tk-reply-err:empty{display:none;}
+
   .acts{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
   .act{flex:1 1 46%;min-height:48px;padding:12px;border-radius:14px;cursor:pointer;
     font-family:inherit;font-size:14.5px;font-weight:750;line-height:1.2;color:var(--accent-ink);background:var(--accent);border:1px solid transparent;}
@@ -575,6 +601,115 @@
     copyLink();
   };
 
+  /* ── The customer answers (9 Oct 2026) ────────────────────────────────
+     On a tokenised link only: a tracking number alone can be guessed, and
+     must never be able to leave a message for a seller or a rider.
+     The server (public_track_reply) decides whether an answer is still
+     useful and keeps at most six a day for a parcel. Nothing about the
+     parcel changes: "wrong address" is a message, not an edit. */
+  var NV_SB=null, NV_TOKEN="", NV_ROW=null;
+  var NV_REPLY={ open:false, reply:null, busy:false, err:"", addr:false, draft:"" };
+  var REPLY_SAY={
+    home_today:    ["I\u2019ll be home today","Aaj ghar par hoon"],
+    tomorrow:      ["Deliver tomorrow","Kal deliver karein"],
+    call_first:    ["Call me first","Pehle call karein"],
+    wrong_address: ["Wrong address","Address ghalat hai"]
+  };
+  /* Which answers fit where the parcel is. "I'll be home today" means
+     nothing while it is still in another city. */
+  function replyChoices(st){
+    if(["Parcel out for delivery","Parcel received at destination","Reattempt","Reassigned"].indexOf(st)>-1)
+      return ["home_today","tomorrow","call_first","wrong_address"];
+    if(st==="Consignee not available"||st==="Refused") return ["tomorrow","call_first","wrong_address"];
+    return ["call_first","wrong_address"];
+  }
+  function replyHtml(row){
+    if(!NV_TOKEN||!NV_REPLY.open) return "";
+    var st=nvStatus(row.status)||"", list=replyChoices(st), cur=NV_REPLY.reply, i, out="";
+    for(i=0;i<list.length;i++){
+      var k=list[i], on=!!(cur&&cur.choice===k)||(k==="wrong_address"&&NV_REPLY.addr);
+      out+='<button type="button" class="tk-ans'+(on?" is-on":"")+'" data-reply="'+k+'" aria-pressed="'+(on?"true":"false")+'"'+(NV_REPLY.busy?" disabled":"")+'>'+
+             '<b>'+esc(REPLY_SAY[k][0])+'</b><span>'+esc(REPLY_SAY[k][1])+'</span></button>';
+    }
+    var said="";
+    if(cur&&REPLY_SAY[cur.choice]){
+      said='<p class="tk-reply-said" role="status">You told us: <b>'+esc(REPLY_SAY[cur.choice][0])+'</b>'+
+           (cur.note?' &middot; '+esc(cur.note):"")+(cur.at&&when(cur.at)?' &middot; '+esc(when(cur.at)):"")+
+           '. The rider and your seller can see it. You can change it.</p>';
+    }
+    return '<section class="card tk-reply" id="tkReply">'+
+      '<h2 class="sec">Help us deliver it</h2>'+
+      '<p class="tk-reply-sub">Tap one. The rider and your seller will see it.</p>'+
+      '<div class="tk-reply-grid">'+out+'</div>'+
+      (NV_REPLY.addr?
+        '<div class="tk-addr"><label for="tkAddr">The correct address</label>'+
+        '<textarea id="tkAddr" maxlength="200" rows="3" placeholder="House, street, area, city"'+(NV_REPLY.busy?" disabled":"")+'>'+esc(NV_REPLY.draft)+'</textarea>'+
+        '<button type="button" class="act" data-reply-send'+(NV_REPLY.busy?" disabled":"")+'>'+(NV_REPLY.busy?"Sending\u2026":"Send address")+'</button></div>':"")+
+      said+
+      '<p class="tk-reply-err" role="alert">'+esc(NV_REPLY.err)+'</p>'+
+    '</section>';
+  }
+  function paintReply(){
+    var old=document.getElementById("tkReply");
+    if(!NV_ROW) return;
+    var html=replyHtml(NV_ROW);
+    if(old){ if(html) old.outerHTML=html; else old.parentNode.removeChild(old); }
+    else if(html){
+      /* First paint after the page was already drawn: straight after the
+         status and the cash line. */
+      var anchor=document.querySelector("#out .cod")||document.querySelector("#out .tk-hero");
+      if(anchor) anchor.insertAdjacentHTML("afterend",html);
+    }
+  }
+  function sendReply(choice,note){
+    if(NV_REPLY.busy||!NV_SB||!NV_TOKEN) return;
+    NV_REPLY.busy=true; NV_REPLY.err=""; paintReply();
+    var fail=function(reason){
+      NV_REPLY.busy=false;
+      if(reason==="closed"){ NV_REPLY.open=false; }
+      NV_REPLY.err = reason==="too_many" ? "You have sent several answers today. Please message your seller instead."
+                   : reason==="need_address" ? "Please write the full correct address."
+                   : reason==="closed" ? ""
+                   : "Could not send that. Check your internet and try again.";
+      paintReply();
+    };
+    NV_SB.rpc("public_track_reply",{ p_token:NV_TOKEN, p_choice:choice, p_note:note||null }).then(function(r){
+      var d=r&&!r.error&&r.data;
+      if(!d||!d.ok){ fail(d&&d.reason||""); return; }
+      NV_REPLY.busy=false; NV_REPLY.err=""; NV_REPLY.addr=false; NV_REPLY.draft="";
+      NV_REPLY.reply={ choice:d.choice, note:d.note||"", at:d.at };
+      paintReply();
+    }).catch(function(){ fail(""); });
+  }
+  document.addEventListener("click",function(e){
+    var t=e.target&&e.target.closest?e.target.closest("[data-reply],[data-reply-send]"):null;
+    if(!t||NV_REPLY.busy) return;
+    if(t.hasAttribute("data-reply-send")){
+      var ta=document.getElementById("tkAddr"), v=String(ta&&ta.value||"").replace(/\s+/g," ").trim();
+      NV_REPLY.draft=v;
+      if(v.length<8){ NV_REPLY.err="Please write the full correct address."; paintReply(); var t2=document.getElementById("tkAddr"); if(t2) t2.focus(); return; }
+      sendReply("wrong_address",v); return;
+    }
+    var k=t.getAttribute("data-reply");
+    if(k==="wrong_address"){
+      NV_REPLY.addr=!NV_REPLY.addr; NV_REPLY.err=""; paintReply();
+      var box=document.getElementById("tkAddr"); if(box) box.focus();
+      return;
+    }
+    NV_REPLY.addr=false;
+    sendReply(k,null);
+  });
+  /* A refresh redraws the page; keep what the customer has typed so far. */
+  document.addEventListener("input",function(e){ if(e.target&&e.target.id==="tkAddr") NV_REPLY.draft=e.target.value; });
+  function loadReply(){
+    if(!NV_SB||!NV_TOKEN) return;
+    NV_SB.rpc("public_track_reply_get",{ p_token:NV_TOKEN }).then(function(r){
+      var d=r&&!r.error&&r.data; if(!d) return;
+      NV_REPLY.open=!!d.open; NV_REPLY.reply=d.reply||null;
+      paintReply();
+    }).catch(function(){});
+  }
+
   /* Statuses where the parcel is still moving between cities. Naming the
      destination removes the last bit of ambiguity: "In transit to Lahore"
      cannot be mistaken for a rider at the door. */
@@ -705,7 +840,8 @@
       (row.exception_note?'<p class="tk-note">'+esc(row.exception_note)+'</p>':"")+
     '</section>';
 
-    show(head+codHtml+details+timelineHtml(row)+actionsHtml(row));
+    NV_ROW=row;
+    show(head+codHtml+replyHtml(row)+details+timelineHtml(row)+actionsHtml(row));
     var live=document.getElementById("tkLive"); if(live) live.hidden=nvIsFinal(st);
     try{ document.title=say[0]+" · "+(row.awb||"")+" · NovaX"; }catch(e){}
   }
@@ -822,7 +958,25 @@
         fail("Parcel not found","This tracking link is not valid. Please ask your seller for the correct link.");
         return;
       }
+      NV_SB=sb; NV_TOKEN=token;
       render(row);
+      loadReply();
+      /* The tokenised link is the one customers are actually sent, and it
+         never refreshed: the header said "Live" over a status that stood
+         still until they reloaded. Same quiet minute-by-minute refresh as
+         the tracking-number link, skipped while they are typing an address. */
+      if(!nvIsFinal(row.status)){
+        nvStartRefresh(function(){
+          if(document.activeElement&&document.activeElement.id==="tkAddr") return;
+          sb.rpc("public_track_parcel",{ p_token: token }).then(function(r2){
+            var n=(r2&&!r2.error&&r2.data&&r2.data[0])||null;
+            if(!n){ nvRefreshTrouble(true); return; }
+            nvRefreshTrouble(false);
+            if(n.updated_at!==row.updated_at||n.status!==row.status){ row=n; render(n); loadReply(); }
+            if(nvIsFinal(n.status)) nvStopRefresh();
+          }).catch(function(){ nvRefreshTrouble(true); });
+        });
+      }
       /* The shop's own brand, if they set one. Token links only -- the ?awb=
          path never names the merchant (AWBs are sequential). A failure here
          leaves the NovaX header exactly as it was. */

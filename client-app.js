@@ -341,6 +341,9 @@ window.nvCount=function(n,one,many){
             city:"Karachi", is_default:true }],
           client_pricing_choice_state: { mode:"flat", locked:true },
           client_review_prompt_state: { should_prompt:false },
+          /* What a customer tapped on their tracking page (sample). */
+          client_customer_replies: [{ awb:"N9000002", choice:"call_first", note:null,
+            at:iso(now-40*60000), status_then:"Parcel out for delivery" }],
           client_shopify_status: [{ connected:false }],
           client_get_notification_prefs: { whatsapp:true, email:true },
           ai_quota_status: { used:3, cap:50, remaining:47 }
@@ -3495,6 +3498,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (p.exception?'<div class="nvdr-why"><span>'+
             (/return|refus|cancel/i.test(String(p.status||"")) ? "Why it came back" : "What happened")+
           '</span>'+escLabelText(p.exception)+'</div>':'')+
+        nvCustDrawerHtml(p)+
         ((typeof nvOpsChecking==="function" && nvOpsChecking(p))?'<div class="nvdr-why is-calm"><span>NovaX is checking</span>No movement for over two days, so NovaX Ops is following this parcel up with the rider. You do not need to do anything.</div>':'')+
       '</div>'+
       '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
@@ -6489,6 +6493,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
       if(state.activeClientTab==="swap"){ try{ nvSwOpen(); }catch(e){} }
       try{ nvRcCheck(); }catch(e){}
+      try{ nvCustCheck(); }catch(e){}
       if(state.activeClientTab==="recover"){ try{ nvRcOpen(); }catch(e){} }
       else if(window.NovaXRecover){ try{ window.NovaXRecover.leave(); }catch(e){} }
       if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} try{ nvKycLoad(); }catch(e){} }
@@ -7812,6 +7817,72 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ if(new URLSearchParams(location.search).get("tab")==="recover" && state.activeClientTab!=="recover") showClientTab("recover"); }catch(e){}
       }
     }
+    /* ── What the customer said on their tracking page (9 Oct 2026) ──────
+       A customer can tap "I'll be home today", "Deliver tomorrow", "Call me
+       first" or "Wrong address" on their tracking link. The server keeps
+       the latest answer for each parcel (client_customer_replies); this
+       shows it on Home and in the parcel's drawer. It is the customer's
+       request, shown word for word: nothing about the parcel is changed. */
+    var NV_CS={ asked:"", at:0, map:{} };
+    var NV_CS_SAY={ home_today:"Will be home today", tomorrow:"Asked for delivery tomorrow",
+                    call_first:"Asked the rider to call first", wrong_address:"Says the address is wrong" };
+    function nvCustReply(awb){ return NV_CS.map[String(awb||"")]||null; }
+    function nvCustWhen(r){
+      try{ return new Date(r.at).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }
+      catch(e){ return ""; }
+    }
+    function nvCustDrawerHtml(p){
+      var r=nvCustReply(p&&p.awb); if(!r||!NV_CS_SAY[r.choice]) return "";
+      return '<div class="nvdr-why is-calm nvdr-cust"><span>Customer says</span>'+escLabelText(NV_CS_SAY[r.choice])+
+        (r.note?': <b>'+escLabelText(r.note)+'</b>':'')+
+        '<small>'+escLabelText(nvCustWhen(r))+', on their tracking page'+
+        (r.choice==="wrong_address"?'. The address on the parcel has not changed; correct it if they are right.':'.')+'</small></div>';
+    }
+    /* Home: answers from the last three days on parcels that are still open.
+       "Got it" hides the card until a newer answer arrives. */
+    function nvCustPaint(){
+      var host=document.getElementById("nvCustSay"); if(!host) return;
+      var done=/^(Delivered|Return to shipper|Cancelled by client)$/, cut=Date.now()-72*3600e3;
+      var mine=(state.parcels||[]).filter(function(p){ return p&&p.clientId===activeClientId(); });
+      var rows=mine.map(function(p){ var r=nvCustReply(p.awb); return (r&&NV_CS_SAY[r.choice]&&!done.test(String(p.status||""))&&new Date(r.at).getTime()>cut)?{ p:p, r:r }:null; })
+                   .filter(Boolean).sort(function(a,b){ return String(b.r.at).localeCompare(String(a.r.at)); });
+      var seen=""; try{ seen=localStorage.getItem("nvCustSeen:"+activeClientId())||""; }catch(e){}
+      if(!rows.length || String(rows[0].r.at)<=seen){ host.hidden=true; host.innerHTML=""; return; }
+      host.hidden=false;
+      host.innerHTML='<div class="section-head"><div><h3>'+nvCount(rows.length,"customer","customers")+' answered on the tracking page</h3>'+
+        '<p>What they tapped on their tracking link. The rider sees it too.</p></div>'+
+        '<button type="button" class="ghost-btn" data-nv-cust-seen="'+escLabelText(rows[0].r.at)+'">Got it</button></div>'+
+        '<div class="nvcs-list">'+rows.slice(0,5).map(function(x){
+          return '<button type="button" class="nvcs-row" data-nv-cust-open="'+escLabelText(x.p.awb)+'">'+
+            '<b>'+escLabelText(x.p.awb)+(x.p.consignee?' \u00b7 '+escLabelText(x.p.consignee):'')+'</b>'+
+            '<span>'+escLabelText(NV_CS_SAY[x.r.choice])+(x.r.note?': '+escLabelText(x.r.note):'')+' \u00b7 '+escLabelText(nvCustWhen(x.r))+'</span></button>';
+        }).join("")+'</div>'+
+        (rows.length>5?'<p class="footer-note mt-8">And '+nvCount(rows.length-5,"more","more")+'. Open a parcel to see its answer.</p>':'');
+    }
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("[data-nv-cust-open],[data-nv-cust-seen]"):null; if(!t) return;
+      if(t.hasAttribute("data-nv-cust-seen")){
+        try{ localStorage.setItem("nvCustSeen:"+activeClientId(), t.getAttribute("data-nv-cust-seen")); }catch(e2){}
+        nvCustPaint(); return;
+      }
+      try{ openClientParcelJourney(t.getAttribute("data-nv-cust-open")); }catch(e3){}
+    });
+    /* Asked when the portal opens and again at most every two minutes as
+       the merchant moves between tabs. A failed or signed-out call leaves
+       what is on screen alone. */
+    function nvCustCheck(force){
+      var id=state.client&&state.client.id; if(!id) return;
+      var now=Date.now();
+      if(!force && NV_CS.asked===id && now-NV_CS.at<120000){ nvCustPaint(); return; }
+      NV_CS.asked=id; NV_CS.at=now;
+      var sb=window.__nvSb; if(!sb||!sb.rpc) return;
+      Promise.resolve(sb.rpc("client_customer_replies",{})).then(function(r){
+        if(!r||r.error||!Array.isArray(r.data)) return;
+        var m={}; r.data.forEach(function(x){ if(x&&x.awb) m[String(x.awb)]=x; });
+        NV_CS.map=m; nvCustPaint();
+      },function(){});
+    }
+
     function nvRcCheck(force){
       var id=state.client&&state.client.id; if(!id) return;
       if(NV_RC.asked===id && !force) return;

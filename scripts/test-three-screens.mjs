@@ -270,3 +270,47 @@ console.log("COLOUR CHECKS PASSED");
   ok("payout fees: flat Rs 0 / 100 / 500 in the database, portal, admin, homepage, COD page and site assistant");
 }
 console.log("PAYOUT FEE CHECKS PASSED");
+
+// The customer's answer from the tracking page (9 Oct 2026): saved in its own
+// closed table, shown to the seller on Home and in the parcel drawer, and to
+// the rider on the parcel card.
+{
+  const read = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+  const sql = read("sql_novax_customer_replies_20261009.sql"), rider = read("rider-app.js"), trk = read("tracking.html");
+  assert.ok(sql.includes("revoke all on table public.nv_customer_replies from public, anon, authenticated;") && sql.includes("enable row level security"), "the table is closed to the API");
+  assert.ok(!/update\s+public\.parcels|update public\.parcels/i.test(sql), "an answer never changes a parcel");
+  assert.ok(sql.includes("if v_n >= 6 then") && sql.includes("char_length(v_note) < 8") && sql.includes("length(btrim(coalesce(p_token, ''))) < 20"), "daily limit, a real address, a real link");
+  assert.ok(sql.includes("grant execute on function public.client_customer_replies() to authenticated;") && sql.includes("revoke all on function public.client_customer_replies() from public, anon;"), "only a signed-in seller reads their own answers");
+  const choices = (src) => [...new Set([...src.matchAll(/\b(home_today|tomorrow|call_first|wrong_address)\b/g)].map((m) => m[1]))].sort();
+  for (const [n, src] of [["database", sql], ["tracking page", trk], ["portal", app], ["rider app", rider]]) assert.deepEqual(choices(src), ["call_first", "home_today", "tomorrow", "wrong_address"], n + " knows the same four answers");
+  assert.ok(rider.includes("m.customerReply = p.customer_reply || null;") && rider.includes('class="swaptag custsay"') && /esc\(cr\.note\)/.test(rider), "the rider's card shows it, escaped");
+  once("nvCustSay");
+
+  // Draw the real Home card and drawer line.
+  const pick = (name) => new RegExp("    function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n    \\}\\n").exec(app)[0];
+  const host = { hidden: true, innerHTML: "" }, store = {};
+  const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
+  const now = Date.now(), iso = (ms) => new Date(ms).toISOString();
+  const api = new Function("document", "localStorage", "state", "activeClientId", "escLabelText", "nvCount",
+    /var NV_CS=\{[^;]*\};/.exec(app)[0] + /var NV_CS_SAY=\{[\s\S]*?\};/.exec(app)[0] +
+    ["nvCustReply", "nvCustWhen", "nvCustDrawerHtml", "nvCustPaint"].map(pick).join("") + "return { NV_CS, nvCustDrawerHtml, nvCustPaint };")(
+    { getElementById: () => host }, { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; } },
+    { parcels: [{ awb: "N1", clientId: "c1", consignee: "Hina", status: "Parcel out for delivery" }, { awb: "N2", clientId: "c1", consignee: "<b>Ali</b>", status: "Refused" },
+                { awb: "N3", clientId: "c1", consignee: "Done", status: "Delivered" }, { awb: "N4", clientId: "c2", consignee: "Other shop", status: "Reattempt" }] },
+    () => "c1", (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"), win.nvCount);
+  api.nvCustPaint(); assert.equal(host.hidden, true, "nothing to show, nothing drawn");
+  api.NV_CS.map = { N1: { awb: "N1", choice: "call_first", note: null, at: iso(now - 3600e3) }, N2: { awb: "N2", choice: "wrong_address", note: "<script>x</script> House 9", at: iso(now - 7200e3) },
+                    N3: { awb: "N3", choice: "tomorrow", at: iso(now - 600e3) }, N4: { awb: "N4", choice: "tomorrow", at: iso(now - 600e3) }, N1old: { awb: "N1old", choice: "tomorrow", at: iso(now - 9 * 864e5) } };
+  api.nvCustPaint();
+  assert.equal(host.hidden, false);
+  assert.ok(host.innerHTML.includes("<h3>2 customers answered on the tracking page</h3>"), "delivered parcels and other shops are left out");
+  assert.ok(host.innerHTML.indexOf('data-nv-cust-open="N1"') < host.innerHTML.indexOf('data-nv-cust-open="N2"'), "newest first");
+  assert.ok(host.innerHTML.includes("Asked the rider to call first") && host.innerHTML.includes("Says the address is wrong: &lt;script&gt;x&lt;/script&gt; House 9") && host.innerHTML.includes("&lt;b&gt;Ali&lt;/b&gt;"), "the customer's words are escaped");
+  store["nvCustSeen:c1"] = api.NV_CS.map.N1.at; api.nvCustPaint();
+  assert.equal(host.hidden, true, '"Got it" hides the card until a newer answer arrives');
+  const dr = api.nvCustDrawerHtml({ awb: "N2" });
+  assert.ok(dr.includes("<span>Customer says</span>Says the address is wrong: <b>&lt;script&gt;x&lt;/script&gt; House 9</b>") && dr.includes("The address on the parcel has not changed"), "the drawer says the parcel itself was not edited");
+  assert.equal(api.nvCustDrawerHtml({ awb: "N9" }), "");
+  ok("customer answers: closed table, same four answers everywhere, Home card and drawer line drawn and escaped, rider card wired");
+}
+console.log("CUSTOMER ANSWER CHECKS PASSED");
