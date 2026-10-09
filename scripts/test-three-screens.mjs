@@ -200,11 +200,12 @@ console.log("BULK RESULTS, HOME FIGURES, WORDING, CHIPS AND AI BUTTON CHECKS PAS
     // Run the real function on each kind of history.
     const src = /function nvConsigneeBadge\(\)\{[\s\S]*?\n    \}\n/.exec(app)[0];
     const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
-    const run = async (data) => {
+    const paint = /    function nvConsigneePaint\(host\)\{[\s\S]*?\n    \}\n/.exec(app)[0];
+    const run = async (data, net) => {
       const host = { style: {}, innerHTML: "" }, input = { value: "0300 1234567" };
-      const window = { __nvSb: { rpc: () => Promise.resolve({ data, error: null }) }, nvCount: win.nvCount };
+      const window = { __nvSb: { rpc: (name) => Promise.resolve(name === "client_phone_network_risk" ? (net === "fail" ? { data: null, error: { message: "denied" } } : { data: { level: net || "none" }, error: null }) : { data, error: null }) }, nvCount: win.nvCount };
       const document = { getElementById: (id) => (id === "bookingPhone" ? input : host) };
-      new Function("document", "window", "nvSetHtml", "nvCount", "var NV_CONSIGNEE_LAST='';" + src + "nvConsigneeBadge();")(document, window, (h, x) => { h.innerHTML = x; }, win.nvCount);
+      new Function("document", "window", "nvSetHtml", "nvCount", "var NV_CONSIGNEE_LAST='', NV_CONSIGNEE_PARTS={ own:'', net:'' };" + paint + src + "nvConsigneeBadge();")(document, window, (h, x) => { h.innerHTML = x; }, win.nvCount);
       await new Promise((r) => setTimeout(r, 5));
       return host.style.display === "none" ? "" : host.innerHTML.replace(/<[^>]+>/g, " ").replace(/&#\d+;/g, "").replace(/\s+/g, " ").trim();
     };
@@ -216,6 +217,15 @@ console.log("BULK RESULTS, HOME FIGURES, WORDING, CHIPS AND AI BUTTON CHECKS PAS
     assert.equal(await run({ total_parcels: 1, delivered: 0, refused: 0, returned: 0, recent: [{ status: "Cancelled by client" }] }), "", "a cancelled booking is not a history");
     assert.equal(await run({ total_parcels: 0, delivered: 0, refused: 0, returned: 0, recent: [] }), "", "a new customer shows nothing");
     assert.equal(await run({ error: "no_client" }), "");
+    // The shared flag from other NovaX sellers (9 Oct 2026): one line, no detail.
+    assert.equal(await run({ total_parcels: 0, recent: [] }, "some"), "A parcel to this number came back from another NovaX seller Call to confirm the order before you book it.");
+    assert.equal(await run({ total_parcels: 0, recent: [] }, "high"), "Several parcels to this number came back from other NovaX sellers Call to confirm the order before you book it.");
+    assert.equal(await run({ total_parcels: 3, delivered: 3, refused: 0, returned: 0, recent: [] }, "some"),
+      "3 parcels delivered to this customer before A parcel to this number came back from another NovaX seller Call to confirm the order before you book it.", "own history first, then the shared flag");
+    assert.equal(await run({ total_parcels: 0, recent: [] }, "fail"), "", "a refused or failed lookup shows nothing");
+    const risk = readFileSync(new URL("../sql_novax_network_risk_20261009.sql", import.meta.url), "utf8");
+    assert.ok(/return jsonb_build_object\('level',\s*case/.test(risk) && !/jsonb_build_object\([^)]*(awb|consignee|client_id|address|v_back|v_deliv)/.test(risk.replace(/case when[\s\S]*?end\)/, "")), "only a level leaves the database: no seller, name, address or count");
+    assert.ok(risk.includes("if v_n > 300 then") && risk.includes("p.client_id <> c") && risk.includes("interval '180 days'") && risk.includes("revoke all on function public.client_phone_network_risk(text) from public, anon;"), "other sellers only, 180 days, 300 lookups a day, signed-in sellers only");
   }
   assert.ok(app.includes("Call to confirm the order before you book it."));
   assert.ok(html.includes(".nv-chist.warn{background:var(--nvu-warn-bg)"));

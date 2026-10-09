@@ -2035,16 +2035,47 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        failed first attempt. Scoped server-side to the caller's own parcels
        only -- one merchant can never see another's customer history. */
     var NV_CONSIGNEE_T=null, NV_CONSIGNEE_LAST="";
+    /* Two notes can sit under the phone field: this seller's own history with
+       the number, and (9 Oct 2026) the shared flag from other NovaX sellers.
+       Each arrives from its own call, so they are kept apart and drawn
+       together; an answer for a number that is no longer in the field is
+       dropped. */
+    var NV_CONSIGNEE_PARTS={ own:"", net:"" };
+    function nvConsigneePaint(host){
+      var html=NV_CONSIGNEE_PARTS.own+NV_CONSIGNEE_PARTS.net;
+      if(!html){ host.style.display="none"; host.innerHTML=""; return; }
+      nvSetHtml(host, html);
+      host.style.display="block";
+    }
     function nvConsigneeBadge(){
       var input=document.getElementById("bookingPhone");
       var host=document.getElementById("consigneeHistoryBadge");
       if(!input||!host) return;
       var raw=String(input.value||"").replace(/[^0-9]/g,"");
-      if(raw.length<10){ host.style.display="none"; host.innerHTML=""; NV_CONSIGNEE_LAST=""; return; }
+      if(raw.length<10){ NV_CONSIGNEE_PARTS={ own:"", net:"" }; nvConsigneePaint(host); NV_CONSIGNEE_LAST=""; return; }
       if(raw===NV_CONSIGNEE_LAST) return;
       NV_CONSIGNEE_LAST=raw;
+      NV_CONSIGNEE_PARTS={ own:"", net:"" }; nvConsigneePaint(host);
       var sb=window.__nvSb;
       if(!sb||!sb.rpc) return;
+      /* The shared flag. Until 9 Oct 2026 a seller saw only their own history
+         with a number, on purpose; Aisha decided to share the signal. The
+         server (client_phone_network_risk) answers with one word and nothing
+         else -- never which seller, what was ordered, a count or a date --
+         looks back 180 days, and allows 300 lookups a day. A failed or
+         refused call simply shows nothing. */
+      try{
+        sb.rpc("client_phone_network_risk",{ p_phone: raw }).then(function(r){
+          if(raw!==NV_CONSIGNEE_LAST) return;
+          var lv=(r&&!r.error&&r.data&&r.data.level)||"none";
+          NV_CONSIGNEE_PARTS.net = lv==="high"
+            ? '<div class="nv-chist warn" role="status"><b>&#9888; Several parcels to this number came back from other NovaX sellers</b><span>Call to confirm the order before you book it.</span></div>'
+            : lv==="some"
+            ? '<div class="nv-chist warn" role="status"><b>&#9888; A parcel to this number came back from another NovaX seller</b><span>Call to confirm the order before you book it.</span></div>'
+            : "";
+          nvConsigneePaint(host);
+        }).catch(function(){});
+      }catch(e){}
       try{
         /* Three separate contract mismatches, all failing silently into the
            hide-the-badge branch, so this refusal-history warning has never
@@ -2056,9 +2087,11 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
            Verified against sql_novax_ai_tools_v2.sql, which also grants
            execute on it to authenticated. */
         sb.rpc("ai_tool_consignee_history",{ p_phone: raw }).then(function(r){
-          if(!r||r.error||!r.data){ host.style.display="none"; host.innerHTML=""; return; }
+          if(raw!==NV_CONSIGNEE_LAST) return;
+          var none=function(){ NV_CONSIGNEE_PARTS.own=""; nvConsigneePaint(host); };
+          if(!r||r.error||!r.data){ none(); return; }
           var d=Array.isArray(r.data)?r.data[0]:r.data;
-          if(!d||d.error){ host.style.display="none"; host.innerHTML=""; return; }
+          if(!d||d.error){ none(); return; }
           var total=Number(d.total_parcels||0);
           var del=Number(d.delivered||0);
           /* 8 Oct 2026: a parcel only sits in "Refused" for a day or two, then
@@ -2072,7 +2105,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
              back, so that one is read from the recent rows. */
           var back=Number(d.refused||0)+Number(d.returned||0)+inStatus(["Return in transit"]);
           var moving=inStatus(["New booked","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Reattempt"]);
-          if(total<=0){ host.style.display="none"; host.innerHTML=""; return; }
+          if(total<=0){ none(); return; }
           var html;
           if(back>0){
             html='<div class="nv-chist warn" role="status"><b>&#9888; '+
@@ -2086,10 +2119,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
                  ' to this number on the way now</b><span>Check this is not the same order twice.</span></div>';
           }else{
             /* Only cancelled bookings: nothing worth saying. */
-            host.style.display="none"; host.innerHTML=""; return;
+            none(); return;
           }
-          nvSetHtml(host, html);
-          host.style.display="block";
+          NV_CONSIGNEE_PARTS.own=html;
+          nvConsigneePaint(host);
         }).catch(function(){});
       }catch(e){}
     }
