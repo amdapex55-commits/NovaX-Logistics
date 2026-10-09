@@ -100,4 +100,10 @@ const ok = (m) => console.log("ok - " + m);
   assert.ok(app.includes("escLabelText(nvPlainCount(it.title))") && app.includes("var text=nvPlainCount(it&&it.body)") && app.includes("nvInsBody(it)"), "the title and the body are both reworded");
   ok("home notices: \"3 parcels have not moved\", \"1 parcel has not moved\"");
 }
+// 9. A chip with no tone is still a pill.
+{
+  assert.match(html, /\.chip:where\(:not\(\.good,\.warn,\.bad,\.info\)\)\{background:var\(--nvu-neutral-bg\);color:var\(--nvu-neutral-fg\);border:1px solid var\(--nvu-neutral-ln\);\}/);
+  for (const tok of ["--nvu-neutral-bg:", "--nvu-neutral-fg:", "--nvu-neutral-ln:"]) assert.ok(html.split(tok).length - 1 >= 2, tok + " is set for both themes");
+  ok("plain chips: a neutral pill in both themes, weaker than any chip that has its own look");
+}
 console.log("OVERFLOW RULE CHECKS PASSED");
