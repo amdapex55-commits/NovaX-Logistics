@@ -2589,6 +2589,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
         body.style.display=open?"none":"";
         if(chev) chev.textContent=open?"▸":"▾";
         if(head) head.setAttribute("aria-expanded", open?"false":"true");
+        /* 9 Oct 2026: the period boxes open and close with this strip. Home
+           leads with the live line (nvLineRender) instead. */
+        var dash=document.getElementById("client-dashboard"); if(dash) dash.classList.toggle("nv-figs-open", !open);
       }catch(e){}
     }
 
@@ -3345,7 +3348,114 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
+      try{ nvLineRender(); }catch(e){}
     }
+
+    /* ── Home: every parcel on one line (9 Oct 2026) ───────────────────────
+       Home opened on boxes of period totals. This is the live picture
+       instead: one line from Booked to Delivered, each parcel a dot at the
+       stop it has reached. A dot is amber when the parcel is in the same
+       "needs you" set the list below uses (nvAttentionParcels), so the two
+       can never disagree. Parcels that left the line -- stopped at the door,
+       or coming back -- are counted beside it, not painted as progress.
+
+       Tapping a stop lists its parcels; tapping one opens it. A stop with a
+       single parcel opens that parcel straight away. The dots themselves are
+       a picture (aria-hidden): the stops and the rows are the controls.
+
+       Redrawn only when something changed, so an open list is not wiped by
+       the page's regular re-renders. The period totals are still there,
+       folded under "Figures for ...". */
+    var NV_LN={ sig:"", open:"" };
+    var NV_LN_STOPS=[
+      { k:"booked",  t:"Booked",     at:["New booked"] },
+      { k:"picked",  t:"Picked up",  at:["Collected by rider","Arrived at warehouse"] },
+      { k:"transit", t:"In transit", at:["Parcel now in transit","Parcel received at destination"] },
+      { k:"out",     t:"Out",        at:["Parcel out for delivery","Reattempt","Reassigned"] },
+      { k:"done",    t:"Delivered",  at:["Delivered"] }
+    ];
+    var NV_LN_SIDE={ stopped:"stopped at the door", back:"coming back" };
+    function nvLineData(){
+      var id=activeClientId();
+      var all=(state.parcels||[]).filter(function(p){ return p&&p.awb&&p.clientId===id; });
+      var need={}; try{ nvAttentionParcels().forEach(function(p){ if(p&&p.awb) need[p.awb]=1; }); }catch(e){}
+      var g={ booked:[], picked:[], transit:[], out:[], done:[], stopped:[], back:[] }, week=Date.now()-7*864e5;
+      all.forEach(function(p){
+        var st=String(p.status||""), i;
+        if(st==="Delivered"){
+          /* The last seven days only: Delivered is where a parcel leaves the line. */
+          var t=Date.parse(p.deliveredAt||p.statusSince||"");
+          if(Number.isFinite(t) && t>=week) g.done.push(p);
+          return;
+        }
+        if(st==="Refused"||st==="Consignee not available"||st==="Out of service area"){ g.stopped.push(p); return; }
+        if(/^Return|^Ready for return/.test(st)){ if(st!=="Return to shipper"||need[p.awb]) g.back.push(p); return; }
+        for(i=0;i<4;i++) if(NV_LN_STOPS[i].at.indexOf(st)>-1){ g[NV_LN_STOPS[i].k].push(p); return; }
+      });
+      /* Amber first, then the longest wait. */
+      var wait=function(p){ var t=Date.parse(p.statusSince||""); return Number.isFinite(t)?t:Date.now(); };
+      Object.keys(g).forEach(function(k){
+        g[k].sort(function(a,b){ return (need[b.awb]?1:0)-(need[a.awb]?1:0) || (k==="done"?wait(b)-wait(a):wait(a)-wait(b)); });
+      });
+      return { g:g, need:need, any:all.length>0 };
+    }
+    function nvLineAge(p){
+      var t=Date.parse(p.statusSince||""); if(!Number.isFinite(t)) return "";
+      var h=(Date.now()-t)/3600e3;
+      return h<1?"just now":h<24?(Math.round(h)+(Math.round(h)===1?" hour":" hours")):(Math.floor(h/24)+(Math.floor(h/24)===1?" day":" days"));
+    }
+    function nvLineRows(k, d){
+      var list=d.g[k]||[], done=k==="done";
+      if(!list.length) return "";
+      return list.slice(0,8).map(function(p){
+        var amber=!done && d.need[p.awb], age=nvLineAge(p);
+        return '<button type="button" class="nvln-row'+(amber?" is-amber":"")+'" data-nvln-awb="'+escLabelText(p.awb)+'">'+
+          '<span><b>'+escLabelText(p.awb)+(p.consignee?' \u00b7 '+escLabelText(p.consignee):'')+'</b>'+
+          '<small>'+escLabelText(p.city||"")+(p.city?' \u00b7 ':'')+escLabelText(nvStatusLabel(p.status))+
+            (age?' \u00b7 '+escLabelText(done?age+" ago":age+" at this step"):'')+(amber?' \u00b7 needs you':'')+'</small></span>'+
+          '<i aria-hidden="true">\u203a</i></button>';
+      }).join("")+(list.length>8?'<p class="nvln-more">And '+nvCount(list.length-8,"more","more")+' in Your parcels below.</p>':'');
+    }
+    function nvLineRender(){
+      var host=document.getElementById("nvParcelLine"); if(!host) return;
+      var d=nvLineData(), g=d.g;
+      var moving=g.booked.length+g.picked.length+g.transit.length+g.out.length;
+      if(!d.any || (!moving && !g.done.length && !g.stopped.length && !g.back.length)){ if(!host.hidden){ host.hidden=true; host.innerHTML=""; } NV_LN.sig=""; return; }
+      var sig=Object.keys(g).map(function(k){ return k+":"+g[k].map(function(p){ return p.awb+(d.need[p.awb]?"!":""); }).join(","); }).join("|")+"#"+NV_LN.open;
+      if(sig===NV_LN.sig && !host.hidden) return;
+      NV_LN.sig=sig;
+      if(NV_LN.open && !(g[NV_LN.open]||[]).length) NV_LN.open="";
+      var needN=0; ["booked","picked","transit","out"].forEach(function(k){ g[k].forEach(function(p){ if(d.need[p.awb]) needN++; }); }); needN+=g.stopped.length;
+      var stops=NV_LN_STOPS.map(function(s){
+        var list=g[s.k], n=list.length, on=NV_LN.open===s.k, amberN=s.k==="done"?0:list.filter(function(p){ return d.need[p.awb]; }).length;
+        var dots=list.slice(0,8).map(function(p){ return '<i'+((s.k!=="done"&&d.need[p.awb])?' class="amber"':'')+'></i>'; }).join("")+(n>8?'<em>+'+(n-8)+'</em>':'');
+        return '<button type="button" class="nvln-stop'+(n?" has":"")+(on?" is-on":"")+(amberN?" has-amber":"")+(s.k==="done"?" is-done":"")+'" data-nvln="'+s.k+'"'+
+          (n?'':' disabled')+' aria-expanded="'+(on?"true":"false")+'" aria-label="'+escLabelText(s.t+": "+nvCount(n,"parcel","parcels")+(amberN?", "+amberN+" need you":""))+'">'+
+          '<span class="nvln-dots" aria-hidden="true">'+dots+'</span><span class="nvln-node" aria-hidden="true"></span>'+
+          '<b>'+n+'</b><span class="nvln-name">'+s.t+'</span></button>';
+      }).join("");
+      var side=["stopped","back"].map(function(k){
+        var n=g[k].length; if(!n) return "";
+        return '<button type="button" class="nvln-chip '+(k==="stopped"?"bad":"warn")+(NV_LN.open===k?" is-on":"")+'" data-nvln="'+k+'" aria-expanded="'+(NV_LN.open===k?"true":"false")+'">'+
+          '<i aria-hidden="true"></i>'+n+' '+NV_LN_SIDE[k]+'</button>';
+      }).join("");
+      var head=(moving?nvCount(moving,"parcel","parcels")+" on the way":"Nothing on the way right now")+(needN?" \u00b7 "+needN+(needN===1?" needs":" need")+" you":"");
+      host.hidden=false;
+      host.innerHTML='<div class="section-head"><div><h3>Your parcels, live</h3><p>'+escLabelText(head)+'. Tap a stop to see them.</p></div></div>'+
+        '<div class="nvln-track'+(moving?" is-moving":"")+'">'+stops+'</div>'+
+        (side?'<div class="nvln-side">'+side+'</div>':'')+
+        '<div class="nvln-list" id="nvLineList"'+(NV_LN.open?'':' hidden')+'>'+(NV_LN.open?nvLineRows(NV_LN.open,d):'')+'</div>'+
+        '<p class="nvln-foot">Delivered counts the last 7 days.</p>';
+    }
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("[data-nvln],[data-nvln-awb]"):null; if(!t) return;
+      if(t.hasAttribute("data-nvln-awb")){ try{ openClientParcelJourney(t.getAttribute("data-nvln-awb")); }catch(e2){} return; }
+      var k=t.getAttribute("data-nvln"), list=(nvLineData().g[k]||[]);
+      if(!list.length) return;
+      if(list.length===1 && NV_LN.open!==k){ try{ openClientParcelJourney(list[0].awb); }catch(e3){} return; }
+      NV_LN.open=NV_LN.open===k?"":k;
+      nvLineRender();
+    });
     /* "No parcels in range." was shown whether the account was genuinely empty,
        the date range excluded everything, or -- the case that actually hurt --
        a search term the merchant could not see was hiding every parcel they

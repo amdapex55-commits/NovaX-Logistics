@@ -2672,7 +2672,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=24dd6d40" defer></script>
+  <script src="client-app.min.js?v=7af2a04f" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2885,6 +2885,9 @@ try{
               <!-- What customers tapped on their tracking page (9 Oct 2026).
                    Filled by nvCustPaint(); hidden when there is nothing new. -->
               <div class="panel nvcs" id="nvCustSay" hidden></div>
+              <!-- Every parcel on one line, Booked to Delivered (9 Oct 2026).
+                   Filled by nvLineRender(); hidden for an account with no parcels. -->
+              <div class="panel nvln" id="nvParcelLine" hidden></div>
               <!-- Nova Recover on Home, in the slot Nova Instant had (shelved 9 Oct
                    2026, kept in shelved/nova-instant/). For a merchant who has the
                    tab and has not started (body.nv-rc-fresh); the "N orders came
@@ -2923,7 +2926,7 @@ try{
               <div id="nvInsightCards" style="display:none"></div>
               <div class="nv-onboarding" id="nvOnboardingChecklist" style="display:none"></div>
               <div class="panel" id="clientAccountHistoryPanel">
-                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Figures for <span id="nvRangeLabel">all time</span></h3></div><span class="nv-range-change">Change dates <span id="accountHistoryChevron" aria-hidden="true">▸</span></span></div>
+                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Figures for <span id="nvRangeLabel">all time</span></h3></div><span class="nv-range-change">Show figures <span id="accountHistoryChevron" aria-hidden="true">▸</span></span></div>
                 <div class="date-range" id="accountHistoryBody" style="display:none">
                   <div class="field"><label for="clientDateFrom">From</label><input type="date" id="clientDateFrom"></div>
                   <div class="field"><label for="clientDateTo">To</label><input type="date" id="clientDateTo"></div>
@@ -6665,6 +6668,58 @@ body:not(.nv-rc-fresh) #clientMenu .nv-recover-promo,
 #nvInviteModal .nv-secret-row{align-items:stretch;gap:8px;margin-bottom:0!important}
 #nvInviteModal p.footer-note{margin:10px 0 0}
 #nvInviteModal #nvInviteSend{width:100%}
+
+/* ── Home: every parcel on one line (9 Oct 2026) ─────────────────────────
+   Five stops on a track. Each parcel is a dot above the stop it has reached;
+   amber means it needs the merchant. A soft pulse runs along the track while
+   anything is moving. The pulse is decoration only: nothing waits on it. */
+#client-dashboard .nvln{order:1}
+.nvln .section-head{margin-bottom:6px}
+.nvln-track{position:relative;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-top:6px}
+.nvln-track::before{content:"";position:absolute;left:10%;right:10%;top:41px;height:3px;border-radius:3px;background:var(--nvu-line-2)}
+.nvln-track.is-moving::after{content:"";position:absolute;left:10%;right:10%;top:41px;height:3px;border-radius:3px;
+  background:linear-gradient(90deg,transparent 0,var(--nvu-accent) 50%,transparent 100%);background-size:34% 100%;background-repeat:no-repeat;
+  animation:nvlnFlow 2.8s linear infinite}
+@keyframes nvlnFlow{from{background-position:-52% 0}to{background-position:152% 0}}
+.nvln-stop{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:0;min-width:0;padding:0 2px 8px;border:0;border-radius:12px;
+  background:transparent;color:var(--nvu-ink);font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.nvln-stop:disabled{cursor:default;color:var(--nvu-ink-3)}
+.nvln-stop.is-on{background:var(--nvu-bg-2);box-shadow:inset 0 0 0 1px var(--nvu-line-2)}
+.nvln-stop:focus-visible,.nvln-chip:focus-visible,.nvln-row:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+.nvln-dots{display:flex;flex-wrap:wrap-reverse;gap:4px;justify-content:center;align-content:flex-start;width:44px;height:32px;padding-top:4px}
+.nvln-dots i{width:8px;height:8px;border-radius:50%;background:var(--nvu-accent)}
+.nvln-dots i.amber{background:var(--nvu-warn-fg);animation:nvlnBlink 1.6s ease-in-out infinite}
+.nvln-stop.is-done .nvln-dots i{background:var(--nvu-good-fg)}
+.nvln-dots em{flex:1 0 100%;order:9;font-style:normal;font-size:10.5px;font-weight:800;line-height:8px;text-align:center;color:var(--nvu-ink-2)}
+@keyframes nvlnBlink{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}
+.nvln-node{width:14px;height:14px;margin:3px 0 7px;border-radius:50%;background:var(--nvu-bg);border:3px solid var(--nvu-line-2)}
+.nvln-stop.has .nvln-node{background:var(--nvu-accent);border-color:var(--nvu-accent);box-shadow:0 0 0 4px var(--nvu-good-bg)}
+.nvln-stop.has-amber .nvln-node{background:var(--nvu-warn-fg);border-color:var(--nvu-warn-fg);box-shadow:0 0 0 4px var(--nvu-warn-bg)}
+.nvln-stop b{font-size:19px;font-weight:850;line-height:1.1;letter-spacing:-.02em}
+.nvln-name{margin-top:2px;font-size:11.5px;font-weight:650;color:var(--nvu-ink-2);white-space:nowrap}
+.nvln-stop:disabled .nvln-name{color:var(--nvu-ink-3)}
+.nvln-side{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.nvln-chip{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 13px;border-radius:999px;font:inherit;font-size:13px;font-weight:750;cursor:pointer;
+  border:1px solid var(--nvu-warn-ln);background:var(--nvu-warn-bg);color:var(--nvu-warn-fg)}
+.nvln-chip.bad{border-color:var(--nvu-bad-ln,var(--nvu-line-2));background:var(--nvu-bad-bg);color:var(--nvu-bad-fg)}
+.nvln-chip i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.nvln-chip.is-on{box-shadow:inset 0 0 0 1.5px currentColor}
+.nvln-list{display:grid;gap:8px;margin-top:12px}
+.nvln-list[hidden]{display:none}
+.nvln-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;cursor:pointer;font:inherit;
+  padding:11px 13px;border-radius:12px;border:1px solid var(--nvu-line);background:var(--nvu-bg-2);color:var(--nvu-ink)}
+.nvln-row span{min-width:0}
+.nvln-row b{display:block;font-size:13.5px;font-weight:800;overflow-wrap:anywhere}
+.nvln-row small{display:block;margin-top:2px;font-size:12.5px;line-height:1.45;color:var(--nvu-ink-2);overflow-wrap:anywhere}
+.nvln-row i{flex:none;font-style:normal;font-size:20px;line-height:1;color:var(--nvu-ink-3)}
+.nvln-row.is-amber{border-color:var(--nvu-warn-ln);background:var(--nvu-warn-bg)}
+.nvln-more,.nvln-foot{margin:2px 0 0;font-size:12.5px;line-height:1.45;color:var(--nvu-ink-2)}
+.nvln-foot{margin-top:10px}
+@media (max-width:380px){ .nvln-name{font-size:11px} .nvln-stop b{font-size:18px} }
+@media (prefers-reduced-motion:reduce){ .nvln-track.is-moving::after,.nvln-dots i.amber{animation:none} .nvln-track.is-moving::after{display:none} }
+/* The period boxes are folded under "Figures for ..." now; the line above
+   is what Home leads with. */
+#client-dashboard:not(.nv-figs-open) #clientMetrics{display:none!important}
 
 /* Home: what customers answered on their tracking page. */
 #client-dashboard .nvcs{order:1;margin-top:14px}

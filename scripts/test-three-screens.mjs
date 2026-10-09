@@ -314,3 +314,51 @@ console.log("PAYOUT FEE CHECKS PASSED");
   ok("customer answers: closed table, same four answers everywhere, Home card and drawer line drawn and escaped, rider card wired");
 }
 console.log("CUSTOMER ANSWER CHECKS PASSED");
+
+// Home: every parcel on one line (9 Oct 2026). The line is drawn from the
+// same "needs you" set as the list below it, so the two cannot disagree.
+{
+  once("nvParcelLine");
+  assert.ok(html.includes("#client-dashboard:not(.nv-figs-open) #clientMetrics{display:none!important}") && app.includes('dash.classList.toggle("nv-figs-open", !open);'), "the period boxes fold under the figures strip");
+  assert.ok(html.includes('<span class="nv-range-change">Show figures <span id="accountHistoryChevron"'), "the strip says what it opens");
+  assert.ok(/\.nvln-track\.is-moving::after\{[^}]*animation:nvlnFlow/.test(html) && html.includes(".nvln-track.is-moving::after{display:none}"), "the moving pulse is decoration, and stops for reduced motion");
+  const pick = (name) => new RegExp("    function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n    \\}\\n").exec(app)[0];
+  const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
+  const host = { hidden: true, innerHTML: "" }, hrs = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const P = (awb, status, h, extra) => Object.assign({ awb, clientId: "c1", consignee: "Hina <b>", city: "Karachi", status, statusSince: hrs(h) }, extra || {});
+  const state = { parcels: [] }; let needs = [];
+  const api = new Function("document", "state", "activeClientId", "nvAttentionParcels", "escLabelText", "nvCount", "nvStatusLabel", "openClientParcelJourney",
+    /var NV_LN=\{[^;]*\};/.exec(app)[0] + /var NV_LN_STOPS=\[[\s\S]*?\];/.exec(app)[0] + /var NV_LN_SIDE=\{[^;]*\};/.exec(app)[0] +
+    ["nvLineData", "nvLineAge", "nvLineRows", "nvLineRender"].map(pick).join("") + "return { NV_LN, nvLineData, nvLineRender };")(
+    { getElementById: () => host }, state, () => "c1", () => needs.map((awb) => ({ awb })),
+    (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"), win.nvCount, (s) => s, () => {});
+
+  api.nvLineRender(); assert.equal(host.hidden, true, "an account with no parcels shows no line");
+  state.parcels = [
+    P("B1", "New booked", 2), P("K1", "Arrived at warehouse", 5), P("T1", "Parcel now in transit", 80), P("T2", "Parcel received at destination", 4),
+    P("O1", "Parcel out for delivery", 3), P("O2", "Reattempt", 60), P("D1", "Delivered", 30, { deliveredAt: hrs(30) }), P("D2", "Delivered", 400, { deliveredAt: hrs(400) }),
+    P("R1", "Refused", 20), P("N1", "Consignee not available", 9), P("X1", "Return in transit", 50), P("X2", "Return to shipper", 300), P("C1", "Cancelled by client", 10),
+    Object.assign(P("Z1", "Parcel now in transit", 2), { clientId: "other-shop" })
+  ];
+  needs = ["T1", "O2", "R1", "N1", "X1"];
+  const d = api.nvLineData(), ids = (k) => d.g[k].map((p) => p.awb).join(",");
+  assert.deepEqual([ids("booked"), ids("picked"), ids("transit"), ids("out"), ids("done"), ids("stopped"), ids("back")], ["B1", "K1", "T1,T2", "O2,O1", "D1", "R1,N1", "X1"],
+    "each parcel sits at the stop it reached; amber first; old deliveries, finished returns, cancelled parcels and other shops are left out");
+  api.nvLineRender();
+  assert.equal(host.hidden, false);
+  assert.ok(host.innerHTML.includes("<p>6 parcels on the way · 4 need you. Tap a stop to see them.</p>"), "the heading counts what is moving and what needs the merchant");
+  const stop = (k) => new RegExp('<button type="button" class="([^"]*)" data-nvln="' + k + '"[^>]*aria-label="([^"]*)">').exec(host.innerHTML);
+  assert.match(stop("transit")[2], /^In transit: 2 parcels, 1 need you$/); assert.ok(stop("transit")[1].includes("has-amber"));
+  assert.match(stop("booked")[2], /^Booked: 1 parcel$/); assert.ok(!stop("booked")[1].includes("has-amber"));
+  assert.ok(host.innerHTML.includes('data-nvln="stopped" aria-expanded="false"><i aria-hidden="true"></i>2 stopped at the door') && host.innerHTML.includes("1 coming back"));
+  assert.equal((host.innerHTML.match(/<i class="amber"><\/i>/g) || []).length, 2, "one amber dot for each stuck parcel on the line");
+  const before = host.innerHTML; api.nvLineRender(); assert.equal(host.innerHTML, before, "nothing changed, nothing redrawn");
+  api.NV_LN.open = "transit"; api.nvLineRender();
+  assert.ok(host.innerHTML.indexOf('data-nvln-awb="T1"') < host.innerHTML.indexOf('data-nvln-awb="T2"') && host.innerHTML.includes("3 days at this step · needs you"), "the stuck one leads its list and says why");
+  assert.ok(host.innerHTML.includes("Hina &lt;b&gt;") && !host.innerHTML.includes("Hina <b>"), "names are escaped");
+  for (let i = 0; i < 12; i++) state.parcels.push(P("B" + (10 + i), "New booked", 1));
+  api.NV_LN.open = "booked"; api.nvLineRender();
+  assert.ok(host.innerHTML.includes("<em>+5</em>") && host.innerHTML.includes("And 5 more in Your parcels below."), "a busy stop shows eight dots and eight rows, then says how many more");
+  ok("home line: every parcel at its stop, amber from the one needs-you rule, lists that open and stay open, and no redraw without a change");
+}
+console.log("HOME LINE CHECKS PASSED");
