@@ -4921,8 +4921,16 @@ html,body{ background:var(--bg); color:var(--ink); }
      narrow — "Rs 12,340" becomes a vertical stack. Money, AWBs and short
      labels must never break mid-token; tables live in scroll containers so an
      intact figure scrolls instead of shattering. */
-  .metric strong,.nv-settle-row .amt,.nv-settle-row .nm,
-  .awb-field strong,#landing .live-widget strong{
+  /* 10 Oct 2026: this list is for FIGURES. It also held `.awb-field strong`
+     and `.nv-settle-row .nm`, which are words: every field on a shipping label
+     printed from here (address, consignee, shipper, item) was held to one
+     line, so a 115-character address ran 653px past its 225px box and was
+     cut off, and a long merchant name ran out of its settlement row. The
+     client portal had the same fault and it was fixed there in July; this
+     copy was missed. Only the label's COD, date and phone stay on one line. */
+  .metric strong,.nv-settle-row .amt,
+  .awb-field.awb-cod strong,.awb-field.awb-date strong,.awb-field.awb-phone strong,
+  #landing .live-widget strong{
     overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
     font-variant-numeric:tabular-nums;letter-spacing:-.01em;
   }
@@ -4966,6 +4974,26 @@ html,body{ background:var(--bg); color:var(--ink); }
   .nv-tab-badge.nv-amber{background:#b8730c;box-shadow:var(--sh-1);}
   .admin-nav-main .nv-tab-badge{min-width:20px;height:20px;font-size:11.5px;}
   @media (prefers-reduced-motion:reduce){.nv-tab-badge{animation:none}}
+
+  /* 10 Oct 2026, measured on a signed-in admin: text out of its box.
+     (1) An invoice row holds a code, the parcels, up to six chips and the
+         actions, but .log-item is a three-column grid whose first column is
+         110px. The 15-character code ran 38px into the parcel list beside it,
+         and the chips dropped into that same 110px column and spilled out of
+         it (21 places on one screen). A row is now a wrapping line: the code,
+         the parcels, then the chips, then the actions on a line of their own.
+     (2) On a phone the Add Invoice form kept three columns and squeezed
+         "Invoice rule" to nothing, on top of the Generate button.
+     (3) Between about 760 and 900px wide the tagline in the top bar ran
+         under the menu. */
+  #adminInvoiceList .log-item:not(details),#recentInvoiceList .log-item:not(details){display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-start}
+  #adminInvoiceList .log-item:not(details)>strong:first-child,#recentInvoiceList .log-item:not(details)>strong:first-child{flex:0 0 auto;min-width:150px;max-width:100%;overflow-wrap:anywhere}
+  #adminInvoiceList .log-item:not(details)>div:not(.inline-actions),#recentInvoiceList .log-item:not(details)>div:not(.inline-actions){flex:1 1 calc(100% - 240px);min-width:0;overflow-wrap:anywhere}
+  #adminInvoiceList .log-item:not(details)>.chip,#recentInvoiceList .log-item:not(details)>.chip{flex:0 0 auto;max-width:100%}
+  #adminInvoiceList .log-item:not(details)>.inline-actions,#recentInvoiceList .log-item:not(details)>.inline-actions{flex:1 1 100%}
+  @media (max-width:760px){#adminInvoiceList .log-item:not(details)>div:not(.inline-actions),#recentInvoiceList .log-item:not(details)>div:not(.inline-actions){flex-basis:100%}}
+  @media (max-width:640px){#admin-payments .mini-form{grid-template-columns:1fr!important}}
+  .topbar .brand-text{min-width:0}.topbar .brand-text span{overflow:hidden;text-overflow:ellipsis}
   </style>
   <script>
   (function(){
@@ -16027,7 +16055,7 @@ html,body{ background:var(--bg); color:var(--ink); }
          .awb-brandmark for the measurements. This label is height-critical in
          both print modes (100x150mm thermal, 88mm 3-up A4), so nothing may be
          added on a row of its own. */
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title awb-brand"><img class="awb-brandmark" src="${NV_AWB_LOGO}" alt="" aria-hidden="true"><span>NovaX Logistics AWB</span></div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod ${payConflict?"is-conflict":""}"><span>COD</span><strong>${cod}</strong>${payConflict?`<em style="display:block;font-style:normal;font-size:10px;font-weight:800;color:#a1230e;line-height:1.2;margin-top:2px">MARKED PREPAID &mdash; CONFIRM BEFORE COLLECTING</em>`:""}</div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title awb-brand"><img class="awb-brandmark" src="${NV_AWB_LOGO}" alt="" aria-hidden="true"><span>NovaX Logistics AWB</span></div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field awb-date"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field awb-phone"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod ${payConflict?"is-conflict":""}"><span>COD</span><strong>${cod}</strong>${payConflict?`<em style="display:block;font-style:normal;font-size:10px;font-weight:800;color:#a1230e;line-height:1.2;margin-top:2px">MARKED PREPAID &mdash; CONFIRM BEFORE COLLECTING</em>`:""}</div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
 
     /* ===== NovaX (admin AWB parity with client portal) =====

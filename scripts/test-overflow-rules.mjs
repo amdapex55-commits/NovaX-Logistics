@@ -106,4 +106,19 @@ const ok = (m) => console.log("ok - " + m);
   for (const tok of ["--nvu-neutral-bg:", "--nvu-neutral-fg:", "--nvu-neutral-ln:"]) assert.ok(html.split(tok).length - 1 >= 2, tok + " is set for both themes");
   ok("plain chips: a neutral pill in both themes, weaker than any chip that has its own look");
 }
+// 10. Admin: the one-line list holds figures only, and the shipping label can wrap.
+{
+  const admin = readFileSync(new URL("../admin.html", import.meta.url), "utf8");
+  const list = /\n  \.metric strong,[^{]*\{\s*overflow-wrap:normal;word-break:keep-all;white-space:nowrap;/.exec(admin);
+  assert.ok(list, "admin still keeps figures on one line");
+  const sels = list[0].slice(0, list[0].indexOf("{")).split(",").map((x) => x.trim());
+  assert.deepEqual(sels, [".metric strong", ".nv-settle-row .amt", ".awb-field.awb-cod strong", ".awb-field.awb-date strong", ".awb-field.awb-phone strong", "#landing .live-widget strong"],
+    "only figures: not every label field, and not a merchant's name");
+  assert.ok(!/[\s,]\.awb-field strong\s*[,{][^}]*white-space:\s*nowrap/.test(admin.replace(/\/\*[\s\S]*?\*\//g, "")), "no rule holds every label field to one line");
+  assert.ok(admin.includes('<div class="awb-field awb-date"><span>Booking Date</span>') && admin.includes('<div class="awb-field awb-phone"><span>Phone</span>'), "the date and the phone are marked as the short tokens");
+  assert.ok(admin.includes('<div class="awb-field awb-address"><span>Address</span>'), "the address is an ordinary, wrapping field");
+  assert.ok(admin.includes("#adminInvoiceList .log-item:not(details),#recentInvoiceList .log-item:not(details){display:flex;flex-wrap:wrap;"), "invoice rows wrap instead of using the 110px column");
+  assert.ok(admin.includes("@media (max-width:640px){#admin-payments .mini-form{grid-template-columns:1fr!important}}"));
+  ok("admin: label fields wrap (only COD, date and phone stay on one line), invoice rows and the Add Invoice form fit");
+}
 console.log("OVERFLOW RULE CHECKS PASSED");
