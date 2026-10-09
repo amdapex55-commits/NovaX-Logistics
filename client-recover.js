@@ -28,7 +28,7 @@
 
   var B = null, HOST = null;
   var S = { st:null, parcels:[], cases:[], loaded:false, loading:false, err:"", seg:"todo", sel:{}, busy:false,
-            key:null, popAsked:false, entered:false, taking:"" };
+            key:null, popAsked:false, entered:false, taking:"", phones:{}, casePhones:{}, saving:"" };
 
   function esc(v){ return B.esc(v == null ? "" : String(v)); }
   function rs(n){ return "Rs " + Math.round(Number(n) || 0).toLocaleString("en-US"); }
@@ -43,6 +43,8 @@
     return Number(p[2]) + " " + MON[Number(p[1]) - 1] + (Number(p[0]) !== now ? " " + p[0] : "");
   }
   function daysAgo(iso){ var t = Date.parse(iso); return isFinite(t) ? (Date.now() - t) / 86400000 : 9999; }
+  /* A number that can be dialled: 10 to 13 digits, the rule the server applies. */
+  function okPhone(v){ var d = String(v == null ? "" : v).replace(/\D/g, ""); return d.length >= 10 && d.length <= 13; }
   function newKey(){
     try{ if (crypto && crypto.randomUUID) return "rc-" + crypto.randomUUID(); }catch(e){}
     return "rc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -74,9 +76,10 @@
     function p(n, name, city, cod, st, age, why){
       return { parcel_id:"demo-rc-" + n, awb:"N90010" + (n < 10 ? "0" + n : n), consignee:name, city:city, cod:cod, status:st,
                kind: st === "Refused" ? "refused" : "returned", came_back_at:new Date(now - age).toISOString(), reason:why, block:null,
-               phone:"0300-00000" + (10 + n), address:"House " + (n * 7) + ", Block " + ((n % 9) + 1) + ", " + city };
+               /* The two oldest have no number, like real parcels booked before 19 Aug 2026. */
+               phone: n >= 11 ? "" : "0300-00000" + (10 + n), address: n >= 11 ? "" : "House " + (n * 7) + ", Block " + ((n % 9) + 1) + ", " + city };
     }
-    return { v:1, accepted:false, seq:1001, cases:[], parcels:[
+    return { v:2, accepted:false, seq:1001, cases:[], parcels:[
       p(1,  "Usman Tariq",     "Karachi",    1200, "Refused",            20 * H, "Consignee refused at doorstep"),
       p(2,  "Ayesha Malik",    "Lahore",     3450, "Refused",            1 * D + 3 * H, "Customer said the price was high"),
       p(3,  "Hamza Sheikh",    "Lahore",     2499, "Refused",            2 * D, "Refused, no reason given"),
@@ -94,7 +97,7 @@
   /* client.html?demo=1&rcreset=1 starts the preview again from the sample parcels. */
   try{ if (/[?&]rcreset=/.test(location.search)) { localStorage.removeItem(DEMO_KEY); localStorage.removeItem("nvRcSeen"); } }catch(e){}
   function demoGet(){
-    try{ var j = JSON.parse(localStorage.getItem(DEMO_KEY) || "null"); if (j && j.v === 1 && Array.isArray(j.parcels)) return j; }catch(e){}
+    try{ var j = JSON.parse(localStorage.getItem(DEMO_KEY) || "null"); if (j && j.v === 2 && Array.isArray(j.parcels)) return j; }catch(e){}
     var s = demoSeed(); demoPut(s); return s;
   }
   function demoPut(s){ try{ localStorage.setItem(DEMO_KEY, JSON.stringify(s)); }catch(e){} }
@@ -109,7 +112,7 @@
     if (cs.some(function(c){ return c.status === "unreachable" && daysAgo(c.closed_at) < 7; })) return "wait";
     return null;
   }
-  function demoCasePublic(c){ var o = {}; for (var k in c) if (k !== "phone" && k !== "address") o[k] = c[k]; return o; }
+  function demoCasePublic(c){ var o = {}; for (var k in c) if (k !== "phone" && k !== "address") o[k] = c[k]; o.no_phone = !String(c.phone || "").trim(); return o; }
   function demoRpc(name, a){
     return new Promise(function(resolve, reject){
       setTimeout(function(){
@@ -129,7 +132,7 @@
           }
           if (name === "client_recover_list") {
             return resolve({
-              parcels:s.parcels.map(function(p){ var o = {}; for (var k in p) if (k !== "phone" && k !== "address") o[k] = p[k]; o.block = demoBlock(s, p.parcel_id); return o; })
+              parcels:s.parcels.map(function(p){ var o = {}; for (var k in p) if (k !== "phone" && k !== "address") o[k] = p[k]; o.block = demoBlock(s, p.parcel_id); o.no_phone = !String(p.phone || "").trim(); return o; })
                        .filter(function(p){ return p.block !== "open"; }),
               cases:s.cases.filter(function(c){ return c.status !== "withdrawn"; }).map(demoCasePublic)
                      .sort(function(x, y){ return x.pushed_at < y.pushed_at ? 1 : -1; }) });
@@ -147,10 +150,13 @@
             if (!(off >= 0) || off !== Math.round(off) || off > 50000) throw new Error("The discount must be a whole number of rupees.");
             var bad = ids.filter(function(id){ var p = s.parcels.filter(function(x){ return x.parcel_id === id; })[0]; return !p || demoBlock(s, id) != null; });
             if (bad.length) throw new Error("These can no longer be sent. Refresh the list and try again.");
+            var typed = a.p_phones || {};
+            var nonum = ids.filter(function(id){ var p = s.parcels.filter(function(x){ return x.parcel_id === id; })[0]; return !String(p.phone || "").trim() && !okPhone(typed[id]); });
+            if (nonum.length) throw new Error("Add the customer's phone number for: " + nonum.map(function(id){ return s.parcels.filter(function(x){ return x.parcel_id === id; })[0].awb; }).join(", ") + ". We need it to call them.");
             ids.forEach(function(id){
               var p = s.parcels.filter(function(x){ return x.parcel_id === id; })[0];
               s.cases.push({ id:"demo-case-" + s.seq, code:"RC-" + (s.seq++), parcel_id:id, awb:p.awb, kind:p.kind, status:"waiting",
-                consignee:p.consignee, phone:p.phone, address:p.address, city:p.city, cod:p.cod, rider_reason:p.reason, came_back_at:p.came_back_at,
+                consignee:p.consignee, phone:String(p.phone || "").trim() || String(typed[id]).trim(), address:p.address, city:p.city, cod:p.cod, rider_reason:p.reason, came_back_at:p.came_back_at,
                 max_discount:Math.min(off, p.cod), item_note:String((a.p_items || {})[id] || "").trim().slice(0, 140) || null,
                 merchant_note:String(a.p_note || "").trim().slice(0, 300) || null, push_key:a.p_key || null,
                 pushed_at:new Date().toISOString(), tries:0, callback_at:null, closed_at:null, reason:null, rider_fault:false,
@@ -165,6 +171,14 @@
           }
           if (name === "client_recover_seen") {
             s.cases.forEach(function(c){ if (c.status === "recovered") c.seen = true; }); demoPut(s); return resolve({ seen:true });
+          }
+          if (name === "client_recover_add_phone") {
+            var k = s.cases.filter(function(x){ return x.id === a.p_case; })[0];
+            if (!okPhone(a.p_phone)) throw new Error("Check the phone number. It should look like 0300 1234567.");
+            if (!k) throw new Error("That parcel is not with Nova Recover.");
+            if (!demoOpen(k)) throw new Error("This case is already closed.");
+            if (String(k.phone || "").trim()) throw new Error("We already have a number for this customer. Message NovaX support if it is wrong.");
+            k.phone = String(a.p_phone).trim(); demoPut(s); return resolve({ ok:true, awb:k.awb });
           }
           if (name === "client_recover_withdraw") {
             var c = s.cases.filter(function(x){ return x.id === a.p_case; })[0];
@@ -218,6 +232,8 @@
   function openCases(){ return S.cases.filter(function(c){ return c.status === "waiting" || c.status === "calling" || c.status === "callback"; }); }
   function closedCases(){ return S.cases.filter(function(c){ return c.status === "not_recovered" || c.status === "unreachable"; }); }
   function wonCases(){ return S.cases.filter(function(c){ return c.status === "recovered"; }); }
+  /* Cases the desk cannot dial: the parcel had no number and none was typed. */
+  function numberless(){ return openCases().filter(function(c){ return c.no_phone; }); }
   function maxPush(){ return (S.st && S.st.max_push) || 30; }
   /* The fee is whatever the server says, including Rs 0. Only a missing
      value falls back. */
@@ -259,6 +275,11 @@
     if (S.st.wallet_low) h += '<p class="nv-rc-banner" role="status">Your wallet is at ' + esc(rs(S.st.wallet_balance)) + '. Nova Recover opens again once it is above ' + esc(rs(S.st.wallet_floor)) + '.</p>';
     else if (!S.st.may_push) h += '<p class="nv-rc-banner" role="status">You can see this, but only the account owner or a warehouse login can send parcels.</p>';
     if (B.demo()) h += '<p class="nv-rc-banner is-demo" role="status">Preview with sample parcels. Nothing here reaches a real customer.</p>';
+    var nn = numberless().length;
+    if (nn) h += '<p class="nv-rc-banner is-num" role="status"><b>We cannot call ' + nn + (nn === 1 ? ' customer' : ' customers') + ' yet.</b> ' +
+      (nn === 1 ? 'That order has' : 'Those orders have') + ' no phone number saved with NovaX. ' +
+      (S.st.may_push ? (S.seg === "with" ? 'Add ' + (nn === 1 ? 'it' : 'them') + ' below.' : '<button type="button" class="nv-rc-link" data-rc-seg="with">Add ' + (nn === 1 ? 'the number' : 'the numbers') + '</button>')
+                     : 'Ask the account owner or a warehouse login to add ' + (nn === 1 ? 'it' : 'them') + '.') + '</p>';
 
     h += '<div class="nv-rc-segs" role="tablist" aria-label="Nova Recover">' +
       seg("todo", "To recover", todo.length) + seg("with", "With NovaX", oc.length) + seg("won", "Recovered", won.length) + '</div>';
@@ -312,7 +333,8 @@
       '<span class="nv-rc-box" aria-hidden="true"></span>' +
       '<span class="nv-rc-main"><b>' + esc(p.consignee || "Customer") + '</b>' +
         '<small>' + esc([p.city, day(p.came_back_at), p.awb].filter(Boolean).join(" · ")) + '</small>' +
-        (p.reason ? '<small class="nv-rc-why">' + esc(p.reason) + '</small>' : '') + chip(p.kind) + '</span>' +
+        (p.reason ? '<small class="nv-rc-why">' + esc(p.reason) + '</small>' : '') +
+        (p.no_phone ? '<small class="nv-rc-num">No phone number saved. You will be asked for it.</small>' : '') + chip(p.kind) + '</span>' +
       '<span class="nv-rc-cod">' + esc(rs(p.cod)) + '</span></label></li>';
   }
   function drawWith(oc){
@@ -321,7 +343,10 @@
       return '<div class="panel nv-rc-empty"><h3>Nothing with NovaX yet</h3><p>Choose parcels under To recover and send them. We call within one working day.</p>' +
         '<button type="button" class="action-btn" data-rc-seg="todo">Choose parcels</button></div>';
     }
-    if (oc.length) h += '<p class="nv-rc-note">We call within one working day. You can take a parcel back until we start calling.</p><ul class="nv-rc-list">' + oc.map(caseRow).join("") + '</ul>';
+    var need = oc.filter(function(c){ return c.no_phone; }), ready = oc.filter(function(c){ return !c.no_phone; });
+    if (need.length) h += '<h3 class="nv-rc-sub">Need a phone number</h3><p class="nv-rc-note">These are older orders, and NovaX has no number saved for them. Add the customer\'s number and we call within one working day.</p>' +
+      '<ul class="nv-rc-list">' + need.map(caseRow).join("") + '</ul>' + (ready.length ? '<h3 class="nv-rc-sub">Ready to call</h3>' : '');
+    if (ready.length) h += '<p class="nv-rc-note">We call within one working day. You can take a parcel back until we start calling.</p><ul class="nv-rc-list">' + ready.map(caseRow).join("") + '</ul>';
     if (cl.length) h += '<h3 class="nv-rc-sub">Not recovered</h3><ul class="nv-rc-list is-off">' + cl.map(caseRow).join("") + '</ul>';
     return h;
   }
@@ -329,15 +354,23 @@
     var t = CASE_TEXT[c.status] || [c.status, ""], label = t[0];
     if (c.status === "callback" && c.callback_at) label = "Call back on " + day(c.callback_at);
     var canTake = c.status === "waiting" && !(c.tries > 0) && S.st && S.st.may_push;
-    return '<li class="nv-rc-row is-case"><span class="nv-rc-dot is-' + t[1] + '" aria-hidden="true"></span>' +
+    var needNum = !!c.no_phone && (c.status === "waiting" || c.status === "calling" || c.status === "callback");
+    if (needNum) label = "Cannot call: no phone number";
+    return '<li class="nv-rc-row is-case' + (needNum ? " is-num" : "") + '"><span class="nv-rc-dot is-' + (needNum ? "num" : t[1]) + '" aria-hidden="true"></span>' +
       '<span class="nv-rc-main"><b>' + esc(c.consignee || "Customer") + '</b>' +
         '<small>' + esc([c.city, c.awb, "sent " + day(c.pushed_at)].filter(Boolean).join(" · ")) + '</small>' +
-        '<small class="nv-rc-state is-' + t[1] + '">' + esc(label) + (c.tries > 0 && (c.status === "waiting" || c.status === "callback") ? " · tried " + c.tries + (c.tries === 1 ? " time" : " times") : "") + '</small>' +
+        '<small class="nv-rc-state is-' + (needNum ? "num" : t[1]) + '">' + esc(label) + (c.tries > 0 && (c.status === "waiting" || c.status === "callback") ? " · tried " + c.tries + (c.tries === 1 ? " time" : " times") : "") + '</small>' +
         (c.reason ? '<small class="nv-rc-why">' + esc(c.reason) + '</small>' : '') +
         (Number(c.max_discount) > 0 ? '<small class="nv-rc-why">Up to ' + esc(rs(c.max_discount)) + ' off allowed</small>' : '') + '</span>' +
       '<span class="nv-rc-side"><span class="nv-rc-cod">' + esc(rs(c.cod)) + '</span>' +
         (canTake ? '<button type="button" class="nv-rc-take" data-rc-take="' + esc(c.id) + '"' + (S.taking === c.id ? " disabled" : "") + '>' + (S.taking === c.id ? "Taking back…" : "Take back") + '</button>' : '') +
-      '</span></li>';
+      '</span>' +
+      /* The number field gets a line of its own under the row: beside the
+         amount on a phone it had 140px and ran out of the row. */
+      (needNum && S.st && S.st.may_push ? '<span class="nv-rc-addnum"><label class="nv-rc-sr" for="nvRcNum-' + esc(c.id) + '">Phone number of ' + esc(c.consignee || "the customer") + '</label>' +
+          '<input id="nvRcNum-' + esc(c.id) + '" data-rc-casephone="' + esc(c.id) + '" inputmode="tel" autocomplete="off" maxlength="20" placeholder="03xx xxxxxxx" value="' + esc(S.casePhones[c.id] || "") + '">' +
+          '<button type="button" class="nv-rc-savenum" data-rc-savenum="' + esc(c.id) + '"' + (S.saving === c.id ? " disabled" : "") + '>' + (S.saving === c.id ? "Saving…" : "Save number") + '</button></span>' : '') +
+      '</li>';
   }
   function drawWon(won){
     if (!won.length) {
@@ -437,12 +470,17 @@
     if (!S.key) S.key = newKey();
     var total = sum(pk), minCod = Math.min.apply(null, pk.map(function(p){ return Number(p.cod) || 0; }));
     var nRet = pk.filter(function(p){ return p.kind === "returned"; }).length;
+    var noNum = pk.filter(function(p){ return p.no_phone; });
     var inner = '<div class="nv-rc-sh">' +
       '<h3 class="nvw-rc-title nv-rc-sh-t">Send ' + pk.length + (pk.length === 1 ? " parcel" : " parcels") + ' to Nova Recover</h3>' +
       '<dl class="nv-rc-sum"><div><dt>COD on these orders</dt><dd>' + esc(rs(total)) + '</dd></div>' +
         (free() ? '<div><dt>Fee</dt><dd>None</dd></div>'
                 : '<div><dt>Fee</dt><dd>' + esc(rs(fee())) + ' each, only when recovered</dd></div>' +
                   '<div><dt>Most you could pay</dt><dd>' + esc(rs(pk.length * fee())) + '</dd></div>') + '</dl>' +
+      (noNum.length ? '<div class="nv-rc-f nv-rc-nums"><p class="nv-rc-numh"><b>' + (noNum.length === pk.length ? (noNum.length === 1 ? "This order has" : "These orders have") : noNum.length + " of these " + (noNum.length === 1 ? "has" : "have")) +
+          ' no phone number saved.</b> ' + (noNum.length === 1 ? "It is an older order" : "They are older orders") + ', from before NovaX kept customer numbers. Type the number so our agent can call.</p>' +
+          noNum.map(function(p){ return '<label><span>' + esc(p.consignee || "Customer") + ' · ' + esc(p.awb) + ' · ' + esc(rs(p.cod)) + '</span><input data-rc-phone="' + esc(p.parcel_id) + '" inputmode="tel" autocomplete="off" maxlength="20" placeholder="03xx xxxxxxx" value="' + esc(S.phones[p.parcel_id] || "") + '"></label>'; }).join("") +
+          (noNum.length < pk.length ? '<button type="button" class="nv-rc-link" data-rc-leave="1">Leave ' + (noNum.length === 1 ? "this one" : "these " + noNum.length) + ' out and send the other ' + (pk.length - noNum.length) + '</button>' : '') + '</div>' : '') +
       '<div class="nv-rc-f"><label for="nvRcOff">How much may our agent take off, if the customer asks?</label>' +
         '<div class="nv-rc-off"><span>Rs</span><input id="nvRcOff" inputmode="numeric" autocomplete="off" maxlength="6" value="0" aria-describedby="nvRcOffH"></div>' +
         '<div class="nv-rc-offq" role="group" aria-label="Quick amounts">' + [0, 100, 200, 500].map(function(v){
@@ -466,11 +504,14 @@
       var off = offValue(box);
       if (off == null) { err.textContent = "The discount must be a whole number of rupees."; err.hidden = false; return; }
       var items = {}; Array.prototype.forEach.call(box.querySelectorAll("[data-rc-item]"), function(i){ var v = i.value.trim(); if (v) items[i.getAttribute("data-rc-item")] = v; });
+      var phones = {}, firstBad = null;
+      Array.prototype.forEach.call(box.querySelectorAll("[data-rc-phone]"), function(i){ if (okPhone(i.value)) phones[i.getAttribute("data-rc-phone")] = i.value.trim(); else if (!firstBad) firstBad = i; });
+      if (firstBad) { err.textContent = "Type the customer's phone number, like 0300 1234567."; err.hidden = false; try{ firstBad.focus(); }catch(e0){} return; }
       S.busy = true; b.disabled = true; b.textContent = "Sending…"; err.hidden = true;
       rpc("client_recover_push", { p_parcels:pk.map(function(p){ return p.parcel_id; }), p_max_discount:off, p_in_stock:!!(tick && tick.checked),
-                                   p_items:items, p_note:box.querySelector("#nvRcNote").value.trim(), p_key:S.key })
+                                   p_items:items, p_note:box.querySelector("#nvRcNote").value.trim(), p_key:S.key, p_phones:phones })
         .then(function(r){
-          S.busy = false; S.key = null; S.sel = {};
+          S.busy = false; S.key = null; S.sel = {}; S.phones = {};
           var n = (r && r.pushed) || pk.length;
           box.innerHTML = '<div class="nv-rc-done"><span class="nv-rc-done-tick" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' +
             '<h3 class="nvw-rc-title nv-rc-sh-t">Sent</h3><p class="nv-rc-sh-l">' + n + (n === 1 ? " parcel is" : " parcels are") + ' with NovaX. We will call within one working day.</p>' +
@@ -491,13 +532,21 @@
       help.textContent = v != null && v > 0 && v >= minCod
         ? "That is the whole price of your smallest order (" + rs(minCod) + "). On each order the discount stops at its COD."
         : "Our agent offers it only when the customer will not take the order otherwise. It applies to each order.";
-      go.disabled = (tick ? !tick.checked : false) || v == null;
+      var numsOk = Array.prototype.every.call(box.querySelectorAll("[data-rc-phone]"), function(i){ return okPhone(i.value); });
+      go.disabled = (tick ? !tick.checked : false) || v == null || !numsOk;
       Array.prototype.forEach.call(box.querySelectorAll("[data-rc-off]"), function(q){ q.setAttribute("aria-pressed", q.classList.contains("is-on") ? "true" : "false"); });
     }
     inp.addEventListener("input", function(){ inp.value = inp.value.replace(/[^\d]/g, "").slice(0, 6); sync(); });
     if (tick) tick.addEventListener("change", sync);
+    /* A typed number is kept if the sheet is closed and opened again. */
+    box.addEventListener("input", function(e){
+      var i = e.target; if (!i.matches || !i.matches("[data-rc-phone]")) return;
+      i.value = i.value.replace(/[^0-9+ -]/g, "").slice(0, 20); S.phones[i.getAttribute("data-rc-phone")] = i.value; S.key = null; sync();
+    });
     sync();
     box.addEventListener("click", function(e){
+      var lv = e.target.closest && e.target.closest("[data-rc-leave]");
+      if (lv) { noNum.forEach(function(p){ delete S.sel[p.parcel_id]; }); S.key = null; syncRows(); sh.close(); setTimeout(openConfirm, 260); return; }
       var q = e.target.closest && e.target.closest("[data-rc-off]"); if (!q) return;
       inp.value = q.getAttribute("data-rc-off"); sync();
     });
@@ -509,6 +558,16 @@
     rpc("client_recover_withdraw", { p_case:id }).then(function(r){
       S.taking = ""; B.toast(((r && r.awb) || "Parcel") + " taken back.", "success"); load();
     }).catch(function(e){ S.taking = ""; B.toast(friendly(e), "error"); load(); });
+  }
+
+  function saveNumber(id){
+    if (S.saving) return;
+    var inp = HOST && HOST.querySelector('[data-rc-casephone="' + id + '"]'), v = inp ? inp.value.trim() : "";
+    if (!okPhone(v)) { B.toast("Type the customer's phone number, like 0300 1234567.", "error"); if (inp) { try{ inp.focus(); }catch(e){} } return; }
+    S.saving = id; draw();
+    rpc("client_recover_add_phone", { p_case:id, p_phone:v }).then(function(){
+      S.saving = ""; delete S.casePhones[id]; B.toast("Number saved. We will call within one working day.", "success"); load();
+    }).catch(function(e){ S.saving = ""; B.toast(friendly(e), "error"); load(); });
   }
 
   /* ------------------------------------------------------------ events */
@@ -525,6 +584,7 @@
       S.sel = next; S.key = null; syncRows(); return;
     }
     var tk = t.closest("[data-rc-take]"); if (tk) { takeBack(tk.getAttribute("data-rc-take")); return; }
+    var sn = t.closest("[data-rc-savenum]"); if (sn) { saveNumber(sn.getAttribute("data-rc-savenum")); return; }
     var a = t.closest("[data-rc]"); if (!a) return;
     var k = a.getAttribute("data-rc");
     if (k === "how") openLaunch();
@@ -539,6 +599,11 @@
       S.sel[id] = 1;
     } else delete S.sel[id];
     S.key = null; syncRows();
+  }
+  /* A number being typed for a case survives the list being drawn again. */
+  function onInput(e){
+    var i = e.target; if (!i.matches || !i.matches("[data-rc-casephone]")) return;
+    i.value = i.value.replace(/[^0-9+ -]/g, "").slice(0, 20); S.casePhones[i.getAttribute("data-rc-casephone")] = i.value;
   }
   /* Selection changes touch only what changed, so the list does not jump
      and a row's tick can animate. */
@@ -598,6 +663,20 @@
     '.nv-rc-dot.is-wait{background:var(--nvu-warn-fg)}.nv-rc-dot.is-live{background:var(--nvu-info-fg)}.nv-rc-dot.is-won{background:var(--nvu-good-fg)}.nv-rc-dot.is-lost{background:var(--nvu-ink-3)}',
     '.nv-rc-state{font-weight:750!important;font-style:normal}.nv-rc-state.is-wait{color:var(--nvu-warn-fg)!important}.nv-rc-state.is-live{color:var(--nvu-info-fg)!important}.nv-rc-state.is-won{color:var(--nvu-good-fg)!important}',
     '.nv-rc-row.is-won{background:var(--nvu-good-bg)}',
+    /* an order with no phone number saved */
+    '.nv-rc-banner.is-num{border-color:var(--nvu-bad-ln);background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);font-weight:600}.nv-rc-banner.is-num .nv-rc-link{padding:0;color:inherit}',
+    '.nv-rc-num{font-style:normal;font-weight:700;color:var(--nvu-bad-fg)!important}',
+    '.nv-rc-dot.is-num{background:var(--nvu-bad-fg)}.nv-rc-state.is-num{color:var(--nvu-bad-fg)!important}',
+    '.nv-rc-row.is-num{flex-wrap:wrap}.nv-rc-addnum{display:flex;gap:8px;flex-wrap:wrap;flex:1 1 100%;min-width:0;padding-left:22px;box-sizing:border-box}',
+    '.nv-rc-addnum input{flex:1 1 150px;min-width:0;box-sizing:border-box;min-height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:16px}',
+    '.nv-rc-addnum input:focus-visible,.nv-rc-nums input:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:1px}',
+    '.nv-rc-savenum{appearance:none;flex:none;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--nvu-accent);background:var(--nvu-accent);color:var(--nvu-accent-ink,#fff);font:inherit;font-size:13.5px;font-weight:750;cursor:pointer;white-space:nowrap}',
+    '.nv-rc-savenum[disabled]{opacity:.55;cursor:default}',
+    '.nv-rc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+    '.nv-rc-nums{padding:12px;border:1px solid var(--nvu-bad-ln);border-radius:12px;background:var(--nvu-bad-bg)}',
+    '.nv-rc-numh{margin:0;font-size:13.5px;line-height:1.5;color:var(--nvu-bad-fg)}',
+    '.nv-rc-nums label{display:grid;gap:5px}.nv-rc-nums label span{font-size:12.5px;font-weight:650;color:var(--nvu-bad-fg);overflow-wrap:anywhere}',
+    '.nv-rc-nums .nv-rc-link{justify-self:start;text-align:left;color:var(--nvu-bad-fg)}',
     '.nv-rc-sub{margin:8px 0 0;font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--nvu-ink-2)}',
     '.nv-rc-note{margin:0;font-size:13.5px;color:var(--nvu-ink-2)}',
     '.nv-rc-empty{padding:26px 20px}.nv-rc-empty h3{margin:0 0 6px;font-size:18px}.nv-rc-empty p{margin:0 0 14px;color:var(--nvu-ink-2);line-height:1.5;max-width:52ch}.nv-rc-empty p:last-child{margin-bottom:0}',
@@ -658,6 +737,7 @@
         HOST = host;
         host.addEventListener("click", onClick);
         host.addEventListener("change", onChange);
+        host.addEventListener("input", onInput);
       }
       S.entered = false;
       var pk = B.takePick ? B.takePick() : null; if (pk && pk.length) S.pick = pk;

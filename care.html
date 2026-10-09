@@ -224,7 +224,16 @@ button.item:hover{border-color:var(--line-2)}
 .rcm input{flex:none;width:22px;height:22px;margin:1px 0 0;accent-color:var(--green-2)}.rcm b{display:block;font-size:14.5px}.rcm small{display:block;font-size:12.5px;color:var(--muted);margin-top:1px}
 .rcsave{position:sticky;bottom:calc(66px + var(--sa-b));z-index:5;margin-top:18px;padding:10px 0 4px;background:linear-gradient(to top,var(--paper) 70%,transparent)}
 @media (min-width:860px){.rcsave{bottom:0}}
-@media (min-width:760px){.qsum{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (min-width:760px){.qsum{grid-template-columns:repeat(4,minmax(0,1fr))}.qsum.is5{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.qsum button.is-bad b{color:var(--red-ink)}
+.rcnote{margin:10px 0 0;padding:10px 12px;border-radius:11px;background:var(--red-bg);color:var(--red-ink);font-size:13.5px;font-weight:600;line-height:1.45}
+.rcmiss{color:var(--red-ink);font-weight:700}
+.rcedit{padding:0 0 0 6px;border:0;background:none;font:700 13px var(--body);color:var(--green-3);text-decoration:underline;text-underline-offset:3px;min-height:28px}
+.rcnonum{margin:12px 0 0;padding:12px 13px;border-radius:12px;background:var(--red-bg);color:var(--red-ink);font-size:14px;line-height:1.5;display:grid;gap:10px}
+.rcnonum b{display:block}
+.rcnum{margin-top:10px}.rcnonum .rcnum{margin-top:0}
+.rcnonum .fld label{color:var(--red-ink)}
+.rcnum-row{display:flex;gap:8px;flex-wrap:wrap}.rcnum-row input{flex:1 1 160px;min-width:0;width:auto}.rcnum-row .btn{flex:none;min-height:48px}
 .qsum button{text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:11px 13px;min-height:64px}
 .qsum button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
 .qsum small{display:block;font:700 11px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -600,11 +609,16 @@ function drawQueue(){
 var RC_STATUS = { waiting: ["Waiting for a call", "warn"], calling: ["Calling", "info"], callback: ["Call back", "info"],
   recovered: ["Recovered", "good"], not_recovered: ["Not recovered", ""], unreachable: ["Could not reach", ""] };
 var RC_TAB_TEXT = { off: "Off for every merchant", chosen: "On for chosen merchants", all: "On for every merchant" };
-var RC_FILTERS = [["call", "To call"], ["later", "Call back later"], ["won", "Recovered"], ["closed", "Not recovered"]];
+var RC_FILTERS = [["call", "To call"], ["nonum", "No number"], ["later", "Call back later"], ["won", "Recovered"], ["closed", "Not recovered"]];
 function rcCases(){ return (S.rcq && S.rcq.cases) || []; }
+/* Parcels booked before 19 Aug 2026 never had the customer's number saved.
+   A case on one of them has nobody to dial until the merchant gives the
+   number, so it is not counted as "to call" and sits in its own group. */
+function rcNoNum(x){ return !String(x.phone || "").replace(/\D/g, ""); }
 function rcIn(x, f){
-  if (f === "call") return x.open && (x.status !== "callback" || x.due);
-  if (f === "later") return x.open && x.status === "callback" && !x.due;
+  if (f === "nonum") return x.open && rcNoNum(x);
+  if (f === "call") return x.open && !rcNoNum(x) && (x.status !== "callback" || x.due);
+  if (f === "later") return x.open && !rcNoNum(x) && x.status === "callback" && !x.due;
   if (f === "won") return x.status === "recovered";
   return x.status === "not_recovered" || x.status === "unreachable";
 }
@@ -629,8 +643,13 @@ VIEWS.resell = function(){
         '<dl class="rcsw"><div><dt>Merchant tab</dt><dd>' + esc(RC_TAB_TEXT[c.merchant_tab] || c.merchant_tab) + (c.merchant_tab === "chosen" ? " (" + (c.chosen || 0) + ")" : "") + "</dd></div>" +
         "<div><dt>Free calls on refusals</dt><dd>" + (c.free_calls ? "Still on" : "Off") + "</dd></div></dl>" : "") +
       '<div class="rctoday"><span><b>' + (n.to_call || 0) + "</b> to call</span><span><b>" + (n.callbacks_today || 0) + "</b> call backs today</span><span><b>" + (n.recovered_today || 0) + "</b> recovered today</span></div>" +
-      '<div class="qsum">' + RC_FILTERS.map(function(f){
-        return '<button type="button" data-rcf="' + f[0] + '" aria-pressed="' + (S.rcf === f[0]) + '"><small>' + esc(f[1]) + "</small><b>" + rcCases().filter(function(x){ return rcIn(x, f[0]); }).length + "</b></button>"; }).join("") + "</div>" +
+      (function(){
+        var nn = rcCases().filter(function(x){ return rcIn(x, "nonum"); }).length;
+        if (!nn && S.rcf === "nonum") S.rcf = "call";
+        return '<div class="qsum' + (nn ? " is5" : "") + '">' + RC_FILTERS.filter(function(f){ return f[0] !== "nonum" || nn; }).map(function(f){
+          return '<button type="button" data-rcf="' + f[0] + '" aria-pressed="' + (S.rcf === f[0]) + '"' + (f[0] === "nonum" ? ' class="is-bad"' : "") + '><small>' + esc(f[1]) + "</small><b>" + rcCases().filter(function(x){ return rcIn(x, f[0]); }).length + "</b></button>"; }).join("") + "</div>" +
+          (nn ? '<p class="rcnote">' + nn + (nn === 1 ? " case has" : " cases have") + ' no phone number: the order is from before 19 Aug, when customer numbers were not kept. Open one to ask the merchant for the number.</p>' : "");
+      })() +
       '<div class="toolbar"><label class="sr" for="rcQ">Search</label><input class="search" id="rcQ" type="search" placeholder="Customer, phone, AWB or store" value="' + esc(S.rcs || "") + '">' +
       '<label class="sr" for="rcStore">Store</label><select id="rcStore"><option value="">All stores</option>' + stores.map(function(m){ return "<option" + (S.rcm === m ? " selected" : "") + ">" + esc(m) + "</option>"; }).join("") + "</select></div>" +
       '<div id="rcList" class="sec"></div>';
@@ -648,23 +667,62 @@ function rcRows(){
       (qd.length >= 4 && String(x.phone || "").replace(/\D/g, "").indexOf(qd) > -1);
   });
 }
+var RC_BACK = ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Parcel returned to consignee"];
+function rcMoved(x){ return x.action !== "resend" && x.action !== "rebook" && RC_BACK.indexOf(x.parcel_status) < 0; }
 function rcKind(x){
-  return x.action === "resend" ? '<span class="chip warn">Still with NovaX</span>' : x.action === "rebook" ? '<span class="chip">Back with merchant</span>' : '<span class="chip">On its way back</span>';
+  return x.action === "resend" ? '<span class="chip warn">Still with NovaX</span>' : x.action === "rebook" ? '<span class="chip">Back with merchant</span>' :
+    rcMoved(x) ? '<span class="chip info">Out again</span>' : '<span class="chip">On its way back</span>';
+}
+function rcWhere(x){
+  if (x.action === "resend") return "Still with NovaX. If recovered it goes out again.";
+  if (x.action === "rebook") return "Back with the merchant. If recovered you create a new booking.";
+  if (x.parcel_status === "Delivered") return "Already delivered. There is nothing to recover; this case closes by itself.";
+  if (rcMoved(x)) return "Out again with a rider (" + (x.parcel_status || "moving") + "). Call only if it is refused again.";
+  return "On its way back to the merchant (" + (x.parcel_status || "moving") + "). It can be booked again once it arrives.";
+}
+/* Asking the merchant for a number the parcel never had. */
+function rcAskNumberMsg(x){
+  return "Assalam o Alaikum, NovaX Nova Recover se.\n\nAap ne yeh order recover ke liye bheja hai: " + (x.consignee || "customer") + ", " + (x.city || "") + ", AWB " + x.awb + ", COD " + rs(x.cod) +
+    ".\n\nYeh purana order hai aur is par customer ka phone number mojood nahi, is liye hum call nahi kar pa rahe. Customer ka number isi chat par bhej dein, ya portal mein Nova Recover > With NovaX mein likh dein.\n\n" + PORTAL;
+}
+function rcNumForm(x, why){
+  return '<form id="fRcNum" class="rcnum" novalidate><div class="fld" style="margin:0"><label for="rcNum">' + esc(why) + '</label>' +
+    '<div class="rcnum-row"><input id="rcNum" inputmode="tel" autocomplete="off" maxlength="20" placeholder="03xx xxxxxxx" value="' + esc(rcNoNum(x) ? "" : x.phone) + '">' +
+    '<button class="btn btn-dark" id="rcNumBtn" type="submit">Save number</button></div></div><div class="msg" id="rcNumMsg" role="alert"></div></form>';
+}
+function rcSaveNum(e){
+  e.preventDefault();
+  var o = S.rcOpen; if (!o) return;
+  var x = rcCases().filter(function(r){ return r.id === o.id; })[0]; if (!x) return;
+  var v = $("rcNum").value.trim(), msg = $("rcNumMsg"), btn = $("rcNumBtn"), d = v.replace(/\D/g, "");
+  if (d.length < 10 || d.length > 13) return showMsg(msg, "Check the phone number. It should look like 0300 1234567.");
+  btn.disabled = true; btn.textContent = "Saving…";
+  rpc("cs_recover_set_phone", { p_case: o.id, p_phone: v }).then(function(r){
+    x.phone = (r && r.phone) || v; x.no_phone = false; S.rcNumEdit = false;
+    toast("Number saved.");
+    /* Now there is somebody to call, so the case is held like any other. */
+    if (S.rcOpen && S.rcOpen.id === o.id && !S.rcOpen.held && x.open && !x.held_by) {
+      rpc("cs_recover_open", { p_case: o.id }).then(function(h){ if (S.rcOpen && S.rcOpen.id === o.id) S.rcOpen.held = !!(h && h.held); }).catch(function(){});
+    }
+    if (S.rcOpen && S.rcOpen.id === o.id) drawResellSheet(x);
+    if (S.tab === "resell") VIEWS.resell();
+  }).catch(function(err){ btn.disabled = false; btn.textContent = "Save number"; showMsg(msg, err.message); });
 }
 function drawResell(){
   var el = $("rcList"); if (!el) return;
   var rows = rcRows();
-  var empty = { call: "Nobody to call right now. When a merchant sends parcels from Nova Recover, they appear here.", later: "No call backs waiting.", won: "Nothing recovered yet.", closed: "Nothing closed yet." }[S.rcf];
+  var empty = { call: "Nobody to call right now. When a merchant sends parcels from Nova Recover, they appear here.", nonum: "Every case has a phone number.", later: "No call backs waiting.", won: "Nothing recovered yet.", closed: "Nothing closed yet." }[S.rcf];
   el.innerHTML = rows.length ? '<div class="list">' + rows.map(function(x){
     var st = RC_STATUS[x.status] || [x.status, ""], label = st[0];
     if (x.status === "callback") label = x.due ? "Call back now" : "Call back " + pkt(x.callback_at, true);
     if (x.held_by) label = x.held_by + " is on it";
+    var nonum = x.open && rcNoNum(x); if (nonum && !x.held_by) label = "No phone number";
     return '<button class="item" type="button" data-rc="' + esc(x.id) + '"><span class="grow"><b>' + esc(x.consignee || "Customer") + '</b><span class="meta">' +
       esc([rs(x.agreed_cod != null ? x.agreed_cod : x.cod), x.merchant, x.city, x.open ? "came back " + ago(x.came_back_at) : (x.new_awb || x.awb)].filter(Boolean).join(" · ")) +
       (x.open && x.tries ? " · tried " + x.tries + " of " + ((S.rcq.config || {}).max_tries || 3) : "") +
       (x.open && Number(x.max_discount) > 0 ? " · up to " + esc(rs(x.max_discount)) + " off" : "") +
       (!x.open && x.reason ? " · " + esc(x.reason) : "") +
-      '</span></span><span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="chip ' + (x.held_by ? "info" : x.due ? "bad" : st[1]) + '">' + esc(label) + "</span>" + (x.open ? rcKind(x) : "") + "</span></button>";
+      '</span></span><span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="chip ' + (x.held_by ? "info" : (x.due || nonum) ? "bad" : st[1]) + '">' + esc(label) + "</span>" + (x.open ? rcKind(x) : "") + "</span></button>";
   }).join("") + "</div>" : '<div class="empty">' + esc(empty) + "</div>";
 }
 function rcScript(x){
@@ -691,8 +749,9 @@ function openResell(id){
   var x = rcCases().filter(function(r){ return r.id === id; })[0]; if (!x) return;
   S.rcScroll = window.scrollY;
   S.rcOpen = { id: id, at: new Date().toISOString(), held: false, done: false };
+  S.rcNumEdit = false;
   drawResellSheet(x);
-  if (x.open && !x.held_by) {
+  if (x.open && !x.held_by && !rcNoNum(x)) {
     rpc("cs_recover_open", { p_case: id }).then(function(r){
       if (S.rcOpen && S.rcOpen.id === id) S.rcOpen.held = !!(r && r.held);
     }).catch(function(e){
@@ -712,14 +771,21 @@ function drawResellSheet(x){
   } else if (!x.open) {
     html += '<div class="msg" style="display:block;background:var(--paper-2);color:var(--ink-2)">' + esc(st[0]) + (x.reason ? ": " + esc(x.reason) : "") + ".</div>";
   }
-  html += '<div class="box"><h3>Customer</h3><dl class="kv"><dt>Name</dt><dd>' + esc(x.consignee || "—") + "</dd><dt>Phone</dt><dd>" + esc(showPhone(x.phone)) + "</dd>" +
-      "<dt>Address</dt><dd>" + esc(x.address || "—") + "</dd><dt>City</dt><dd>" + esc(x.city || "—") + "</dd></dl>" +
-      (x.open ? '<div class="contact"><a class="btn btn-primary" data-call="1" href="tel:+' + esc(pkNum(x.phone)) + '">Call customer</a>' +
-        '<a class="btn btn-plain" data-call="1" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.phone)) + "?text=" + encodeURIComponent(rcCustomerMsg(x)) + '">WhatsApp</a></div>' : "") + "</div>" +
+  var nonum = rcNoNum(x), mayEdit = x.open && !x.held_by;
+  html += '<div class="box"><h3>Customer</h3><dl class="kv"><dt>Name</dt><dd>' + esc(x.consignee || "—") + "</dd><dt>Phone</dt><dd>" +
+        (nonum ? '<span class="rcmiss">Not on this parcel</span>' : esc(showPhone(x.phone)) + (mayEdit && !S.rcNumEdit ? ' <button type="button" class="rcedit" data-rcnum="edit">Change</button>' : "")) + "</dd>" +
+      "<dt>Address</dt><dd>" + (x.address ? esc(x.address) : '<span class="rcmiss">Not on this parcel.</span> Ask the customer on the call.') + "</dd><dt>City</dt><dd>" + esc(x.city || "—") + "</dd></dl>" +
+      (x.open && nonum
+        ? '<div class="rcnonum"><b>Nobody to call yet.</b> This order was booked before 19 Aug 2026, when NovaX did not keep customer numbers. Ask the merchant for the number, then save it here.' +
+            (pkNum(x.merchant_phone) ? '<a class="btn wa btn-block" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.merchant_phone)) + "?text=" + encodeURIComponent(rcAskNumberMsg(x)) + '">Ask ' + esc(x.merchant || "the merchant") + ' on WhatsApp</a>' : "") +
+            (mayEdit ? rcNumForm(x, "Customer's phone number") : "") + "</div>"
+        : x.open ? '<div class="contact"><a class="btn btn-primary" data-call="1" href="tel:+' + esc(pkNum(x.phone)) + '">Call customer</a>' +
+            '<a class="btn btn-plain" data-call="1" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.phone)) + "?text=" + encodeURIComponent(rcCustomerMsg(x)) + '">WhatsApp</a></div>' +
+            (mayEdit && S.rcNumEdit ? rcNumForm(x, "Correct phone number") : "") : "") + "</div>" +
     '<div class="box"><h3>The order</h3><dl class="kv"><dt>Store</dt><dd>' + esc(x.merchant || "—") + "</dd><dt>Item</dt><dd>" + esc(x.item_note || "Not given. Ask the customer.") + "</dd>" +
       "<dt>COD</dt><dd>" + esc(rs(x.cod)) + "</dd>" +
       "<dt>May take off</dt><dd>" + (Number(x.max_discount) > 0 ? "Up to " + esc(rs(x.max_discount)) + ". Lowest COD " + esc(rs(low)) + "." : "Nothing. No discount allowed.") + "</dd>" +
-      "<dt>Parcel is</dt><dd>" + (x.action === "resend" ? "Still with NovaX. If recovered it goes out again." : x.action === "rebook" ? "Back with the merchant. If recovered you create a new booking." : "On its way back to the merchant (" + esc(x.parcel_status || "moving") + "). It can be booked again once it arrives.") + "</dd>" +
+      "<dt>Parcel is</dt><dd>" + esc(rcWhere(x)) + "</dd>" +
       (x.merchant_note ? "<dt>Merchant's note</dt><dd>" + esc(x.merchant_note) + "</dd>" : "") + "</dl></div>";
   if (x.open) html += rcScript(x);
   if ((x.calls || []).length) {
@@ -729,6 +795,7 @@ function drawResellSheet(x){
   }
   if (x.open) {
     html += '<div id="rcActs">' + (x.held_by ? '<div class="msg err" style="display:block">' + esc(x.held_by) + " is on this call. Pick another parcel.</div>" :
+      nonum ? '<div class="msg" style="display:block;background:var(--paper-2);color:var(--ink-2)">Save the customer\'s number above to record a call.</div>' :
       '<div class="box"><h3>What happened?</h3><div class="verdict rcres">' +
         '<button type="button" class="is-go" data-rcres="recovered" aria-pressed="false">Recovered<small>Customer will take it</small></button>' +
         '<button type="button" data-rcres="callback" aria-pressed="false">Call back later<small>Asked for another time</small></button>' +
@@ -1203,6 +1270,10 @@ document.addEventListener("click", function(e){
     return;
   }
   if ((el = t.closest("[data-rcwhen]"))) return rcPickWhen(el.getAttribute("data-rcwhen"));
+  if ((el = t.closest("[data-rcnum]"))) {
+    var nx = rcCases().filter(function(r){ return S.rcOpen && r.id === S.rcOpen.id; })[0]; if (!nx) return;
+    S.rcNumEdit = true; drawResellSheet(nx); var ni = $("rcNum"); if (ni) ni.focus(); return;
+  }
   if ((el = t.closest("[data-rcsw]"))) { return rcPickSwitch(el.getAttribute("data-rcsw")); }
   if ((el = t.closest("#rcSave"))) return rcSaveSettings();
   if ((el = t.closest("#rcAnn"))) return rcAnnounce();
@@ -1255,11 +1326,13 @@ document.addEventListener("submit", function(e){
   if (id === "fReview") return saveReview(e);
   if (id === "fInvite") return doInvite(e);
   if (id === "fRc") return rcSubmit(e);
+  if (id === "fRcNum") return rcSaveNum(e);
 });
 document.addEventListener("input", function(e){
   if (e.target.id === "q") { S.q = e.target.value; drawQueue(); }
   if (e.target.id === "rcQ") { S.rcs = e.target.value; drawResell(); }
   if (e.target.id === "rcCod") { e.target.value = e.target.value.replace(/[^\d]/g, "").slice(0, 7); }
+  if (e.target.id === "rcNum") { e.target.value = e.target.value.replace(/[^0-9+ -]/g, "").slice(0, 20); }
   if (e.target.id === "rcPickQ") { S.rcp.q = e.target.value; drawPick(); }
   if (e.target.getAttribute && e.target.getAttribute("data-rcnum")) { S.rcp[e.target.getAttribute("data-rcnum")] = e.target.value; rcSyncSave(); }
 });

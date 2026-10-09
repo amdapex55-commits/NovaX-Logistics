@@ -368,10 +368,38 @@ console.log("CUSTOMER ANSWER CHECKS PASSED");
   assert.ok(host.innerHTML.includes("Hina &lt;b&gt;") && !host.innerHTML.includes("Hina <b>"), "names are escaped");
   for (let i = 0; i < 12; i++) state.parcels.push(P("B" + (10 + i), "New booked", 1));
   api.NV_LN.open = "booked"; api.nvLineRender();
-  assert.ok(host.innerHTML.includes("<em>+5</em>") && host.innerHTML.includes("And 5 more in Your parcels below."), "a busy stop shows eight dots and eight rows, then says how many more");
+  const rowsShown = () => (host.innerHTML.match(/data-nvln-awb=/g) || []).length;
+  assert.ok(host.innerHTML.includes("<em>+5</em>") && rowsShown() === 8, "a busy stop shows eight dots and eight rows");
+  assert.ok(host.innerHTML.includes('class="nvln-more" data-nvln-more="booked" aria-expanded="false">Show all 13</button>') && !host.innerHTML.includes("in Your parcels below"), "and a button for the rest, not a sentence");
+  api.NV_LN.all = "booked"; api.nvLineRender();
+  assert.ok(rowsShown() === 13 && host.innerHTML.includes('aria-expanded="true">Show fewer</button>'), "Show all opens every parcel at that stop, in place");
+  api.NV_LN.all = ""; api.nvLineRender(); assert.equal(rowsShown(), 8, "Show fewer folds it again");
+  assert.ok(app.includes('NV_LN.open=NV_LN.open===k?"":k; NV_LN.all="";'), "opening another stop starts folded");
   ok("home line: every parcel at its stop, amber from the one needs-you rule, lists that open and stay open, and no redraw without a change");
 }
 console.log("HOME LINE CHECKS PASSED");
+
+// Home notices: a long list of tracking numbers folds after ten.
+{
+  const pick = (name) => new RegExp("    function " + name + "\\([^)]*\\)\\{[\\s\\S]*?\\n    \\}\\n").exec(app)[0];
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const api = new Function("escLabelText", "var NV_INS_OPEN={};" + pick("nvPlainCount") + pick("nvLinkAwbs") + pick("nvInsBody") + "return { nvInsBody, NV_INS_OPEN };")(esc);
+  const awbs = (n) => Array.from({ length: n }, (_, i) => "N85302" + String(10 + i)).join(", ");
+  const few = api.nvInsBody({ kind: "stuck", body: "No status change for over 72 hours: " + awbs(3) + "." });
+  assert.ok(!few.includes("nv-ins-more") && (few.match(/class="nv-ins-awb"/g) || []).length === 3, "a short list is shown whole, with no button");
+  const ten = api.nvInsBody({ kind: "stuck", body: "Booked: " + awbs(10) + ", and 5 more." });
+  assert.ok(!ten.includes("nv-ins-more"), "the old ten-and-a-count wording is left as it is");
+  const many = api.nvInsBody({ kind: "overdue", body: "Booked over 72 hours ago: " + awbs(15) + ". These are simply taking too long." });
+  const [head, rest] = many.split('<span class="nv-ins-rest" hidden>');
+  assert.equal((head.match(/class="nv-ins-awb"/g) || []).length, 10, "ten show");
+  assert.equal((rest.split("</span>")[0].match(/class="nv-ins-awb"/g) || []).length, 5, "five wait behind the button");
+  assert.ok(many.includes('data-nv-ins-more="overdue" data-n="15" aria-expanded="false">Show all 15</button>') && many.includes("These are simply taking too long."), "the button names the total and the rest of the sentence is kept");
+  api.NV_INS_OPEN.overdue = true;
+  const open = api.nvInsBody({ kind: "overdue", body: "Booked over 72 hours ago: " + awbs(15) + "." });
+  assert.ok(open.includes('<span class="nv-ins-rest">') && open.includes('aria-expanded="true">Show fewer</button>'), "once opened it stays open when Home is drawn again");
+  assert.ok(app.includes("nvInsBody(it)") && html.includes(".nv-ins-rest[hidden]{display:none}"));
+  ok("home notices: ten tracking numbers, then Show all; the choice survives a redraw");
+}
 
 // Audit fixes, 10 Oct 2026.
 {

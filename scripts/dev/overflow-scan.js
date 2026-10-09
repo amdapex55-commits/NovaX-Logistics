@@ -67,7 +67,7 @@
     var awbs = function(a, n){ var o = []; for(var k=0;k<n;k++) o.push("N"+(a+k)); return o.join(", "); };
     R.client_smart_insights = [
       { kind:"stuck_parcels", severity:"medium", title:"3 parcel(s) have not moved in 3 days", body:"No status change for over 72 hours: "+awbs(9100004,3)+".", action:"open_ticket" },
-      { kind:"overdue", severity:"high", title:"15 parcel(s) are past 3 days with us", body:"Booked over 72 hours ago, still moving and not delivered yet: "+awbs(9100006,10)+", and 5 more.", action:"open_ticket" },
+      { kind:"overdue", severity:"high", title:"15 parcel(s) are past 3 days with us", body:"Booked over 72 hours ago, still moving and not delivered yet: "+awbs(9100006,15)+". These are being scanned, so they do not show as stuck -- they are simply taking too long.", action:"open_ticket" },
       { kind:"uncollected", severity:"medium", title:"1 booking(s) still waiting for pickup", body:"Booked more than a day ago and not collected: N9100000.", action:"pickup" } ];
     R.client_wallet_incoming = [{ delivered_uninvoiced:1584900, parcels:214 }];
     R.client_pickup_locations_list = [{ id:"demo-loc", label:LONG_ADDR.slice(0,120), city:"Rawalpindi", is_default:true },

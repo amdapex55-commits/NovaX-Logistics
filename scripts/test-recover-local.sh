@@ -18,7 +18,7 @@ initdb -D "$D/data" -U postgres -A trust -E UTF8 >/dev/null || exit 1
 pg_ctl -D "$D/data" -o "-c listen_addresses='' -c unix_socket_directories='$D' -p $PORT -c fsync=off" -l "$D/log" -w start >/dev/null || { cat "$D/log"; exit 1; }
 DB="postgresql:///postgres?host=$D&port=$PORT&user=postgres"
 psql "$DB" -X -q -v ON_ERROR_STOP=1 -f scripts/recover-local-stubs.sql >/dev/null || exit 1
-for f in sql_novax_recover_20261008.sql sql_novax_recover_p2_20261008.sql sql_novax_recover_p3_20261008.sql; do
+for f in sql_novax_recover_20261008.sql sql_novax_recover_p2_20261008.sql sql_novax_recover_p3_20261008.sql sql_novax_recover_phone_20261010.sql; do
   psql "$DB" -X -q -1 -v ON_ERROR_STOP=1 -f "$f" >/dev/null || { echo "FAILED: $f did not apply."; exit 1; }
   psql "$DB" -X -q -1 -v ON_ERROR_STOP=1 -f "$f" >/dev/null 2>&1 || { echo "FAILED: $f does not apply a second time."; exit 1; }
 done
@@ -35,3 +35,7 @@ OUT=$(psql "$DB" -X -q -v ON_ERROR_STOP=1 -f scripts/test-recover-p3.sql 2>&1); 
 echo "$OUT" | grep -c "NOTICE:  ok " | sed 's/$/ checks passed./'
 echo "$OUT" | grep -v "NOTICE:  ok " | sed 's/^psql:[^ ]* //'
 [ $RC -eq 0 ] || { echo "FAILED: phase 3 database tests."; exit 1; }
+OUT=$(psql "$DB" -X -q -v ON_ERROR_STOP=1 -f scripts/test-recover-phone.sql 2>&1); RC=$?
+echo "$OUT" | grep -c "NOTICE:  ok " | sed 's/$/ checks passed./'
+echo "$OUT" | grep -v "NOTICE:  ok " | sed 's/^psql:[^ ]* //'
+[ $RC -eq 0 ] || { echo "FAILED: phone number database tests."; exit 1; }

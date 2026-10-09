@@ -2245,6 +2245,26 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
         return n+" "+word+(one?"":"s")+(verb?" "+(one?(verb==="have"?"has":"is"):verb):"");
       });
     }
+    /* A notice can name many parcels. The first ten show; "Show all 15" opens
+       the rest in place. The server used to stop at ten and write "and 5
+       more" with no way to see which. */
+    var NV_INS_OPEN={};
+    function nvInsBody(it){
+      var text=nvPlainCount(it&&it.body), key=String((it&&it.kind)||(it&&it.title)||"");
+      var m=/N\d{6,10}(?:,\s*N\d{6,10}){10,}/.exec(text);
+      if(!m) return nvLinkAwbs(text);
+      var awbs=m[0].split(/,\s*/), open=!!NV_INS_OPEN[key];
+      return nvLinkAwbs(text.slice(0,m.index)+awbs.slice(0,10).join(", "))+
+        '<span class="nv-ins-rest"'+(open?'':' hidden')+'>, '+nvLinkAwbs(awbs.slice(10).join(", "))+'</span>'+
+        nvLinkAwbs(text.slice(m.index+m[0].length))+
+        ' <button type="button" class="nv-ins-more" data-nv-ins-more="'+escLabelText(key)+'" data-n="'+awbs.length+'" aria-expanded="'+(open?"true":"false")+'">'+(open?"Show fewer":"Show all "+awbs.length)+'</button>';
+    }
+    document.addEventListener("click",function(e){
+      var b=e.target&&e.target.closest?e.target.closest("[data-nv-ins-more]"):null; if(!b) return;
+      var key=b.getAttribute("data-nv-ins-more"), open=!NV_INS_OPEN[key]; NV_INS_OPEN[key]=open;
+      var rest=b.parentNode&&b.parentNode.querySelector(".nv-ins-rest"); if(rest) rest.hidden=!open;
+      b.setAttribute("aria-expanded",open?"true":"false"); b.textContent=open?"Show fewer":"Show all "+b.getAttribute("data-n");
+    });
     function nvLinkAwbs(text){
       var safe=escLabelText(String(text||""));
       return safe.replace(/\b(N\d{6,10})\b/g, function(m){
@@ -2372,7 +2392,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
         var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
         html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
           '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(nvPlainCount(it.title))+'</div></div>'+
-          (it.body?'<div class="nv-ins-body">'+nvLinkAwbs(nvPlainCount(it.body))+'</div>':"")+
+          (it.body?'<div class="nv-ins-body">'+nvInsBody(it)+'</div>':"")+
         '</div>';
       });
 
@@ -3413,7 +3433,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        Redrawn only when something changed, so an open list is not wiped by
        the page's regular re-renders. The period totals are still there,
        folded under "Figures for ...". */
-    var NV_LN={ sig:"", open:"" };
+    var NV_LN={ sig:"", open:"", all:"" };
     var NV_LN_STOPS=[
       { k:"booked",  t:"Booked",     at:["New booked"] },
       { k:"picked",  t:"Picked up",  at:["Collected by rider","Arrived at warehouse"] },
@@ -3454,21 +3474,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvLineRows(k, d){
       var list=d.g[k]||[], done=k==="done";
       if(!list.length) return "";
-      return list.slice(0,8).map(function(p){
+      /* Eight at first; "Show all" opens the rest in place. It used to end with
+         "And 13 more in Your parcels below" and no way to see them here. */
+      var all=NV_LN.all===k;
+      return (all?list.slice(0,300):list.slice(0,8)).map(function(p){
         var amber=!done && d.need[p.awb], age=nvLineAge(p);
         return '<button type="button" class="nvln-row'+(amber?" is-amber":"")+'" data-nvln-awb="'+escLabelText(p.awb)+'">'+
           '<span><b>'+escLabelText(p.awb)+(p.consignee?' \u00b7 '+escLabelText(p.consignee):'')+'</b>'+
           '<small>'+escLabelText(p.city||"")+(p.city?' \u00b7 ':'')+escLabelText(nvStatusLabel(p.status))+
             (age?' \u00b7 '+escLabelText(done?age+" ago":age+" at this step"):'')+(amber?' \u00b7 needs you':'')+'</small></span>'+
           '<i aria-hidden="true">\u203a</i></button>';
-      }).join("")+(list.length>8?'<p class="nvln-more">And '+nvCount(list.length-8,"more","more")+' in Your parcels below.</p>':'');
+      }).join("")+(list.length>8?'<button type="button" class="nvln-more" data-nvln-more="'+k+'" aria-expanded="'+(all?"true":"false")+'">'+
+        (all?"Show fewer":"Show all "+list.length)+'</button>':'');
     }
     function nvLineRender(){
       var host=document.getElementById("nvParcelLine"); if(!host) return;
       var d=nvLineData(), g=d.g;
       var moving=g.booked.length+g.picked.length+g.transit.length+g.out.length;
       if(!d.any || (!moving && !g.done.length && !g.stopped.length && !g.back.length)){ if(!host.hidden){ host.hidden=true; host.innerHTML=""; } NV_LN.sig=""; return; }
-      var sig=Object.keys(g).map(function(k){ return k+":"+g[k].map(function(p){ return p.awb+(d.need[p.awb]?"!":""); }).join(","); }).join("|")+"#"+NV_LN.open;
+      var sig=Object.keys(g).map(function(k){ return k+":"+g[k].map(function(p){ return p.awb+(d.need[p.awb]?"!":""); }).join(","); }).join("|")+"#"+NV_LN.open+"#"+NV_LN.all;
       if(sig===NV_LN.sig && !host.hidden) return;
       NV_LN.sig=sig;
       if(NV_LN.open && !(g[NV_LN.open]||[]).length) NV_LN.open="";
@@ -3495,12 +3519,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '<p class="nvln-foot">Delivered counts the last 7 days.</p>';
     }
     document.addEventListener("click",function(e){
-      var t=e.target&&e.target.closest?e.target.closest("[data-nvln],[data-nvln-awb]"):null; if(!t) return;
+      var t=e.target&&e.target.closest?e.target.closest("[data-nvln],[data-nvln-awb],[data-nvln-more]"):null; if(!t) return;
       if(t.hasAttribute("data-nvln-awb")){ try{ openClientParcelJourney(t.getAttribute("data-nvln-awb")); }catch(e2){} return; }
+      if(t.hasAttribute("data-nvln-more")){ var mk=t.getAttribute("data-nvln-more"); NV_LN.all=NV_LN.all===mk?"":mk; nvLineRender(); return; }
       var k=t.getAttribute("data-nvln"), list=(nvLineData().g[k]||[]);
       if(!list.length) return;
       if(list.length===1 && NV_LN.open!==k){ try{ openClientParcelJourney(list[0].awb); }catch(e3){} return; }
-      NV_LN.open=NV_LN.open===k?"":k;
+      NV_LN.open=NV_LN.open===k?"":k; NV_LN.all="";
       nvLineRender();
     });
     /* "No parcels in range." was shown whether the account was genuinely empty,
@@ -7878,7 +7903,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        visible the menu entry stays hidden (body.nv-rc-on in client.html).
        A missing function, a failed call or a closed switch all mean hidden,
        silently: this must never get in a merchant's way. */
-    var NV_RECOVER_SRC="client-recover.js?v=ef6edf13";
+    var NV_RECOVER_SRC="client-recover.js?v=d625b78b";
     var NV_RC={ state:null, asked:"", p:null };
     function nvRcVisible(){ return !!(NV_RC.state && NV_RC.state.visible); }
     /* An order NovaX recovered carries meta.recover: the same parcel sent out

@@ -97,7 +97,7 @@ const ok = (m) => console.log("ok - " + m);
   assert.equal(nvPlainCount("1 parcel(s) are past 3 days with us"), "1 parcel is past 3 days with us");
   assert.equal(nvPlainCount("1 booking(s) still waiting for pickup"), "1 booking still waiting for pickup");
   assert.equal(nvPlainCount("No status change for over 72 hours: N8530234, N8530261."), "No status change for over 72 hours: N8530234, N8530261.");
-  assert.ok(app.includes("escLabelText(nvPlainCount(it.title))") && app.includes("nvLinkAwbs(nvPlainCount(it.body))"));
+  assert.ok(app.includes("escLabelText(nvPlainCount(it.title))") && app.includes("var text=nvPlainCount(it&&it.body)") && app.includes("nvInsBody(it)"), "the title and the body are both reworded");
   ok("home notices: \"3 parcels have not moved\", \"1 parcel has not moved\"");
 }
 console.log("OVERFLOW RULE CHECKS PASSED");

@@ -20,7 +20,7 @@ mkdir -p .claude
 python3 - <<'PY'
 h = open('client.html', encoding='utf-8').read()
 i = h.index('<head>') + len('<head>')
-h = h[:i] + '\n<base href="/">\n<script>window.__STRESS_FROM_START=true;</script>\n<script src="/scripts/dev/overflow-scan.js"></script>\n' + h[i:]
+h = h[:i] + '\n<base href="/">\n<script>window.__STRESS_FROM_START=true;</script>\n<script src="/scripts/dev/overflow-scan.js?v=' + str(int(__import__("os").path.getmtime("scripts/dev/overflow-scan.js"))) + '"></script>\n' + h[i:]
 open('.claude/stress.html', 'w', encoding='utf-8').write(h)
 PY
 echo "wrote .claude/stress.html"

@@ -171,12 +171,13 @@ select pg_temp.has('low wallet cannot push',
 update public.clients set wallet_balance = -1000 where id = :store;
 select pg_temp.eq('exactly at the floor may push',
   pg_temp.as_user(:owner, 'select public.client_recover_push(array[''00000000-0000-4000-8000-000000000103'']::uuid[], 0, true)->>''pushed'''), '1');
-insert into public.parcels (id, awb, client_id, status, cod_amount, status_since) values ('00000000-0000-4000-8000-000000000107', 'N7', :store, 'Refused', 100, now());
+-- (10 Oct 2026: a parcel with no phone number can no longer be sent without one, so these three carry one.)
+insert into public.parcels (id, awb, client_id, phone, status, cod_amount, status_since) values ('00000000-0000-4000-8000-000000000107', 'N7', :store, '03007', 'Refused', 100, now());
 select pg_temp.eq('a parcel still with NovaX needs no stock tick',
   pg_temp.as_user(:owner, 'select public.client_recover_push(array[''00000000-0000-4000-8000-000000000107'']::uuid[], 0, false)->>''pushed'''), '1');
 select pg_temp.eq('admin sets a push limit of 1', pg_temp.as_user(:admin, 'select public.cs_recover_config_set(''{"max_push":1}'')->>''max_push'''), '1');
-insert into public.parcels (id, awb, client_id, status, cod_amount, status_since) values
-  ('00000000-0000-4000-8000-000000000105', 'N5', :store, 'Refused', 100, now()), ('00000000-0000-4000-8000-000000000106', 'N6', :store, 'Refused', 100, now());
+insert into public.parcels (id, awb, client_id, phone, status, cod_amount, status_since) values
+  ('00000000-0000-4000-8000-000000000105', 'N5', :store, '03005', 'Refused', 100, now()), ('00000000-0000-4000-8000-000000000106', 'N6', :store, '03006', 'Refused', 100, now());
 select pg_temp.has('more than the limit is refused',
   pg_temp.as_user(:owner, 'select public.client_recover_push(array[''00000000-0000-4000-8000-000000000105'',''00000000-0000-4000-8000-000000000106'']::uuid[], 0, true)::text'), 'at most 1');
 
