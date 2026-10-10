@@ -416,6 +416,20 @@ console.log("CUSTOMER ANSWER CHECKS PASSED");
   assert.ok(app.includes('NV_LN.open=NV_LN.open===k?"":k; NV_LN.all="";'), "opening another stop starts folded");
   ok("home line: every parcel at its stop, amber from the one needs-you rule, lists that open and stay open, and no redraw without a change");
 }
+// New booking, regrouped 10 Oct 2026: three steps, every field still there once.
+{
+  const nb = html.slice(html.indexOf('id="client-newBooking"'), html.indexOf("</section>", html.indexOf('id="client-newBooking"')));
+  const groups = [...nb.matchAll(/<div class="nvnb-g">\s*<div class="nvnb-gh"><b aria-hidden="true">(\d)<\/b><div><h4>([^<]+)<\/h4>/g)].map((m) => m[1] + " " + m[2]);
+  assert.deepEqual(groups, ["1 Customer", "2 Parcel", "3 Pickup and notes"]);
+  assert.equal((nb.match(/class="form-grid"/g) || []).length, 3, "one grid of fields in each step");
+  assert.deepEqual([...nb.matchAll(/<label for="(\w+)"/g)].map((m) => m[1]),
+    ["bookingName", "bookingPhone", "bookingCity", "bookingDestArea", "bookingAddress", "bookingCod", "bookingCategory", "bookingWeight", "bookingFragile", "bookingAllowOpen", "bookingPickupCity", "bookingService", "bookingOrderId", "bookingComments"],
+    "who it is for, what is in it, then pickup and notes");
+  ["nvBookingForm","nvPasteBox","nvPasteInput","nvPasteFillBtn","nvRiskWarning","bookingName","bookingPhone","consigneeHistoryBadge","nvPickupBanner","bookingPickupCity","bookingCity","bookingZoneHint","nvAreaAutoChip","bookingDestAreaField","bookingDestArea","bookingCod","bookingService","bookingComments","bookingCategory","bookingFragile","bookingWeight","nvWeightChips","bookingPayMode","bookingPaymentMode","bookingOrderId","bookingAllowOpen","bookingAddress","bookingCityWarn","nvBookReview","bookingConfirmLine","quickBookingBtn"].forEach(once);
+  assert.equal((nb.match(/<div/g) || []).length, (nb.match(/<\/div>/g) || []).length, "nothing left unclosed");
+  assert.ok(!/parcel ledger|writes to/.test(nb), "no developer wording in the heading");
+  ok("new booking: three numbered steps, every field and control still in the page once");
+}
 console.log("HOME LINE CHECKS PASSED");
 
 // Home notices: a long list of tracking numbers folds after ten.

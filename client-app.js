@@ -2240,7 +2240,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        Say it the way a person would: "3 parcels have not moved", "1 parcel
        has not moved". */
     function nvPlainCount(text){
-      return String(text==null?"":text).replace(/\b(\d[\d,]*) ([A-Za-z]+)\(s\)( (have|are))?/g,function(m,n,word,rest,verb){
+      /* ...and a typed double hyphen where a person would write a colon. */
+      return String(text==null?"":text).replace(/\s--\s/g,": ").replace(/\b(\d[\d,]*) ([A-Za-z]+)\(s\)( (have|are))?/g,function(m,n,word,rest,verb){
         var one=Number(String(n).replace(/,/g,""))===1;
         return n+" "+word+(one?"":"s")+(verb?" "+(one?(verb==="have"?"has":"is"):verb):"");
       });
@@ -21071,7 +21072,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(total===1) return { h:"Booking your second parcel?", a:"Paste the WhatsApp order text above and I\u2019ll fill the form for you.", key:"nb_second_paste", go:"newBooking" };
       if(total===2) return { h:"Booking often?", a:"Bulk upload a CSV or connect your store so orders come in automatically.", key:"nb_third_bulk", go:"bulkBooking" };
-      if(pct===0) return { h:"Create one clean AWB.", a:"Fill name, phone, city, COD, product and full address.", key:"nb_0", go:"newBooking" };
+      if(pct===0) return { h:"Book one parcel.", a:"Three short steps: the customer, the parcel, then pickup and notes.", key:"nb_0", go:"newBooking" };
       /* "Almost there" greeted a COMPLETELY EMPTY form, implying progress
          that had not happened. */
       if(pct<100) return { h:(pct<10?"Enter the shipment details.":"Almost there."), a:"Fill the remaining booking fields, then submit.", key:"nb_"+pct, go:"newBooking" };

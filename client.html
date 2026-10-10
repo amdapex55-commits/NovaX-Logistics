@@ -2736,7 +2736,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=dd50089f" defer></script>
+  <script src="client-app.min.js?v=2aba77ab" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3041,7 +3041,7 @@ try{
             <!-- NEW BOOKING -->
             <section class="client-module" id="client-newBooking">
               <div class="panel">
-                <div class="section-head"><div><h3>New booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn" type="submit" form="nvBookingForm">Create booking</button></div>
+                <div class="section-head"><div><h3>New booking</h3><p>One parcel at a time. When you book it, the label opens ready to print.</p></div><button class="action-btn" id="quickBookingBtn" type="submit" form="nvBookingForm">Create booking</button></div>
                 <form id="nvBookingForm">
                 <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
@@ -3053,24 +3053,21 @@ try{
                   <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green-ink)"></div>
                 </div>
                 <div id="nvRiskWarning" class="footer-note" role="alert" aria-live="assertive" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
-                <div class="form-grid">
-                  <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" maxlength="120" required></div>
-                  <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
-                  <div id="nvPickupBanner" style="grid-column:1/-1"></div>
-                  <div class="field"><label for="bookingPickupCity">Pickup City</label>
-                    <!-- NovaX: pickup is Karachi-only today, so this is a fixed
-                         display rather than a choice. It stays an <input> with the
-                         same id so every reader (quickBooking, bulk import, the
-                         quote call) keeps working with no change. readonly, not
-                         disabled -- disabled inputs are omitted from form data. -->
-                    <input id="bookingPickupCity" class="nv-locked" value="" placeholder="Loading your pickup city…" readonly tabindex="-1" aria-readonly="true">
-                    <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
-                  <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
-                  <!-- NovaX (distance pricing): shown only for Karachi, and only
+                <!-- Regrouped 10 Oct 2026 into the order a merchant thinks in: who it is
+                     for, what is in it, then pickup and notes. Every field keeps its id,
+                     its handlers and its own row; only the order and the three headings
+                     are new. -->
+                <div class="nvnb-g">
+                  <div class="nvnb-gh"><b aria-hidden="true">1</b><div><h4>Customer</h4><p>Who gets the parcel, and where it goes.</p></div></div>
+                  <div class="form-grid">
+                    <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" maxlength="120" required></div>
+                    <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
+                    <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                    <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
-                  <div id="nvAreaAutoChip" class="nv-areachip" style="display:none;grid-column:1/-1"></div>
-                  <div class="field" id="bookingDestAreaField" style="display:none"><label for="bookingDestArea">Delivery Area <span class="required-star">*</span></label>
+                    <div id="nvAreaAutoChip" class="nv-areachip" style="display:none;grid-column:1/-1"></div>
+                    <div class="field" id="bookingDestAreaField" style="display:none"><label for="bookingDestArea">Delivery Area <span class="required-star">*</span></label>
                     <!-- Search box FILTERS the select below; the select is the real
                          control and is always visible, so the merchant can always
                          just open it and pick. An earlier version used a custom
@@ -3079,23 +3076,44 @@ try{
                     <input type="text" id="nvAreaFilter" class="nv-area-filter" placeholder="Search area, e.g. DHA 5, Gulshan, Korangi" autocomplete="off" aria-label="Search delivery areas">
                     <select id="bookingDestArea" size="1"><option value="">Select the area...</option></select>
                     <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
-                  <div class="field"><label for="bookingCod">COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
-                  <div class="field"><label for="bookingService">Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div><div class="field nv-span-2"><label for="bookingComments">Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
-                  <div class="field"><label for="bookingCategory">Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" maxlength="140" required></div>
-                  <div class="field"><label for="bookingFragile">Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
-                  <div class="field"><label for="bookingWeight">Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
-                  <!-- Payment Mode was a required question the merchant had already
+                    <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" maxlength="400" required></textarea></div>
+                    <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
+                  </div>
+                </div>
+                <div class="nvnb-g">
+                  <div class="nvnb-gh"><b aria-hidden="true">2</b><div><h4>Parcel</h4><p>What you are sending and the cash to collect.</p></div></div>
+                  <div class="form-grid">
+                    <div class="field"><label for="bookingCod">COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
+                    <!-- Payment Mode was a required question the merchant had already
                        answered by typing the COD amount: above 0 is COD, 0 is
                        prepaid. Asking twice invites the two to disagree, and a
                        parcel whose COD says 2500 and whose mode says Prepaid is a
                        rider collecting nothing. It is now derived and shown back,
                        and the select is kept (hidden) so every existing reader of
                        #bookingPaymentMode keeps working. -->
-                  <div class="field"><label>Payment</label><div id="bookingPayMode" class="nv-derived">Cash on delivery</div><div class="footer-note mt-4">Set from the COD amount above. Enter 0 for a prepaid parcel.</div><select id="bookingPaymentMode" hidden aria-hidden="true" tabindex="-1"><option>COD</option><option>Non COD Prepaid</option></select></div>
-                  <div class="field"><label for="bookingOrderId">Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
-                  <div class="field"><label for="bookingAllowOpen">Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
-                  <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" maxlength="400" required></textarea></div>
-                  <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
+                    <div class="field"><label>Payment</label><div id="bookingPayMode" class="nv-derived">Cash on delivery</div><div class="footer-note mt-4">Set from the COD amount above. Enter 0 for a prepaid parcel.</div><select id="bookingPaymentMode" hidden aria-hidden="true" tabindex="-1"><option>COD</option><option>Non COD Prepaid</option></select></div>
+                    <div class="field"><label for="bookingCategory">Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" maxlength="140" required></div>
+                    <div class="field"><label for="bookingWeight">Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
+                    <div class="field"><label for="bookingFragile">Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
+                    <div class="field"><label for="bookingAllowOpen">Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
+                  </div>
+                </div>
+                <div class="nvnb-g">
+                  <div class="nvnb-gh"><b aria-hidden="true">3</b><div><h4>Pickup and notes</h4><p>Where the rider collects, and anything we should know.</p></div></div>
+                  <div class="form-grid">
+                    <div id="nvPickupBanner" style="grid-column:1/-1"></div>
+                    <div class="field"><label for="bookingPickupCity">Pickup City</label>
+                    <!-- NovaX: pickup is Karachi-only today, so this is a fixed
+                         display rather than a choice. It stays an <input> with the
+                         same id so every reader (quickBooking, bulk import, the
+                         quote call) keeps working with no change. readonly, not
+                         disabled -- disabled inputs are omitted from form data. -->
+                    <input id="bookingPickupCity" class="nv-locked" value="" placeholder="Loading your pickup city…" readonly tabindex="-1" aria-readonly="true">
+                    <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
+                    <div class="field"><label for="bookingService">Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div>
+                    <div class="field"><label for="bookingOrderId">Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
+                    <div class="field nv-span-2"><label for="bookingComments">Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
+                  </div>
                 </div>
                 <div id="nvBookReview" class="nv-book-review" hidden aria-live="polite"></div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green-ink)"></div>
@@ -6403,6 +6421,14 @@ body.nv-rc-new #clientMenu .client-tab[data-client-tab="recover"]::after{content
 /* The floating "+ Book Parcel" covered content on most tabs; the header
    has Book parcel now. It stays on New Booking, where it also submits. */
 .client-shell:not(:has(#client-newBooking.active)) .nv-quick-book-fab{display:none !important}
+/* New booking, regrouped 10 Oct 2026: three numbered steps. The fields inside
+   are the same grid as before. */
+.nvnb-g{margin-top:16px;padding-top:16px;border-top:1px solid var(--nvu-line)}
+.nvnb-gh{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.nvnb-gh>b{flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--nvu-accent);color:var(--nvu-accent-ink);font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.nvnb-gh h4{margin:0;font-size:15.5px;font-weight:800;letter-spacing:-.01em;color:var(--nvu-ink)}
+.nvnb-gh p{margin:1px 0 0;font-size:12.5px;line-height:1.4;color:var(--nvu-ink-2)}
+@media (max-width:760px){ .nvnb-g{margin-top:14px;padding-top:14px} .nvnb-gh p{display:none} }
 
 /* One look across tabs, taken from the NovaX Wallet tab: rounder cards,
    one heading size, one field height. */
