@@ -74,7 +74,7 @@ const ok = (m) => console.log("ok - " + m);
 {
   const fn = /\(function nvScrollHints\(\)\{[\s\S]*?\n    \}\)\(\);/.exec(app)[0];
   const sel = /var SEL="([^"]+)";/.exec(fn)[1].split(",");
-  assert.deepEqual(sel, [".nvw-filters", ".nvr-tabs", ".nvr-chips", "#nvAiChips", ".nvauto-chips"]);
+  assert.deepEqual(sel, [".nvw-filters", ".nvr-tabs", ".nvr-chips", "#nvAiChips", ".nvauto-chips", ".nv-pf-nav"]);
   for (const c of [".nv-more-r{", ".nv-more-l{", ".nv-more-l.nv-more-r{"]) assert.ok(html.includes(c), c);
   assert.ok(!/nvr-chips\{[^}]*mask-image/.test(reports), "the Reports date chips no longer fade at the end of the row");
   assert.ok(html.includes("@media (min-width:641px){ .nvw-filters{flex-wrap:wrap;overflow-x:visible} }") && reports.includes("'@media (min-width:641px){.nvr-tabs{flex-wrap:wrap;overflow-x:visible}}',"), "they wrap where there is room");

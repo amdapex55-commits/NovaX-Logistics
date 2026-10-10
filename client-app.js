@@ -14155,7 +14155,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        which also keeps merchant_brand in step -- the tracking link reads
        clients.name, so there is exactly one name. The logo shows on this
        dashboard and on the tracking link only. */
-    var NV_PF={ loaded:false, loading:false, data:null, hist:[], logoBlob:null, logoType:"", logoPreview:"", removeLogo:false, saving:false, headerTried:false };
+    var NV_PF={ loaded:false, filled:false, loading:false, data:null, hist:[], logoBlob:null, logoType:"", logoPreview:"", removeLogo:false, saving:false, headerTried:false };
     var NV_PF_DEFAULT_ACCENT="#0c7c59";
     function nvPfEl(id){ return document.getElementById(id); }
     function nvPfInitials(n){ return String(n||"").trim().split(/\s+/).slice(0,2).map(function(w){ return w.charAt(0); }).join("").toUpperCase()||"NX"; }
@@ -14187,7 +14187,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                has_logo:!!d.logo_url, logo_replaced:false };
     }
     function nvPfDirty(){
-      if(!NV_PF.loaded) return false;
+      if(!NV_PF.loaded || !NV_PF.filled) return false;
       var a=nvPfValues(), b=nvPfBaseline();
       return Object.keys(b).some(function(k){ return a[k]!==b[k]; });
     }
@@ -14197,6 +14197,70 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(src){ var img=document.createElement("img"); img.alt=""; img.src=src; box.appendChild(img); }
       else box.textContent=nvPfInitials(name);
     }
+    /* Profile header (10 Oct 2026): the shop as NovaX knows it, and a short
+       list of what is still missing. Each missing item is a button that opens
+       its section and puts the cursor in the field. It reads the form, so it
+       moves as the merchant types; it saves nothing. */
+    var NV_PF_PARTS=[
+      ["name","Business name","nvPfName","Add your business name"],["phone","Business phone","nvPfPhone","Add your phone number"],
+      ["has_logo","Logo","nvPfLogoPick","Add your logo"],["business_type","What you sell","nvPfType","Say what you sell"],
+      ["address","Business address","nvPfAddr","Add your address"],["email","Business email","nvPfEmail","Add a business email"],
+      ["whatsapp","WhatsApp for customers","nvPfWa","Add WhatsApp for customers"]
+    ];
+    function nvPfHeroPaint(){
+      var hero=nvPfEl("nvPfHero"); if(!hero) return;
+      var d=NV_PF.data||{}, v=nvPfValues(), ready=!!NV_PF.filled;
+      var name=(ready?v.name:"")||(state.client&&state.client.name)||"Your shop";
+      var nm=nvPfEl("nvPfHeroName"); if(nm) nm.textContent=name;
+      nvPfPaintLogo(nvPfEl("nvPfHeroLogo"), nvPfLogoSrc(), name);
+      var accent=nvPfVal("nvPfAccent")||NV_PF_DEFAULT_ACCENT;
+      try{ hero.style.setProperty("--nv-pf-accent", (typeof nvBrandInk==="function" && nvBrandInk(accent)) ? accent : NV_PF_DEFAULT_ACCENT); }catch(e){}
+      var sub=nvPfEl("nvPfHeroSub");
+      if(sub){
+        if(!ready) sub.textContent="Loading your details\u2026";
+        else{
+          var since=d.member_since?new Date(d.member_since).toLocaleDateString("en-GB",{ month:"short", year:"numeric", timeZone:"Asia/Karachi" }):"";
+          sub.textContent=[d.pickup_city?("Pickups from "+d.pickup_city):"", since?("With NovaX since "+since):"", nvPfOwner()?"You are the owner":"View only"].filter(Boolean).join(" \u00b7 ");
+        }
+      }
+      var meter=nvPfEl("nvPfMeter"); if(!meter) return;
+      if(!ready){ meter.hidden=true; return; }
+      var todo=NV_PF_PARTS.filter(function(p){ var x=v[p[0]]; return p[0]==="has_logo" ? !x : !String(x||"").trim(); });
+      var kyc=null; try{ kyc=(NV_KYC&&NV_KYC.data)?String(NV_KYC.data.status||""):null; }catch(e){}
+      var total=NV_PF_PARTS.length+1, cnicDone=kyc==="verified", done=total-todo.length-(cnicDone?0:1);
+      meter.hidden=false;
+      var n=nvPfEl("nvPfMeterN"); if(n) n.textContent=done+" of "+total;
+      var t=nvPfEl("nvPfMeterT"); if(t) t.textContent=done===total?"details complete. Nothing missing.":"details complete";
+      var fill=nvPfEl("nvPfMeterFill"); if(fill) fill.style.width=Math.round(done/total*100)+"%";
+      var bar=nvPfEl("nvPfMeterBar"); if(bar) bar.setAttribute("aria-label", done+" of "+total+" profile details complete");
+      meter.classList.toggle("is-full", done===total);
+      var host=nvPfEl("nvPfTodo"); if(!host) return;
+      var can=nvPfOwner();
+      var chips=todo.map(function(p){
+        return can ? '<button type="button" class="nv-pf-todo-b" data-nv-pf-go="'+p[2]+'">'+escLabelText(p[3])+'</button>'
+                   : '<span class="nv-pf-todo-b is-flat">'+escLabelText(p[1])+' missing</span>';
+      });
+      if(!cnicDone) chips.push('<button type="button" class="nv-pf-todo-b" data-nv-pf-jump="nvKycPanel">'+
+        (kyc==="pending"?"CNIC is being checked":kyc==="rejected"?"Send your CNIC again":"Add the owner\u2019s CNIC")+'</button>');
+      var sig=chips.join("|");
+      if(host.__sig!==sig){ host.__sig=sig; host.innerHTML=chips.join(""); host.hidden=!chips.length; }
+    }
+    function nvPfJump(id, focusId){
+      var sec=nvPfEl(id); if(!sec) return;
+      try{ if(sec.tagName==="DETAILS" && !sec.open) sec.open=true; }catch(e){}
+      var calm=false; try{ calm=window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+      try{ sec.scrollIntoView({ behavior:calm?"auto":"smooth", block:"start" }); }catch(e){ try{ sec.scrollIntoView(); }catch(_){} }
+      if(focusId){
+        var f=nvPfEl(focusId);
+        if(f){ try{ var d=f.closest&&f.closest("details"); if(d&&!d.open) d.open=true; }catch(_){}
+               setTimeout(function(){ try{ f.focus({ preventScroll:true }); }catch(_){ try{ f.focus(); }catch(__){} } }, calm?0:280); }
+      }
+    }
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("#client-profile [data-nv-pf-jump],#client-profile [data-nv-pf-go]"):null; if(!t) return;
+      if(t.hasAttribute("data-nv-pf-go")){ var fid=t.getAttribute("data-nv-pf-go"), f=nvPfEl(fid), sec=f&&f.closest?f.closest("details"):null; nvPfJump(sec&&sec.id?sec.id:"nvPfSecBrand", fid); }
+      else nvPfJump(t.getAttribute("data-nv-pf-jump"));
+    });
     function nvPfSync(){
       var v=nvPfValues(), name=v.name||"Your shop", src=nvPfLogoSrc();
       nvPfPaintLogo(nvPfEl("nvPfLogoBox"), src, name);
@@ -14215,9 +14279,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var pick=nvPfEl("nvPfLogoPick"); if(pick) pick.textContent=src?"Change logo":"Upload logo";
       var bar2=nvPfEl("nvPfSaveBar"), dirty=nvPfOwner()&&nvPfDirty();
       if(bar2 && !NV_PF.saving){ bar2.hidden=!dirty; var m=nvPfEl("nvPfSaveMsg"); if(m && dirty && !m.classList.contains("is-err")) m.textContent="You have unsaved changes"; }
+      try{ nvPfHeroPaint(); }catch(e){}
     }
     function nvPfFill(){
       var d=NV_PF.data||{};
+      NV_PF.filled=true;
       var set=function(id,v){ var e=nvPfEl(id); if(e) e.value=v==null?"":v; };
       set("nvPfName",d.name); set("nvPfPhone",d.phone); set("nvPfEmail",d.email); set("nvPfWeb",d.website);
       set("nvPfType",d.business_type); set("nvPfAddr",d.address); set("nvPfWa",d.whatsapp);
@@ -14281,7 +14347,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_PF.hist=(h&&!h.error&&h.data)||[];
         NV_PF.loaded=true;
         nvPfWorkspace(NV_PF.data);
-        if(!nvPfDirty()) nvPfFill(); else nvPfHistory();
+        /* Fill the form the first time, always. This used to ask "has the
+           merchant typed anything?" by comparing the form with the data just
+           loaded -- but the form was still empty, so the answer was always
+           yes and the form stayed blank for every signed-in merchant. A
+           merchant who then typed a name and phone and saved wiped their own
+           address, email, website and what-they-sell (21 such wipes were
+           logged between 29 Sep and 8 Oct 2026). Only a form that has been
+           filled once can hold a merchant's unsaved typing. */
+        if(!NV_PF.filled || !nvPfDirty()) nvPfFill(); else { nvPfHistory(); nvPfHeroPaint(); }
       }).catch(function(){
         NV_PF.loading=false;
         if(err){ err.hidden=false; err.classList.add("is-err"); err.innerHTML='Could not load your profile. Check your connection. <button type="button" class="nv-pf-link" onclick="nvPfLoad(true)">Try again</button>'; }
@@ -14338,7 +14412,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(m){ m.textContent=t; m.classList.toggle("is-err", !!err); }
     }
     function nvPfSave(){
-      if(NV_PF.saving || !NV_PF.loaded) return;
+      /* Never save a form that was not filled from the account first. */
+      if(NV_PF.saving || !NV_PF.loaded || !NV_PF.filled) return;
       if(window.__NOVAX_DEMO){ try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){} return; }
       if(!nvPfOwner()){ nvPfMsg("Only the account owner can change these details.", true); return; }
       var sb=window.__nvSb; if(!sb||!sb.rpc){ nvPfMsg("Still connecting — try again in a moment.", true); return; }
@@ -14512,6 +14587,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).catch(function(){ NV_KYC.thumbKey=""; });
     }
     function nvKycRender(){
+      /* the profile header lists the CNIC as done or still to do */
+      try{ setTimeout(function(){ try{ nvPfHeroPaint(); }catch(e){} },0); }catch(e){}
       var d=NV_KYC.data; if(!d) return;
       var owner=!!d.is_owner, st=d.status||"missing";
       var ban=nvKycEl("nvKycBanner");
@@ -15321,7 +15398,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     (function nvScrollHints(){
       try{
         if(window.__nvScrollHints) return; window.__nvScrollHints=true;
-        var SEL=".nvw-filters,.nvr-tabs,.nvr-chips,#nvAiChips,.nvauto-chips";
+        var SEL=".nvw-filters,.nvr-tabs,.nvr-chips,#nvAiChips,.nvauto-chips,.nv-pf-nav";
         function paint(el){
           var room=el.scrollWidth-el.clientWidth;
           el.classList.toggle("nv-more-r",room-el.scrollLeft>6);

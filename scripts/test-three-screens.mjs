@@ -79,18 +79,57 @@ console.log("THREE SCREENS CHECKS PASSED");
 
   // Profile: sections that fold, nothing removed.
   const p = section("client-profile", 'id="client-subAccounts"');
-  assert.equal((p.match(/<details class="panel[^"]* nv-pf-sec"/g) || []).length, 9, "eight sections and the preview");
-  assert.equal((p.match(/<\/details>/g) || []).length, 9);
-  assert.equal((p.match(/<summary class="section-head">/g) || []).length, 9);
-  assert.equal((p.match(/nv-pf-sec"[^>]* open>/g) || []).length, 9, "all open in the page itself, so nothing is hidden without the script");
-  assert.match(p, /<details class="panel nv-pf-sec" open>\s*<summary class="section-head"><div><h3>Business profile<\/h3>/, "the first section never starts shut");
-  assert.equal((p.match(/data-nv-fold="phone"/g) || []).length, 7);
+  // (10 Oct 2026: "Business" was merged into "Business profile", so seven sections and the preview.)
+  assert.equal((p.match(/<details class="panel[^"]* nv-pf-sec"/g) || []).length, 8, "seven sections and the preview");
+  assert.equal((p.match(/<\/details>/g) || []).length, 8);
+  assert.equal((p.match(/<summary class="section-head">/g) || []).length, 8);
+  assert.equal((p.match(/nv-pf-sec"[^>]* open>/g) || []).length, 8, "all open in the page itself, so nothing is hidden without the script");
+  assert.match(p, /<details class="panel nv-pf-sec" id="nvPfSecBrand" open>\s*<summary class="section-head"><div><h3>Business profile<\/h3>/, "the first section never starts shut");
+  assert.equal((p.match(/data-nv-fold="phone"/g) || []).length, 6);
   assert.match(p, /id="nvKycPanel" data-nv-fold="phone-verified" open>/, "the CNIC section starts shut only once verified");
   ["nvPfLogo","nvPfName","nvPfAccent","nvPfPhone","nvPfWa","nvPfEmail","nvPfWeb","nvPfType","nvPfAddr","nvPfTrackOn","nvPfCity","nvPfCityReq","nvKycPanel","nvKycSend","nvKycReplace","nvPfHistory","nvPfSaveBar","nvPfSave","nvPfDiscard","nvPfPvTrack"].forEach(once);
   const fold = fnSrc("nvPfFoldOnce");
   assert.ok(fold.includes('matchMedia("(max-width:760px)")') && fold.includes("if(NV_PF.folded) return; NV_PF.folded=true;"), "phones only, once per visit");
   assert.ok(!/nvPfEl\("nvPf[A-Za-z]+"\)\.focus\(\)/.test(app) && fnSrc("nvPfShow").includes("d.open=true"), "a save that fails on a field opens its section");
-  ok("profile: eight folding sections, every field still in the page, phones start with the first one open");
+  ok("profile: seven folding sections, every field still in the page, phones start with the first one open");
+
+  // Profile, 10 Oct 2026: the form must fill the first time, whatever loaded first.
+  {
+    const load = fnSrc("nvPfLoad");
+    assert.ok(load.includes("if(!NV_PF.filled || !nvPfDirty()) nvPfFill(); else { nvPfHistory(); nvPfHeroPaint(); }"), "an unfilled form is always filled");
+    assert.ok(fnSrc("nvPfFill").includes("NV_PF.filled=true;") && fnSrc("nvPfDirty").includes("if(!NV_PF.loaded || !NV_PF.filled) return false;"));
+    assert.ok(fnSrc("nvPfSave").includes("if(NV_PF.saving || !NV_PF.loaded || !NV_PF.filled) return;"), "a form that was never filled cannot be saved");
+    // Run the real functions in the order a signed-in page runs them: data arrives while the form is empty.
+    const els = {}; const el = (id) => (els[id] = els[id] || { id, value: "", checked: false, hidden: false, textContent: "", style: { setProperty() {} }, classList: { toggle() {}, remove() {}, add() {}, contains: () => false }, setAttribute() {}, querySelectorAll: () => [], innerHTML: "" });
+    const doc = { getElementById: (id) => (/^(nvPfLoadErr|nvPfName|nvPfPhone|nvPfEmail|nvPfWeb|nvPfType|nvPfAddr|nvPfWa|nvPfAccent|nvPfTrackOn)$/.test(id) ? el(id) : null), querySelectorAll: () => [] };
+    const real = { name: "KKM Test", phone: "03001234567", email: "a@b.pk", website: "", business_type: "Sweets", address: "Shop 1, Lahore", accent: "", whatsapp: "", tracking_on: false, logo_url: "", is_owner: true };
+    const sb = { rpc: () => Promise.resolve({ data: real, error: null }), from: () => ({ select: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }) }) };
+    const win = { __nvSb: sb, __NOVAX_DEMO: false };
+    const src = /    var NV_PF=\{[^;]*\};/.exec(app)[0] + 'var NV_PF_DEFAULT_ACCENT="#0c7c59";' +
+      ["nvPfEl", "nvPfOwner", "nvPfVal", "nvPfValues", "nvPfBaseline", "nvPfDirty", "nvPfFill", "nvPfLoad"].map((n) => fnSrc(n)).join("\n") +
+      "function nvPfSync(){} function nvPfHistory(){} function nvPfHeroPaint(){} function nvPfWorkspace(){} return { NV_PF, nvPfLoad, nvPfDirty };";
+    const api = new Function("document", "window", "state", src)(doc, win, { client: { name: "KKM Test" } });
+    await api.nvPfLoad(false);
+    assert.equal(els.nvPfName.value, "KKM Test", "the name is in the form");
+    assert.equal(els.nvPfAddr.value + "|" + els.nvPfEmail.value + "|" + els.nvPfType.value, "Shop 1, Lahore|a@b.pk|Sweets", "and so are the optional details a blank form used to wipe");
+    assert.equal(api.nvPfDirty(), false, "nothing reads as changed");
+    els.nvPfType.value = "Sweets and nimco";
+    await api.nvPfLoad(true);
+    assert.equal(els.nvPfType.value, "Sweets and nimco", "typing that is not saved yet survives a reload in the background");
+    ok("profile: the form fills on first load even when the details arrived before the tab was opened");
+  }
+  // Profile header and jump links.
+  {
+    ["nvPfHero","nvPfHeroLogo","nvPfHeroName","nvPfHeroSub","nvPfMeter","nvPfMeterN","nvPfMeterFill","nvPfTodo","nvPfNav","nvPfSecBrand","nvPfSecContact","nvPfSecTrack","nvPfSecAccount","nvPfSecNotify","nvPfSecHistory"].forEach(once);
+    const jumps = [...p.matchAll(/data-nv-pf-jump="(\w+)"/g)].map((m) => m[1]);
+    assert.deepEqual(jumps, ["nvPfSecBrand", "nvPfSecContact", "nvPfSecTrack", "nvKycPanel", "nvPfSecAccount", "nvPfSecNotify", "nvPfSecHistory"], "one link for each section, in page order");
+    const order = [...p.matchAll(/<details class="panel[^"]* nv-pf-sec"(?: id="(\w+)")?/g)].map((m) => m[1]).filter(Boolean);
+    assert.deepEqual(order, jumps, "and the sections are in that order");
+    const parts = /var NV_PF_PARTS=\[([\s\S]*?)\];/.exec(app)[1];
+    for (const m of parts.matchAll(/\["(\w+)","[^"]+","(\w+)","([^"]+)"\]/g)) { assert.ok(p.includes('id="' + m[2] + '"'), m[2] + " is a real field"); assert.ok(!/\(s\)/.test(m[3]) && /^[A-Z]/.test(m[3])); }
+    assert.equal([...parts.matchAll(/\["\w+"/g)].length, 7, "seven details and the CNIC make eight");
+    ok("profile: header with what is missing, and a link to every section");
+  }
 }
 console.log("INVOICE, PROFILE AND WALLET CARD CHECKS PASSED");
 
