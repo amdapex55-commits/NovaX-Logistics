@@ -48,12 +48,19 @@
     selectAll: ["Select all", "Sab chuno"], nothing: ["Nothing here.", "Yahan kuch nahi."], call: ["Call", "Call"], directions: ["Directions", "Rasta"],
     saved: ["Saved on phone — sending…", "Phone par save — bhej rahe hain…"], attempts: ["attempt", "koshish"], toCollect: ["to collect", "uthane hain"],
     incoming: ["arriving", "aane wale"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
-    exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"]
+    exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"],
+    installTitle: ["Add NovaX Rider to your home screen", "NovaX Rider ko home screen par lagayein"], installSub: ["It opens like an app, with one tap.", "App ki tarah ek tap se khulega."],
+    installBtn: ["Add", "Lagayein"], installDone: ["NovaX Rider is on your home screen.", "NovaX Rider home screen par lag gaya."],
+    installAndroid: ["Tap the menu (⋮) at the top of your browser, then “Add to Home screen” or “Install app”.", "Browser ke upar menu (⋮) dabayein, phir “Add to Home screen” ya “Install app” chunein."],
+    installIos: ["Tap the Share button (the square with an arrow) at the bottom of Safari, then “Add to Home Screen”, then “Add”.", "Safari ke neeche Share button (teer wala dabba) dabayein, phir “Add to Home Screen”, phir “Add”."],
+    installIosOther: ["On iPhone this works in Safari. Open novaxlogistics.com/rider.html in Safari, tap Share, then “Add to Home Screen”.", "iPhone par yeh Safari mein hota hai. Safari mein novaxlogistics.com/rider.html kholein, Share dabayein, phir “Add to Home Screen”."],
+    installInApp: ["Open this page in Chrome first: tap the menu (⋮) and choose “Open in Chrome”. Then add it to your home screen from there.", "Pehle yeh page Chrome mein kholein: menu (⋮) dabayein aur “Open in Chrome” chunein. Phir wahan se home screen par lagayein."]
   };
   function t(k, vars) { var s = (TXT[k] || [k, k])[LANG === "ur" ? 1 : 0]; if (vars) Object.keys(vars).forEach(function (v) { s = s.split("{" + v + "}").join(vars[v]); }); return s; }
   function paintWords() {
     document.querySelectorAll("[data-t]").forEach(function (el) { el.textContent = t(el.getAttribute("data-t")); });
     q("langBtn").textContent = LANG === "ur" ? "English" : "Urdu";
+    if (installStepsKey && q("installSteps")) q("installSteps").textContent = t(installStepsKey);
     document.documentElement.lang = LANG === "ur" ? "ur-Latn" : "en";
   }
 
@@ -601,6 +608,43 @@
     var place = { pickup: "Pickup", incoming: "Delivery → Arriving", station: "Delivery → At station", out: "Delivery → Out now", transit: "Transit", done: "Delivered" }[p.bucket] || p.status;
     ping(p.awb + " is in " + place + " (" + p.status + ").", "info"); return false;
   }
+
+  /* ---- add to home screen ------------------------------------------------
+     Android (Chrome, Samsung, Edge) hands us an install prompt to show when
+     the rider taps Add. iPhone and the browsers that give no prompt get the
+     steps for their own menu instead. Nothing shows once the app is running
+     from the home screen, or after the rider says not now on this phone. */
+  var installEvt = null, installStepsKey = "";
+  function standalone() { try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (_) { return false; } }
+  function installKind() {
+    var ua = navigator.userAgent || "";
+    if (/FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/i.test(ua)) return "installInApp";
+    if (/Android/i.test(ua)) return "installAndroid";
+    if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua) ? "installIosOther" : "installIos";
+    return "installAndroid";
+  }
+  function installFlag(k) { try { return localStorage.getItem(k) === "1"; } catch (_) { return false; } }
+  function paintInstall() {
+    var card = q("installCard"); if (!card) return;
+    /* a fresh prompt means the app is not installed (any more), whatever this phone remembered */
+    var show = !standalone() && !installFlag("novaxRiderInstallHide") && (!!installEvt || !installFlag("novaxRiderInstalled"));
+    card.classList.toggle("hidden", !show);
+  }
+  q("installBtn").onclick = async function () {
+    if (installEvt) {
+      var e = installEvt; installEvt = null;
+      try { e.prompt(); await e.userChoice; } catch (_) {}
+      paintInstall(); return;
+    }
+    installStepsKey = installKind(); q("installSteps").textContent = t(installStepsKey); q("installSteps").classList.remove("hidden");
+  };
+  q("installHide").onclick = function () { try { localStorage.setItem("novaxRiderInstallHide", "1"); } catch (_) {} q("installCard").classList.add("hidden"); };
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installEvt = e; paintInstall(); });
+  window.addEventListener("appinstalled", function () {
+    installEvt = null; try { localStorage.setItem("novaxRiderInstalled", "1"); } catch (_) {}
+    paintInstall(); ping(t("installDone"), "ok", 30);
+  });
+  paintInstall();
 
   /* ---- scanning ---------------------------------------------------------- */
   var scanSession = null;

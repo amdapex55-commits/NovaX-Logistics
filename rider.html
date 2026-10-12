@@ -25,12 +25,24 @@
   </script>
   <title>NovaX | Rider</title>
   <link rel="icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="rider.css?v=483a6676">
+  <!-- Add to home screen (12 Oct 2026). The manifest is what makes Android
+       offer "Install app" and open the rider app in its own window; iPhone
+       reads none of it and needs the apple-* lines instead. Its scope is the
+       whole site on purpose: signing in happens on index.html, and that must
+       stay inside the installed app's window. -->
+  <link rel="manifest" href="/assets/rider.webmanifest">
+  <meta name="theme-color" content="#071d17">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="NovaX Rider">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="stylesheet" href="rider.css?v=62611d48">
   <script defer src="assets/vendor/supabase-2.117.2.js"></script>
   <script defer src="nv-payment.js"></script>
   <script defer src="nv-journey.js?v=77db2b46"></script>
   <script defer src="rider-core.js?v=c799fd38"></script>
-  <script defer src="rider-app.js?v=517928ac"></script>
+  <script defer src="rider-app.js?v=df836cf6"></script>
 </head>
 <body>
   <div class="gate" id="gate"><div class="gatebox">
@@ -47,6 +59,13 @@
     <div class="notice" id="queueNote" role="status" aria-live="polite"></div><div id="queueReview" class="list"></div>
 
     <section class="view" id="view-home">
+      <section class="install hidden" id="installCard" aria-label="Add to home screen">
+        <img src="/assets/icon-192.png" width="40" height="40" alt="">
+        <div class="install-txt"><b data-t="installTitle">Add NovaX Rider to your home screen</b><small data-t="installSub">It opens like an app, with one tap.</small></div>
+        <button class="btn" type="button" id="installBtn" data-t="installBtn">Add</button>
+        <button class="install-x" type="button" id="installHide" aria-label="Not now">&times;</button>
+        <p class="install-steps hidden" id="installSteps" role="status"></p>
+      </section>
       <div class="home-grid">
         <button class="home-btn" data-view="pickup"><span class="home-ic" aria-hidden="true">&#128230;</span><b data-t="pickup">Parcel Pickup</b><small id="homePickup"></small></button>
         <button class="home-btn" data-view="delivery"><span class="home-ic" aria-hidden="true">&#128666;</span><b data-t="delivery">Parcel Delivery</b><small id="homeDelivery"></small></button>
