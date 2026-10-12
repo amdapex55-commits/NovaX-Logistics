@@ -47,16 +47,33 @@ async function app({ua,standalone,flags}={}){
   return{dom,w,q,shown:()=>!q('installCard').classList.contains('hidden')};
 }
 {
-  let a=await app();assert.equal(a.shown(),true,'offered in a browser tab');assert.equal(a.q('installSteps').classList.contains('hidden'),true);
-  a.q('installBtn').click();await wait();assert.match(a.q('installSteps').textContent,/menu \(⋮\).*Add to Home screen.*Install app/);
-  a.q('langBtn').click();await wait();assert.match(a.q('installSteps').textContent,/Browser ke upar menu/);assert.match(a.q('installCard').textContent,/home screen par lagayein/);a.dom.window.close();
-  a=await app({ua:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'});
-  a.q('installBtn').click();await wait();assert.match(a.q('installSteps').textContent,/Share button.*Add to Home Screen/);a.dom.window.close();
-  a=await app({ua:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0 Mobile/15E148 Safari/604.1'});
-  a.q('installBtn').click();await wait();assert.match(a.q('installSteps').textContent,/works in Safari/);a.dom.window.close();
-  a=await app({ua:'Mozilla/5.0 (Linux; Android 13; SM-A135F; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0 Mobile Safari/537.36 WhatsApp/2.24'});
-  a.q('installBtn').click();await wait();assert.match(a.q('installSteps').textContent,/Open this page in Chrome first/);a.dom.window.close();
-  ok('Add without a prompt: the right steps for Android, iPhone Safari, iPhone Chrome and WhatsApp\'s browser, in both languages');
+  const CHROME='Mozilla/5.0 (Linux; Android 13; SM-A135F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+  const steps=async(ua)=>{const a=await app({ua});a.q('installBtn').click();await wait();const r={text:a.q('installSteps').textContent,chrome:!a.q('installChrome').classList.contains('hidden'),a};return r;};
+  let a=await app();assert.equal(a.shown(),true,'offered in a browser tab');assert.equal(a.q('installSteps').classList.contains('hidden'),true);assert.equal(a.q('installChrome').classList.contains('hidden'),true);a.dom.window.close();
+  // every browser gets the words of its own menu; on Android there is always a way into Chrome
+  let r=await steps(CHROME);assert.match(r.text,/⋮ at the top right of Chrome.*Add to Home screen.*Install app.*Open in Chrome/);assert.equal(r.chrome,true);
+  assert.match(r.a.q('installChrome').getAttribute('href'),/^intent:\/\/novaxlogistics\.com\/rider\.html#Intent;scheme=https;package=com\.android\.chrome;S\.browser_fallback_url=https%3A%2F%2Fnovaxlogistics\.com%2Frider\.html;end$/);
+  r.a.q('langBtn').click();await wait();assert.match(r.a.q('installSteps').textContent,/Chrome mein upar dayein/);assert.equal(r.a.q('installChrome').textContent,'Chrome mein kholein');assert.match(r.a.q('installCard').textContent,/home screen par lagayein/);r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (Linux; Android 13; SAMSUNG SM-A135F) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/25.0 Chrome/121.0.0.0 Mobile Safari/537.36');assert.match(r.text,/Add page to.*Home screen/);assert.equal(r.chrome,true);r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (Android 13; Mobile; rv:127.0) Gecko/127.0 Firefox/127.0');assert.match(r.text,/Add to Home screen.*Install/);r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (Linux; Android 12; Infinix X6515) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 OPR/82.0');assert.match(r.text,/Opera menu/);r.a.dom.window.close();
+  for(const ua of ['Mozilla/5.0 (Linux; Android 13; SM-A135F; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0 Mobile Safari/537.36 WhatsApp/2.24',
+    'Mozilla/5.0 (Linux; U; Android 13; en-us; Redmi Note 12) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0 Mobile Safari/537.36 XiaoMi/MiuiBrowser/14.5',
+    'Mozilla/5.0 (Linux; Android 12; TECNO KI5k) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0 Mobile Safari/537.36 PHX/14.2']){
+    r=await steps(ua);assert.match(r.text,/This browser cannot put an app on the home screen\. Tap “Open in Chrome” below/);assert.equal(r.chrome,true);r.a.dom.window.close();}
+  r=await steps('Mozilla/5.0 (Linux; Android 12; TECNO KI5k) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0 Mobile Safari/537.36');assert.match(r.text,/top right of Chrome/,'a Tecno phone running Chrome is Chrome');r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1');assert.match(r.text,/Share button.*Add to Home Screen/);assert.equal(r.chrome,false,'no Chrome button on an iPhone');r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0 Mobile/15E148 Safari/604.1');assert.match(r.text,/Share button.*open this page in Safari/);r.a.dom.window.close();
+  r=await steps('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');assert.match(r.text,/made for the rider’s phone.*install icon/);assert.equal(r.chrome,false);r.a.dom.window.close();
+  ok('Add without a prompt: each browser\'s own menu words (Chrome, Samsung, Firefox, Opera, iPhone, computer), and a way into Chrome where the browser cannot do it');
+
+  // the prompt arrives while the rider is reading the steps: he is told the button is ready
+  a=await app({ua:CHROME});a.q('installBtn').click();await wait();assert.equal(a.q('installChrome').classList.contains('hidden'),false);
+  { let n=0;const late=new a.w.Event('beforeinstallprompt',{cancelable:true});late.prompt=()=>{n++;};late.userChoice=Promise.resolve({outcome:'accepted'});a.w.dispatchEvent(late);
+    assert.equal(a.q('installSteps').textContent,'Ready. Tap Add now.');assert.equal(a.q('installChrome').classList.contains('hidden'),true);
+    a.q('installBtn').click();await wait();assert.equal(n,1);assert.equal(a.q('installSteps').classList.contains('hidden'),true); }
+  a.dom.window.close();
+  ok('a prompt that arrives late turns the steps into "Ready. Tap Add now."');
 
   // Android hands over a prompt: the tap shows it, once
   a=await app();let prompted=0,prevented=false;

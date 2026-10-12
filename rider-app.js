@@ -62,10 +62,16 @@
     demoNoCall: ["Preview: calls and WhatsApp are switched off.", "Namoona: call aur WhatsApp band hain."],
     installTitle: ["Add NovaX Rider to your home screen", "NovaX Rider ko home screen par lagayein"], installSub: ["It opens like an app, with one tap.", "App ki tarah ek tap se khulega."],
     installBtn: ["Add", "Lagayein"], installDone: ["NovaX Rider is on your home screen.", "NovaX Rider home screen par lag gaya."],
-    installAndroid: ["Tap the menu (⋮) at the top of your browser, then “Add to Home screen” or “Install app”.", "Browser ke upar menu (⋮) dabayein, phir “Add to Home screen” ya “Install app” chunein."],
+    installAndroid: ["Tap ⋮ at the top right of Chrome, then “Add to Home screen”. On some phones it says “Install app”. If it is not in the list, tap “Open in Chrome” below and tap Add again there.", "Chrome mein upar dayein ⋮ dabayein, phir “Add to Home screen”. Kuch phones mein “Install app” likha hota hai. Agar list mein na ho to neeche “Chrome mein kholein” dabayein aur wahan dobara Lagayein dabayein."],
+    installSamsung: ["Tap ☰ at the bottom right, then “Add page to”, then “Home screen”. Or tap “Open in Chrome” below and tap Add there.", "Neeche dayein ☰ dabayein, phir “Add page to”, phir “Home screen”. Ya neeche “Chrome mein kholein” dabayein aur wahan Lagayein dabayein."],
+    installFirefox: ["Tap ⋮, then “Add to Home screen” (or “Install”). Or tap “Open in Chrome” below and tap Add there.", "⋮ dabayein, phir “Add to Home screen” (ya “Install”). Ya neeche “Chrome mein kholein” dabayein aur wahan Lagayein dabayein."],
+    installOpera: ["Tap the Opera menu, then “Add to…”, then “Home screen”. Or tap “Open in Chrome” below and tap Add there.", "Opera ka menu dabayein, phir “Add to…”, phir “Home screen”. Ya neeche “Chrome mein kholein” dabayein aur wahan Lagayein dabayein."],
+    installEdge: ["Tap ☰ at the bottom, then “Add to phone”. Or tap “Open in Chrome” below and tap Add there.", "Neeche ☰ dabayein, phir “Add to phone”. Ya neeche “Chrome mein kholein” dabayein aur wahan Lagayein dabayein."],
+    installOtherAndroid: ["This browser cannot put an app on the home screen. Tap “Open in Chrome” below, then tap Add there.", "Is browser se app home screen par nahi lagti. Neeche “Chrome mein kholein” dabayein, phir wahan Lagayein dabayein."],
     installIos: ["Tap the Share button (the square with an arrow) at the bottom of Safari, then “Add to Home Screen”, then “Add”.", "Safari ke neeche Share button (teer wala dabba) dabayein, phir “Add to Home Screen”, phir “Add”."],
-    installIosOther: ["On iPhone this works in Safari. Open novaxlogistics.com/rider.html in Safari, tap Share, then “Add to Home Screen”.", "iPhone par yeh Safari mein hota hai. Safari mein novaxlogistics.com/rider.html kholein, Share dabayein, phir “Add to Home Screen”."],
-    installInApp: ["Open this page in Chrome first: tap the menu (⋮) and choose “Open in Chrome”. Then add it to your home screen from there.", "Pehle yeh page Chrome mein kholein: menu (⋮) dabayein aur “Open in Chrome” chunein. Phir wahan se home screen par lagayein."]
+    installIosOther: ["Tap the Share button, then “Add to Home Screen”. If it is not there, open this page in Safari and do the same.", "Share button dabayein, phir “Add to Home Screen”. Agar na ho to yeh page Safari mein kholein aur wahi karein."],
+    installDesktop: ["This is made for the rider’s phone. On a computer, click the install icon at the right end of the address bar in Chrome or Edge.", "Yeh rider ke phone ke liye hai. Computer par Chrome ya Edge mein address bar ke dayein kinare install ka nishan dabayein."],
+    installReady: ["Ready. Tap Add now.", "Tayyar hai. Ab Lagayein dabayein."], installOpenChrome: ["Open in Chrome", "Chrome mein kholein"]
   };
   function t(k, vars) { var s = (TXT[k] || [k, k])[LANG === "ur" ? 1 : 0]; if (vars) Object.keys(vars).forEach(function (v) { s = s.split("{" + v + "}").join(vars[v]); }); return s; }
   function paintWords() {
@@ -637,12 +643,21 @@
      from the home screen, or after the rider says not now on this phone. */
   var installEvt = null, installStepsKey = "";
   function standalone() { try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (_) { return false; } }
+  /* Which steps to show. The menu is different in every browser, and several
+     (in-app browsers, some phone makers' own) cannot do it at all: those are
+     sent to Chrome, where it always works. */
   function installKind() {
     var ua = navigator.userAgent || "";
-    if (/FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/i.test(ua)) return "installInApp";
-    if (/Android/i.test(ua)) return "installAndroid";
+    if (/Android/i.test(ua)) {
+      if (/; wv\)|FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|MicroMessenger|Snapchat|TikTok|MiuiBrowser|VivoBrowser|HeyTapBrowser|OppoBrowser|UCBrowser|PHX\//i.test(ua)) return "installOtherAndroid";
+      if (/SamsungBrowser/i.test(ua)) return "installSamsung";
+      if (/Firefox/i.test(ua)) return "installFirefox";
+      if (/OPR\/|Opera/i.test(ua)) return "installOpera";
+      if (/EdgA\//i.test(ua)) return "installEdge";
+      return "installAndroid";
+    }
     if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua) ? "installIosOther" : "installIos";
-    return "installAndroid";
+    return "installDesktop";
   }
   function installFlag(k) { try { return localStorage.getItem(k) === "1"; } catch (_) { return false; } }
   function paintInstall() {
@@ -655,12 +670,21 @@
     if (installEvt) {
       var e = installEvt; installEvt = null;
       try { e.prompt(); await e.userChoice; } catch (_) {}
+      installStepsKey = ""; q("installSteps").classList.add("hidden"); q("installChrome").classList.add("hidden");
       paintInstall(); return;
     }
     installStepsKey = installKind(); q("installSteps").textContent = t(installStepsKey); q("installSteps").classList.remove("hidden");
+    q("installChrome").classList.toggle("hidden", !/Android/i.test(navigator.userAgent || ""));
   };
   q("installHide").onclick = function () { try { localStorage.setItem("novaxRiderInstallHide", "1"); } catch (_) {} q("installCard").classList.add("hidden"); };
-  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installEvt = e; paintInstall(); });
+  /* Chrome hands the prompt over only after about half a minute on the page.
+     If the rider tapped Add before that and is reading the steps, tell him
+     the button is ready now. */
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault(); installEvt = e;
+    if (installStepsKey) { installStepsKey = "installReady"; q("installSteps").textContent = t("installReady"); q("installChrome").classList.add("hidden"); }
+    paintInstall();
+  });
   window.addEventListener("appinstalled", function () {
     installEvt = null; try { localStorage.setItem("novaxRiderInstalled", "1"); } catch (_) {}
     paintInstall(); ping(t("installDone"), "ok", 30);
