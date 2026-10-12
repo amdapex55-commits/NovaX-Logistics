@@ -431,9 +431,14 @@
       })) throw new Error("This action is already saved. Reconnect or ask the office to review it; do not submit it twice.");
       queue.add(Object.assign(job, { key: key(job.kind), at: new Date().toISOString(), state: "pending" }));
     });
-    render(); msg("Saved on this phone. Awaiting server confirmation.", "info", id);
+    render(); msg(SAVED_MSG, "info", id);
     ping(navigator.onLine ? "Saved — sending to NovaX…" : "Saved on this phone. It will send when you are back online.", "info", 30);
   }
+  /* "Awaiting server confirmation" is true only until NovaX answers. It used
+     to stay on screen after the green "✓ collected", so a rider could not
+     tell whether the action had gone through. */
+  var SAVED_MSG = "Saved on this phone. Awaiting server confirmation.";
+  function clearSaved() { ["notice", "expenseResult", "cashResult"].forEach(function (id) { var el = q(id); if (el && el.textContent === SAVED_MSG) { el.className = "notice"; el.textContent = ""; } }); }
   var DONE_WORDS = { collect: "collected", receive: "received", out: "out for delivery", delivered: "delivered", reattempt: "set for reattempt", refused: "marked refused", not_available: "marked not available", transit: "sent" };
   async function flush() {
     if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) return;
@@ -483,7 +488,7 @@
         }
       });
     } catch (e) { connected = false; msg(String(e.message || e), "error"); }
-    finally { flushing = false; render(); if (changed) void load(true); }
+    finally { flushing = false; if (changed && !jobs().some(function (j) { return j.state !== "review"; })) clearSaved(); render(); if (changed) void load(true); }
   }
 
   /* ---- dialogs ----------------------------------------------------------- */

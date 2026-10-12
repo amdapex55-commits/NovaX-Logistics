@@ -46,6 +46,8 @@ a.pick('N1000000');assert.equal(a.q('actionBar').classList.contains('hidden'),fa
 a.q('actionGo').click();await wait(120);
 let req=a.fixture.requests.filter(r=>r.name==='rider_station_action');
 assert.equal(req.length,1);assert.equal(req[0].args.p_action,'collect');assert.equal(JSON.stringify(req[0].args.p_awbs),'["N1000000"]');
+// once NovaX has answered, "awaiting server confirmation" is no longer on the screen
+assert.equal(a.q('notice').classList.contains('show'),false);assert.match(a.w.document.getElementById('riderToast').textContent,/1 parcel collected/);
 
 // Pickup is the rider's own city: no tabs, and nothing that is coming from another city
 assert.equal(a.w.document.querySelectorAll('#view-pickup [data-tab]').length,0);
@@ -96,6 +98,7 @@ a.dom.window.close();
 a=await app();a.fixture.online=false;a.w.dispatchEvent(new a.w.Event('offline'));a.go('pickup');a.pick('N1000000');a.q('actionGo').click();await wait(120);
 assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY)).length,1);assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').length,0);
 assert.match(a.q('collectList').textContent,/Saved on phone/);assert.equal(a.q('depositCashBtn').disabled,true);
+assert.equal(a.q('notice').textContent,'Saved on this phone. Awaiting server confirmation.');assert.equal(a.q('notice').classList.contains('show'),true);   // not confirmed yet: the line stays
 const cached={};for(let i=0;i<a.w.localStorage.length;i++){const k=a.w.localStorage.key(i);cached[k]=a.w.localStorage.getItem(k);}a.dom.window.close();
 // offline reload shows the saved station
 const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'});installFixture(dom.window,{online:false});Object.entries(cached).forEach(([k,v])=>dom.window.localStorage.setItem(k,v));scripts.forEach(s=>dom.window.eval(s));await wait(80);
