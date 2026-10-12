@@ -442,7 +442,7 @@
   var DONE_WORDS = { collect: "collected", receive: "received", out: "out for delivery", delivered: "delivered", reattempt: "set for reattempt", refused: "marked refused", not_available: "marked not available", transit: "sent" };
   async function flush() {
     if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) return;
-    flushing = true; controls(); var changed = false;
+    flushing = true; controls(); var changed = false, rejected = false;
     try {
       await lock(async function () {
         var pending = jobs().filter(function (j) { return j.state !== "review"; });
@@ -470,6 +470,10 @@
               clearTimeout(retryTimer); retryTimer = setTimeout(function () { void flush(); }, retryDelay);
               break;
             }
+            /* With two riders on one station the usual refusal is "the other
+               rider already has it". Fetch the station again so the parcel
+               leaves this screen now, not at the next minute's refresh. */
+            rejected = true;
             queue.change(j.key, { state: "review", error: String(response.error.message || response.error) });
             msg("Action rejected. Its reference is kept for office review: " + String(response.error.message || response.error), "error");
             ping("Not accepted: " + String(response.error.message || response.error).slice(0, 140), "error", [120]); break;
@@ -488,7 +492,7 @@
         }
       });
     } catch (e) { connected = false; msg(String(e.message || e), "error"); }
-    finally { flushing = false; if (changed && !jobs().some(function (j) { return j.state !== "review"; })) clearSaved(); render(); if (changed) void load(true); }
+    finally { flushing = false; if (changed && !jobs().some(function (j) { return j.state !== "review"; })) clearSaved(); render(); if (changed || rejected) void load(true); }
   }
 
   /* ---- dialogs ----------------------------------------------------------- */

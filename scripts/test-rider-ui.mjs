@@ -105,8 +105,10 @@ const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScr
 assert.equal(dom.window.document.getElementById('gate').classList.contains('hidden'),true);assert.match(dom.window.document.getElementById('notice').textContent,/last saved station/);dom.window.close();
 
 // rejection goes to office review
-a=await app();a.fixture.failRpc='reject';a.go('pickup');a.pick('N1000000');a.q('actionGo').click();await wait(120);
-assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY))[0].state,'review');assert.match(a.q('queueReview').textContent,/Not assigned/);a.dom.window.close();
+a=await app();a.fixture.failRpc='reject';a.go('pickup');a.pick('N1000000');const viewsBefore=a.fixture.requests.filter(r=>r.name==='rider_station_view').length;a.q('actionGo').click();await wait(160);
+assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY))[0].state,'review');assert.match(a.q('queueReview').textContent,/Not assigned/);
+// a refusal (with two riders: "the other one has it") fetches the station again at once, so the stale parcel leaves the screen
+assert.ok(a.fixture.requests.filter(r=>r.name==='rider_station_view').length>viewsBefore,'the station is fetched again after a refusal');a.dom.window.close();
 
 // COD/prepaid conflict disables Delivered
 a=await app({conflict:true});a.go('delivery');a.tab('delivery:out');
