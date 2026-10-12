@@ -21,12 +21,14 @@ const ok = (m) => console.log("ok - " + m);
 {
   const store = {}; const ls = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
   const src = /  function rememberNote\(email\) \{[\s\S]*?\n  \}\n/.exec(rider)[0] + /  function forgetNote\(\) \{[\s\S]*?\n  \}\n/.exec(rider)[0];
-  const api = new Function("localStorage", "userId", "riderId", src + "return { rememberNote, forgetNote };");
+  const api = new Function("localStorage", "userId", "riderId", "DEMO", src + "return { rememberNote, forgetNote };");
   const mine = api(ls, "rider-1", "R-9");
   mine.rememberNote("rider@example.com");
   const note = JSON.parse(store.novaxSession);
   assert.equal(note.role + "|" + note.uid + "|" + note.rider_id + "|" + note.email, "rider|rider-1|R-9|rider@example.com");
   api(ls, "someone-else", "R-1").forgetNote();
+  { const before = JSON.stringify(store); const demo = api(ls, "demo-user", "demo-rider", true); demo.rememberNote(""); demo.forgetNote();
+    assert.equal(JSON.stringify(store), before, "the ?demo preview neither writes the note nor removes a real rider's"); }
   assert.ok(store.novaxSession, "another login signing out does not remove this rider's note");
   mine.forgetNote();
   assert.equal(store.novaxSession, undefined, "this rider signing out removes it");

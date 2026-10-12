@@ -11,7 +11,16 @@
      cities. Actions are saved on the phone first (offline-safe, one key per
      action, replayed until the server answers). */
   var R = window.NovaXRider, P = window.NovaXPayment;
-  var sb = window.supabase && window.supabase.createClient(
+  /* ═══ PREVIEW (?demo=1) ═════════════════════════════════════════════════
+     The rider app with sample data and no sign-in, to show a new rider or a
+     partner what it looks like. Same rule as the merchant portal's demo:
+     there is no account and no connection to NovaX at all. The "server" is
+     an object in this page's memory (demoClient, below), so a real station
+     can be neither read nor changed, and nothing is kept on the phone.
+     Everything about it is inert unless ?demo is in the address. */
+  var DEMO = (function () { try { return new URLSearchParams(location.search).has("demo"); } catch (_) { return /[?&]demo\b/.test(location.search); } })();
+  var store = DEMO ? (function () { var m = {}; return { getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; }, setItem: function (k, v) { m[k] = String(v); }, removeItem: function (k) { delete m[k]; } }; })() : (function () { try { return window.localStorage; } catch (_) { return null; } })();
+  var sb = DEMO ? demoClient() : window.supabase && window.supabase.createClient(
     "https://rhzunbzbdzicajqtohwp.supabase.co", "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA",
     { global: { fetch: async function (url, options) {
       var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 20000);
@@ -21,7 +30,7 @@
       try { return await fetch(url, Object.assign({}, options, { signal: controller.signal })); }
       finally { clearTimeout(timer); if (source) source.removeEventListener("abort", abort); }
     } } });
-  if (sb) window.NovaXRiderClient = sb;   /* rider.html's Instant check uses this one client */
+  if (sb && !DEMO) window.NovaXRiderClient = sb;   /* rider.html's Instant check uses this one client */
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
@@ -49,6 +58,8 @@
     saved: ["Saved on phone — sending…", "Phone par save — bhej rahe hain…"], attempts: ["attempt", "koshish"], toCollect: ["to collect", "uthane hain"],
     incoming: ["arriving", "aane wale"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
     exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"],
+    demoBar: ["Preview with sample data. Nothing here is real, and nothing is saved.", "Yeh sirf namoona hai. Yahan kuch asli nahi, aur kuch save nahi hota."], demoExit: ["Exit", "Band"],
+    demoNoCall: ["Preview: calls and WhatsApp are switched off.", "Namoona: call aur WhatsApp band hain."],
     installTitle: ["Add NovaX Rider to your home screen", "NovaX Rider ko home screen par lagayein"], installSub: ["It opens like an app, with one tap.", "App ki tarah ek tap se khulega."],
     installBtn: ["Add", "Lagayein"], installDone: ["NovaX Rider is on your home screen.", "NovaX Rider home screen par lag gaya."],
     installAndroid: ["Tap the menu (⋮) at the top of your browser, then “Add to Home screen” or “Install app”.", "Browser ke upar menu (⋮) dabayein, phir “Add to Home screen” ya “Install app” chunein."],
@@ -392,7 +403,7 @@
           m.shipper = p.shipper || null; m.exception = p.exception || ""; m.customerReply = p.customer_reply || null; m.rider_id = p.rider_id; m.client_id = p.client_id; m.heldBy = p.held_by || ""; return m;
         }), batches: view.batches || [], cash: cash.error ? null : cash.data };
       connected = true; lastSync = Date.now();
-      try { localStorage.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
+      try { store.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
       catch (_) { msg("This phone cannot save the station for offline use. Do not reload without signal.", "error"); }
       q("gate").classList.add("hidden"); render();
       if (!(data.rider.cities || []).length) msg("No city is set on your rider account. Ask the office to set it.", "error");
@@ -503,6 +514,7 @@
   }
   /* Best GPS reading within 10 s, stopping early at 25 m. */
   function gps() {
+    if (DEMO) return Promise.resolve({ lat: 31.5204, lng: 74.3587, accuracy: 15, at: new Date().toISOString() });   /* no location prompt on a preview */
     return new Promise(function (resolve) {
       var at = new Date().toISOString();
       if (!navigator.geolocation) { resolve({ unavailable: true, at: at }); return; }
@@ -627,7 +639,7 @@
   function paintInstall() {
     var card = q("installCard"); if (!card) return;
     /* a fresh prompt means the app is not installed (any more), whatever this phone remembered */
-    var show = !standalone() && !installFlag("novaxRiderInstallHide") && (!!installEvt || !installFlag("novaxRiderInstalled"));
+    var show = !DEMO && !standalone() && !installFlag("novaxRiderInstallHide") && (!!installEvt || !installFlag("novaxRiderInstalled"));
     card.classList.toggle("hidden", !show);
   }
   q("installBtn").onclick = async function () {
@@ -811,11 +823,12 @@
     if (view) { ui.view = view.dataset.view; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); window.scrollTo(0, 0); return; }
   });
   q("logoutBtn").onclick = async function () {
+    if (DEMO) { location.href = "index.html"; return; }
     if (busy || flushing) { msg("Wait for the current action before signing out.", "info"); return; }
     try {
       if (jobs().length && !await confirm("Saved actions remain", "Some actions are not confirmed. They stay attached to this rider on this phone and cannot send under another rider. Contact the office before clearing browser data. Sign out?")) return;
       var r = await sb.auth.signOut({ scope: "local" }); if (r.error) throw r.error;
-      localStorage.removeItem(cacheKey); authorized = false; forgetNote(); location.replace(SIGNIN_URL);
+      store.removeItem(cacheKey); authorized = false; forgetNote(); location.replace(SIGNIN_URL);
     } catch (e) { msg("Sign-out failed: " + String(e.message || e), "error"); }
   };
   /* The homepage is the one sign-in for every role. "for=rider" lets it greet
@@ -825,9 +838,11 @@
      phone is never pointed at the wrong page. */
   var SIGNIN_URL = "index.html?for=rider#signin";
   function rememberNote(email) {
+    if (DEMO) return;
     try { localStorage.setItem("novaxSession", JSON.stringify({ role: "rider", email: email || "", uid: userId, client_id: null, rider_id: riderId, at: Date.now() })); } catch (_) {}
   }
   function forgetNote() {
+    if (DEMO) return;
     try { var n = JSON.parse(localStorage.getItem("novaxSession") || "null"); if (!n || !n.uid || n.uid === userId) localStorage.removeItem("novaxSession"); } catch (_) {}
   }
   async function boot() {
@@ -837,24 +852,24 @@
       userId = s.data.session.user.id;
       var profile = await sb.from("profiles").select("role,status,rider_id").eq("id", userId).single();
       if (profile.error && !navigator.onLine) {
-        var remembered = JSON.parse(localStorage.getItem("novaxRiderIdentity:" + userId) || "null");
+        var remembered = JSON.parse(store.getItem("novaxRiderIdentity:" + userId) || "null");
         if (remembered && remembered.user === userId && Date.now() - remembered.at < 864e5) profile = { data: remembered.profile };
       }
       if (profile.error) throw profile.error;
       if (profile.data && String(profile.data.role).toLowerCase() === "sales") { location.replace("sales.html"); return; }
       if (profile.data && String(profile.data.role).toLowerCase() === "support") { location.replace("care.html"); return; }
       if (!profile.data || String(profile.data.role).toLowerCase() !== "rider" || String(profile.data.status).toLowerCase() !== "active" || !profile.data.rider_id) throw new Error("This account is not an active rider. Contact the office.");
-      riderId = profile.data.rider_id; queue = new R.Queue(localStorage, userId, riderId); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
-      if (navigator.onLine) { try { localStorage.setItem("novaxRiderIdentity:" + userId, JSON.stringify({ user: userId, at: Date.now(), profile: profile.data })); } catch (_) {} }
+      riderId = profile.data.rider_id; queue = new R.Queue(store, userId, riderId); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
+      if (navigator.onLine) { try { store.setItem("novaxRiderIdentity:" + userId, JSON.stringify({ user: userId, at: Date.now(), profile: profile.data })); } catch (_) {} }
       rememberNote(s.data.session.user.email);
-      try { var cached = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (cached && cached.user === userId && cached.rider === riderId) { data = cached.data; data.cash = null; lastSync = cached.at; render(); q("gate").classList.add("hidden"); } } catch (_) {}
-      if (localStorage.getItem("novaxRiderQueue")) msg("Legacy saved updates exist on this phone. The office must review them; they will not be sent under an unverified rider.", "error");
+      try { var cached = JSON.parse(store.getItem(cacheKey) || "null"); if (cached && cached.user === userId && cached.rider === riderId) { data = cached.data; data.cash = null; lastSync = cached.at; render(); q("gate").classList.add("hidden"); } } catch (_) {}
+      if (store.getItem("novaxRiderQueue")) msg("Legacy saved updates exist on this phone. The office must review them; they will not be sent under an unverified rider.", "error");
       if (authSubscription) authSubscription.unsubscribe();
       authSubscription = sb.auth.onAuthStateChange(function (event, session) {
         if (event === "SIGNED_OUT" || session && session.user.id !== userId) {
           authorized = false; connected = false; data = { rider: null, parcels: [], batches: [], cash: null };
           q("gate").classList.remove("hidden"); failGate("Your session changed. Sign in again.");
-          try { localStorage.removeItem(cacheKey); localStorage.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} if (event === "SIGNED_OUT") forgetNote(); controls();
+          try { store.removeItem(cacheKey); store.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} if (event === "SIGNED_OUT") forgetNote(); controls();
         }
       }).data.subscription;
       await load(true);
@@ -866,7 +881,90 @@
   window.addEventListener("storage", function (e) { if (queue && e.key === queue.key && authorized) render(); });
   document.addEventListener("visibilitychange", function () { if (document.hidden) stopScan(); else { paintNetwork(); void load(true); } });
   setInterval(function () { paintNetwork(); if (!document.hidden && authorized && !busy && !flushing) void load(true); }, 60000);
-  if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) navigator.serviceWorker.register("/sw.js").catch(function () { msg("Offline app files could not be saved. Avoid reloading without signal.", "error"); });
+  if (!DEMO && "serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) navigator.serviceWorker.register("/sw.js").catch(function () { msg("Offline app files could not be saved. Avoid reloading without signal.", "error"); });
+  /* ---- preview: the station that lives in this page's memory -------------- */
+  function demoClient() {
+    var now = Date.now(), iso = function (h) { return new Date(now - (h || 0) * 36e5).toISOString(); }, n = 0, rows = [], batches = [], expenses = [], deposits = [];
+    var me = "demo-rider", up = function (a) { return String(a || "").toUpperCase(); };
+    var SH = { z: { name: "Zeb Store", phone: "0300 0000001", address: "Shop 14, Main Boulevard, Gulberg, Lahore" }, a: { name: "Anarkali Fabrics", phone: "0300 0000002", address: "Shop 3, New Anarkali, Lahore" },
+               k: { name: "Karachi Kicks", phone: "0300 0000003", address: "Tariq Road, Karachi" } };
+    var WHO = ["Ayesha K.", "Bilal R.", "Sana M.", "Hamza T.", "Fatima N.", "Usman J.", "Maryam S.", "Ali Z.", "Hira B.", "Omar F."];
+    var AT = ["House 12, Block C, Johar Town", "Flat 4, Street 9, Model Town", "House 88, Phase 5, DHA Lahore", "Shop 6, Liberty Market, Gulberg", "House 31, Wapda Town", "House 7, Iqbal Town"];
+    function add(bucket, status, origin, city, hours, sh, x) {
+      n++; var p = { id: "demo-" + n, awb: "N" + (9000000 + n), client_id: "demo-" + sh, rider_id: null, consignee: WHO[n % WHO.length], phone: "0300 0000" + String(100 + n),
+        address: AT[n % AT.length], city: city, origin: origin, cod_amount: 950 + (n * 170) % 2400, status: status, bucket: bucket, status_since: iso(hours), updated_at: iso(hours), delivered_at: null,
+        held_by: null, outside: false, meta: { weight: "0.5 kg" }, exception: "", customer_reply: null, attempts: 0, shipper: Object.assign({ from_request: false }, SH[sh]) };
+      Object.keys(x || {}).forEach(function (k) { p[k] = x[k]; }); rows.push(p); return p;
+    }
+    add("pickup", "New booked", "Lahore", "Lahore", 3, "z"); add("pickup", "New booked", "Lahore", "Lahore", 3, "z"); add("pickup", "New booked", "Lahore", "Karachi", 2, "z");
+    add("pickup", "New booked", "Lahore", "Lahore", 20, "a"); add("pickup", "New booked", "Lahore", "Islamabad", 20, "a");
+    var coming = [0, 0, 0, 0].map(function () { return add("incoming", "Parcel now in transit", "Karachi", "Lahore", 18, "k", { meta: { weight: "1 kg", transitBatch: "KAR-LAH-DEMO" } }).awb; });
+    add("incoming", "Return in transit", "Lahore", "Karachi", 40, "a");
+    for (var i = 0; i < 4; i++) add("station", "Parcel received at destination", "Karachi", "Lahore", 5 + i, "k");
+    add("station", "Parcel received at destination", "Lahore", "Lahore", 4, "z", { cod_amount: 0, meta: { weight: "0.5 kg", paymentMode: "Prepaid" } });
+    add("station", "Parcel received at destination", "Lahore", "Lahore", 6, "a", { customer_reply: { choice: "call_first", note: "", at: iso(1) } });
+    add("station", "Reattempt", "Karachi", "Lahore", 20, "k", { attempts: 1, exception: "Customer asked for tomorrow", meta: { weight: "0.5 kg", steps: ["Reattempt"], nextAttempt: R.day(new Date(now + 864e5)) } });
+    add("station", "Refused", "Karachi", "Lahore", 50, "k", { attempts: 1, exception: "Customer refused" }); add("station", "Refused", "Lahore", "Lahore", 30, "a", { attempts: 1, exception: "No money" });
+    for (i = 0; i < 3; i++) add("out", "Parcel out for delivery", i ? "Karachi" : "Lahore", "Lahore", 2, i ? "k" : "z", { attempts: 1, rider_id: me });
+    add("transit", "Collected by rider", "Lahore", "Karachi", 6, "z"); add("transit", "Collected by rider", "Lahore", "Karachi", 6, "a"); add("transit", "Collected by rider", "Lahore", "Islamabad", 7, "a");
+    add("done", "Delivered", "Karachi", "Lahore", 1, "k", { rider_id: me, delivered_at: iso(1), attempts: 1 }); add("done", "Delivered", "Lahore", "Lahore", 2, "z", { rider_id: me, delivered_at: iso(2), attempts: 1 });
+    batches.push({ code: "KAR-LAH-DEMO", kind: "forward", from_city: "Karachi", to_city: "Lahore", reference: "Daewoo 558812", awbs: coming.slice(), received: [], status: "Sent", sent_at: iso(18) });
+    function copy(v) { return JSON.parse(JSON.stringify(v)); }
+    function put(p, status, bucket) { p.status = status; p.bucket = bucket; p.status_since = p.updated_at = iso(0); }
+    function cash() {
+      var hand = rows.filter(function (p) { return p.status === "Delivered" && p.cod_amount > 0 && !p._hand; }), g = hand.reduce(function (t, p) { return t + p.cod_amount; }, 0);
+      var x = expenses.reduce(function (t, e) { return t + (e.settled ? 0 : e.amount); }, 0), row = function (p) { return { awb: p.awb, consignee: p.consignee, city: p.city, cod: p.cod_amount, delivered_at: p.delivered_at }; };
+      return { gross: g, expenses: x, net: Math.max(0, g - x), count: hand.length, pending: deposits.reduce(function (t, d) { return t + d.net; }, 0), review: x > g, hand_rows: hand.map(row), pending_rows: deposits, confirmed_rows: [], expense_rows: expenses };
+    }
+    function act(a) {
+      var codes = (a.p_awbs || []).map(up), ex = a.p_extra || {}, moved = [], batch = null;
+      if (a.p_action === "transit") {
+        batch = "LAH-" + String(ex.to_city || "").replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase() + "-DEMO-" + (batches.length + 1);
+        batches.unshift({ code: batch, kind: "forward", from_city: "Lahore", to_city: ex.to_city, reference: ex.reference, awbs: codes, received: [], status: "Sent", sent_at: iso(0), mine: true });
+      }
+      codes.forEach(function (code) {
+        var p = rows.filter(function (r) { return up(r.awb) === code && r.bucket; })[0]; if (!p) return;
+        var back = /^Return/.test(p.status), local = String(p.city).toLowerCase() === "lahore";
+        if (a.p_action === "collect") put(p, local ? "Parcel received at destination" : "Collected by rider", local ? "station" : "transit");
+        else if (a.p_action === "receive") { put(p, back ? "Return received at origin" : "Parcel received at destination", "station");
+          batches.forEach(function (b) { if (b.awbs.indexOf(code) > -1 && b.received.indexOf(code) < 0) { b.received.push(code); b.status = b.received.length === b.awbs.length ? "Received" : "Partly received"; } }); }
+        else if (a.p_action === "out") { put(p, back ? "Return out for delivery" : "Parcel out for delivery", "out"); p.attempts++; p.rider_id = me; }
+        else if (a.p_action === "delivered") { if (back) put(p, "Return to shipper", null); else { put(p, "Delivered", "done"); p.delivered_at = iso(0); p.rider_id = me; } }
+        else if (a.p_action === "reattempt") { put(p, "Reattempt", "station"); p.exception = a.p_reason || ""; p.meta.nextAttempt = ex.next_date; p.meta.steps = (p.meta.steps || []).concat(["Reattempt"]); }
+        else if (a.p_action === "refused") { put(p, "Refused", "station"); p.exception = a.p_reason || ""; }
+        else if (a.p_action === "not_available") { put(p, back ? "Return received at origin" : "Consignee not available", "station"); p.exception = a.p_reason || ""; }
+        else if (a.p_action === "transit") put(p, "Parcel now in transit", null);
+        moved.push(p.awb);
+      });
+      return { action: a.p_action, count: moved.length, moved: moved, batch: batch };
+    }
+    function rpc(name, a) {
+      a = a || {}; var d = {};
+      if (name === "rider_station_view") d = { rider: { id: me, name: "Demo Rider", branch: "Lahore Hub", cities: ["Lahore"], cash_limit: 75000 }, parcels: rows.filter(function (p) { return p.bucket; }),
+        batches: batches.filter(function (b) { return b.mine || b.status !== "Received"; }), server_time: iso(0) };
+      else if (name === "rider_cash_summary") d = cash();
+      else if (name === "rider_station_action") d = act(a);
+      else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }
+      else if (name === "rider_deposit_cash_v2") { var c = cash(), hand = rows.filter(function (p) { return p.status === "Delivered" && p.cod_amount > 0 && !p._hand; });
+        hand.forEach(function (p) { p._hand = true; }); expenses.forEach(function (e) { e.settled = true; });
+        deposits.push({ batch: a.p_batch_key, net: c.net, gross: c.gross, expenses: c.expenses, method: a.p_method, reference: a.p_reference, at: iso(0), parcels: hand.length, awbs: hand.map(function (p) { return p.awb; }) }); d = { net: c.net }; }
+      else d = { ok: true };
+      return Promise.resolve({ data: copy(d), error: null });
+    }
+    var session = { data: { session: { user: { id: "demo-user", email: "" } } }, error: null };
+    return { rpc: rpc,
+      auth: { getSession: function () { return Promise.resolve(session); }, signOut: function () { return Promise.resolve({ error: null }); }, onAuthStateChange: function () { return { data: { subscription: { unsubscribe: function () {} } } }; } },
+      from: function () { var o = { select: function () { return o; }, eq: function () { return o; }, single: function () { return Promise.resolve({ data: { role: "rider", status: "active", rider_id: me }, error: null }); } }; return o; } };
+  }
+  if (DEMO) {
+    q("notice").insertAdjacentHTML("beforebegin", '<div class="demo-bar" data-t="demoBar" role="note"></div>');
+    q("logoutBtn").setAttribute("data-t", "demoExit");
+    /* a made-up number must never ring a real phone */
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a.call"); if (!a) return;
+      if (/^(tel:|https:\/\/wa\.me\/)/.test(a.getAttribute("href") || "")) { e.preventDefault(); e.stopPropagation(); ping(t("demoNoCall"), "info"); }
+    }, true);
+  }
   paintWords();
   void boot();
 })();
