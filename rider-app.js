@@ -759,13 +759,25 @@
     try {
       if (jobs().length && !await confirm("Saved actions remain", "Some actions are not confirmed. They stay attached to this rider on this phone and cannot send under another rider. Contact the office before clearing browser data. Sign out?")) return;
       var r = await sb.auth.signOut({ scope: "local" }); if (r.error) throw r.error;
-      localStorage.removeItem(cacheKey); authorized = false; location.replace("index.html#signin");
+      localStorage.removeItem(cacheKey); authorized = false; forgetNote(); location.replace(SIGNIN_URL);
     } catch (e) { msg("Sign-out failed: " + String(e.message || e), "error"); }
   };
+  /* The homepage is the one sign-in for every role. "for=rider" lets it greet
+     a rider as a rider. The note below is what its Sign in buttons read to
+     send a signed-in rider straight back here; it is written only for this
+     login and removed when this login ends, so the next person on the same
+     phone is never pointed at the wrong page. */
+  var SIGNIN_URL = "index.html?for=rider#signin";
+  function rememberNote(email) {
+    try { localStorage.setItem("novaxSession", JSON.stringify({ role: "rider", email: email || "", uid: userId, client_id: null, rider_id: riderId, at: Date.now() })); } catch (_) {}
+  }
+  function forgetNote() {
+    try { var n = JSON.parse(localStorage.getItem("novaxSession") || "null"); if (!n || !n.uid || n.uid === userId) localStorage.removeItem("novaxSession"); } catch (_) {}
+  }
   async function boot() {
     try {
       if (!sb || !R || !P) throw new Error("A required app file did not load. Reconnect and reload.");
-      var s = await sb.auth.getSession(); if (s.error) throw s.error; if (!s.data.session) { location.replace("index.html#signin"); return; }
+      var s = await sb.auth.getSession(); if (s.error) throw s.error; if (!s.data.session) { location.replace(SIGNIN_URL); return; }
       userId = s.data.session.user.id;
       var profile = await sb.from("profiles").select("role,status,rider_id").eq("id", userId).single();
       if (profile.error && !navigator.onLine) {
@@ -778,6 +790,7 @@
       if (!profile.data || String(profile.data.role).toLowerCase() !== "rider" || String(profile.data.status).toLowerCase() !== "active" || !profile.data.rider_id) throw new Error("This account is not an active rider. Contact the office.");
       riderId = profile.data.rider_id; queue = new R.Queue(localStorage, userId, riderId); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
       if (navigator.onLine) { try { localStorage.setItem("novaxRiderIdentity:" + userId, JSON.stringify({ user: userId, at: Date.now(), profile: profile.data })); } catch (_) {} }
+      rememberNote(s.data.session.user.email);
       try { var cached = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (cached && cached.user === userId && cached.rider === riderId) { data = cached.data; data.cash = null; lastSync = cached.at; render(); q("gate").classList.add("hidden"); } } catch (_) {}
       if (localStorage.getItem("novaxRiderQueue")) msg("Legacy saved updates exist on this phone. The office must review them; they will not be sent under an unverified rider.", "error");
       if (authSubscription) authSubscription.unsubscribe();
@@ -785,7 +798,7 @@
         if (event === "SIGNED_OUT" || session && session.user.id !== userId) {
           authorized = false; connected = false; data = { rider: null, parcels: [], batches: [], cash: null };
           q("gate").classList.remove("hidden"); failGate("Your session changed. Sign in again.");
-          try { localStorage.removeItem(cacheKey); localStorage.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} controls();
+          try { localStorage.removeItem(cacheKey); localStorage.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} if (event === "SIGNED_OUT") forgetNote(); controls();
         }
       }).data.subscription;
       await load(true);

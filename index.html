@@ -831,6 +831,11 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 .mdl .btn{width:100%;margin-top:8px}
 .mdl-note{margin-top:12px;font-size:12px;font-weight:600;line-height:1.5;text-align:center;color:var(--muted)}
 .form-msg{display:none;margin-top:12px;padding:12px 14px;border-radius:11px;font-size:13px;font-weight:700;line-height:1.5}
+.signin-already{display:grid;gap:12px}
+.signin-already[hidden],#fSignin[hidden],#signinNote[hidden]{display:none}
+.signin-already p{margin:0;font-size:14.5px;line-height:1.55;color:var(--ink)}
+.signin-already p b{overflow-wrap:anywhere}
+.signin-other{justify-self:center;background:none;border:0;padding:0 12px;min-height:44px;font:inherit;font-size:13.5px;color:#0c7c59;text-decoration:underline;cursor:pointer}
 .form-msg.err{display:block;background:var(--red-bg);border:1px solid #f0c4bf;color:var(--red-ink)}
 .form-msg.ok{display:block;background:var(--mint);border:1px solid var(--mint-line);color:var(--green-3)}
 .done{display:grid;place-items:center;padding:28px 6px;text-align:center}
@@ -1730,7 +1735,14 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 
 <!-- ═════ SIGN IN ═════ -->
 <div class="ov" id="ovSignin" role="dialog" aria-modal="true" aria-label="Sign in"><div class="mdl" id="mdlSignin">
-  <div class="mdl-top"><div><h3>Sign in</h3><p>Use the email and password linked to your NovaX workspace.</p></div><button class="mdl-x" data-close aria-label="Close">×</button></div>
+  <div class="mdl-top"><div><h3 id="signinTitle">Sign in</h3><p id="signinSub">Use the email and password linked to your NovaX workspace.</p></div><button class="mdl-x" data-close aria-label="Close">×</button></div>
+  <!-- Shown instead of the form when this browser is already signed in, so the
+       box and the page's Sign in buttons always say the same thing. -->
+  <div class="signin-already" id="signinAlready" hidden>
+    <p id="signinAlreadyT"></p>
+    <a class="btn btn-primary" id="signinAlreadyGo" href="client.html">Open your portal</a>
+    <button type="button" class="signin-other" id="signinAlreadyOther">Sign in with another account</button>
+  </div>
   <form id="fSignin" novalidate>
     <div class="fld"><label for="signinEmail">Email</label><input id="signinEmail" type="email" placeholder="you@store.com" autocomplete="email" inputmode="email" maxlength="254"></div>
     <div class="fld"><label for="signinPassword">Password</label><input id="signinPassword" type="password" placeholder="Your password" autocomplete="current-password" maxlength="72"></div>
@@ -1745,7 +1757,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       </button>
     </div>
     <div class="form-msg" id="mSignin" role="alert"></div>
-    <div class="mdl-note">New merchants get instant workspace access after signup.</div>
+    <div class="mdl-note" id="signinNote">New merchants get instant workspace access after signup.</div>
   </form>
 </div></div>
 
@@ -1960,29 +1972,79 @@ function nvFriendly(t){
 })();
 
 /* ═════ ALREADY SIGNED IN ═════
-   The portal keeps its session in this browser (same project, same default
-   storage key), so a merchant who is still signed in gets one tap to their
-   portal instead of a sign-in form. Nothing extra is fetched for anyone. */
+   Every portal keeps its session in this browser (same project, same default
+   storage key), so someone who is still signed in gets one tap to their own
+   portal instead of a sign-in form: a merchant to the portal, a rider to the
+   rider app, staff to their page.
+
+   11 Oct 2026: the rider app has no sign-in of its own. It sends riders here
+   (index.html?for=rider#signin), and three things disagreed with it:
+   - the #signin link opened an empty form even for a rider who was still
+     signed in, while the buttons on the page already pointed to the rider app;
+   - the first guess at where the buttons go came from a note in this browser
+     (novaxSession) that the rider app never wrote or cleared, so on a shared
+     phone a rider could be pointed at the merchant portal;
+   - the box spoke only to merchants.
+   Now the note is believed only when it was written for this very login, the
+   profile always has the last word, and the buttons and the box are painted
+   from the same answer. */
+var NV_SIGNED=null, NV_SIGNIN_OTHER=false;
+var NV_SIGNIN_FOR=(function(){ try{ return String(new URLSearchParams(location.search).get("for")||"").toLowerCase(); }catch(e){ return ""; } })();
+var NV_PORTAL_WORDS={ "rider.html":"Open the rider app", "client.html":"Open your portal", "admin.html":"Open the control room", "sales.html":"Open your sales page",
+  "care.html":"Open the Support Desk", "instant-rider.html":"Open the rider app", "instant-account.html":"Open your account" };
+function nvSigninPaint(){
+  var box=$("signinAlready"), form=$("fSignin"), title=$("signinTitle"), sub=$("signinSub"); if(!box||!form||!title||!sub) return;
+  var rider=NV_SIGNIN_FOR==="rider";
+  /* Never pull the form away from someone who has started typing. */
+  var typing=!!String(($("signinPassword")||{}).value||"");
+  var show=!!NV_SIGNED && !NV_SIGNIN_OTHER && !typing;
+  box.hidden=!show; form.hidden=show;
+  if(show){
+    title.textContent="You are signed in";
+    sub.textContent="";
+    var t=$("signinAlreadyT"); t.textContent="";
+    if(NV_SIGNED.email){ t.appendChild(document.createTextNode("This phone or computer is signed in as ")); var b=document.createElement("b"); b.textContent=NV_SIGNED.email; t.appendChild(b); t.appendChild(document.createTextNode(".")); }
+    else t.textContent="This phone or computer is already signed in.";
+    var go=$("signinAlreadyGo"); go.setAttribute("href",NV_SIGNED.target); go.textContent=NV_PORTAL_WORDS[NV_SIGNED.target]||"Open your portal";
+    return;
+  }
+  title.textContent=rider?"Rider sign in":"Sign in";
+  sub.textContent=rider?"Use the email and password the NovaX office gave you.":"Use the email and password linked to your NovaX workspace.";
+  var em=$("signinEmail"); if(em) em.setAttribute("placeholder", rider?"Your email":"you@store.com");
+  var note=$("signinNote"); if(note) note.hidden=rider;
+}
 (function(){
+  var other=$("signinAlreadyOther");
+  if(other) other.addEventListener("click",function(){ NV_SIGNIN_OTHER=true; nvSigninPaint(); var f=$("signinEmail"); if(f){ try{ f.focus(); }catch(e){} } });
+  nvSigninPaint();
   if(!__nvSb||!__nvSb.auth||typeof __nvSb.auth.getSession!=="function") return;
+  var IDS=["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"];
+  function point(target, email){
+    /* Merchants and riders both look for "Sign in", so the label never
+       changes; for someone already signed in it goes straight to their page. */
+    IDS.forEach(function(id){ var a=$(id); if(!a) return; a.setAttribute("href",target); a.removeAttribute("data-mdl"); });
+    NV_SIGNED={ email:email||"", target:target }; nvSigninPaint();
+  }
+  function unpoint(){
+    IDS.forEach(function(id){ var a=$(id); if(!a) return; a.setAttribute("href","#signin"); a.setAttribute("data-mdl","signin"); });
+    NV_SIGNED=null; nvSigninPaint();
+  }
   Promise.resolve(__nvSb.auth.getSession()).then(function(r){
     var s=r&&r.data&&r.data.session;
     if(!s||!s.user) return;
-    var stored=""; try{ stored=String((JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}).role||""); }catch(e){}
-    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="instant-rider"?"instant-rider.html":stored==="instant-account"?"instant-account.html":stored==="sales"?"sales.html":stored==="support"?"care.html":"client.html";
+    var note={}; try{ note=JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}; }catch(e){}
+    var stored=(note.uid && note.uid===s.user.id)?String(note.role||""):"";
+    var hint=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="instant-rider"?"instant-rider.html":stored==="instant-account"?"instant-account.html":stored==="sales"?"sales.html":stored==="support"||stored==="care"?"care.html":stored==="client"?"client.html":"";
+    if(hint) point(hint, s.user.email);
     /* The note in this browser can be stale; the profile decides. */
-    Promise.resolve(__nvSb.from("profiles").select("role").eq("id",s.user.id).maybeSingle()).then(function(p){
+    Promise.resolve(__nvSb.from("profiles").select("role,status").eq("id",s.user.id).maybeSingle()).then(function(p){
       if(!p||p.error||!p.data) return;
-      var r=String(p.data.role||"client").toLowerCase();
-      var t2=r==="rider"?"rider.html":r==="instant"?"instant-rider.html":r==="instant_client"?"instant-account.html":r==="sales"?"sales.html":r==="support"?"care.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
-      ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
+      var st=String(p.data.status||"active").toLowerCase();
+      if(st==="blocked"||st==="disabled"){ unpoint(); return; }
+      var role=String(p.data.role||"client").toLowerCase();
+      var t2=role==="rider"?"rider.html":role==="instant"?"instant-rider.html":role==="instant_client"?"instant-account.html":role==="sales"?"sales.html":role==="support"?"care.html":(ADMIN_ROLES.indexOf(role)>-1?"admin.html":"client.html");
+      point(t2, s.user.email);
     }).catch(function(){});
-    /* Merchants look for "Sign in", so the label never changes; for someone
-       already signed in it simply goes straight to their portal. */
-    ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){
-      var a=$(id); if(!a) return;
-      a.setAttribute("href",target); a.removeAttribute("data-mdl");
-    });
   }).catch(function(){});
 })();
 
@@ -2129,7 +2191,8 @@ function openM(k){
   lastFocus=document.activeElement;
   Object.keys(OV).forEach(function(x){OV[x].classList.remove("on");});
   o.classList.add("on"); document.body.style.overflow="hidden";
-  if(!TOUCH){ var f=o.querySelector("input"); if(f) setTimeout(function(){f.focus();},130); }
+  if(k==="signin"){ NV_SIGNIN_OTHER=false; try{ nvSigninPaint(); }catch(e){} }
+  if(!TOUCH){ var f=o.querySelector("input"); if(f&&f.offsetParent!==null) setTimeout(function(){f.focus();},130); }
 }
 function closeM(){
   Object.keys(OV).forEach(function(x){OV[x].classList.remove("on");});
@@ -2582,7 +2645,7 @@ $("fSignin").addEventListener("submit",function(e){
   if(!__nvSb||!__nvSb.auth){ showMsg("mSignin","Login service is unavailable. Please refresh and try again.",false); return; }
   clearMsg("mSignin");
   var btn=$("signinContinue"), oldTxt=btn.textContent;
-  btn.disabled=true; btn.textContent="Checking database…";
+  btn.disabled=true; btn.textContent="Signing in…";
 
   __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
     if(res.error||!res.data||!res.data.user){
