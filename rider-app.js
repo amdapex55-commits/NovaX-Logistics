@@ -2,8 +2,9 @@
   "use strict";
   /* ═══ City rider app (29 Sep 2026) ═══════════════════════════════════════
      One rider IS the city. Three jobs, three buttons:
-       Pickup   -- collect from shippers in my city; receive batches from others
-       Delivery -- take parcels at my station out, then Delivered / Reattempt / Refused
+       Pickup   -- collect from shippers in my city, and nothing else
+       Delivery -- receive what arrives from other cities, take parcels at my
+                   station out, then Delivered / Reattempt / Refused
        Transit  -- send parcels at my station that belong to another city, as a batch
      Everything comes from rider_station_view() and goes back through
      rider_station_action(): the server decides what is legal for this rider's
@@ -20,10 +21,11 @@
       try { return await fetch(url, Object.assign({}, options, { signal: controller.signal })); }
       finally { clearTimeout(timer); if (source) source.removeEventListener("abort", abort); }
     } } });
+  if (sb) window.NovaXRiderClient = sb;   /* rider.html's Instant check uses this one client */
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
-  var ui = { view: "home", tab: { pickup: "collect", delivery: "station" }, sel: new Set(), selScope: "", transitTo: "" };
+  var ui = { view: "home", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "" };
 
   /* ---- words: English / Roman Urdu -------------------------------------- */
   var LANG = "en";
@@ -31,7 +33,10 @@
   var TXT = {
     pickup: ["Parcel Pickup", "Parcel Uthana"], delivery: ["Parcel Delivery", "Parcel Delivery"], transit: ["Parcel Transit", "Doosre Shehar Bhejna"],
     home: ["Home", "Home"], navPickup: ["Pickup", "Uthana"], navDelivery: ["Delivery", "Delivery"], navTransit: ["Transit", "Bhejna"], navCash: ["Cash", "Cash"],
-    collectTab: ["Collect from shippers", "Shipper se lena"], receiveTab: ["Receive batch", "Aaya hua maal"],
+    receiveTab: ["Arriving", "Aane wale"],
+    pickupHelp: ["Parcels to collect from shippers in {city}.", "{city} ke shippers se uthane wale parcel."],
+    receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
+    wrongCity: ["This address looks like {looks}, not {city}. Do not go. Tell the office.", "Yeh address {looks} ka lagta hai, {city} ka nahi. Mat jayein. Office ko batayein."],
     stationTab: ["At station", "Station par"], outTab: ["Out now", "Rastay mein"], doneToday: ["Delivered today", "Aaj deliver hue"],
     attention: ["Needs attention", "Dhyan dein"], transitHelp: ["Parcels at your station that belong to another city. Send them together as one batch.", "Yeh parcel doosre shehar ke hain. Sab ek batch mein bhejein."],
     sentBatches: ["Batches sent", "Bheje gaye batch"], cash: ["Cash reconciliation", "Cash hisaab"], method: ["How was it sent?", "Kaise bheja?"], txn: ["Transaction ID", "Transaction ID"],
@@ -42,10 +47,10 @@
     refused: ["Refused", "Mana kar diya"], notAvailable: ["Not available", "Nahi mila"], returned: ["Returned to shipper", "Shipper ko wapis de diya"],
     selectAll: ["Select all", "Sab chuno"], nothing: ["Nothing here.", "Yahan kuch nahi."], call: ["Call", "Call"], directions: ["Directions", "Rasta"],
     saved: ["Saved on phone — sending…", "Phone par save — bhej rahe hain…"], attempts: ["attempt", "koshish"], toCollect: ["to collect", "uthane hain"],
-    incoming: ["coming in", "aa rahe hain"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
+    incoming: ["arriving", "aane wale"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
     exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"]
   };
-  function t(k, vars) { var s = (TXT[k] || [k, k])[LANG === "ur" ? 1 : 0]; if (vars) Object.keys(vars).forEach(function (v) { s = s.replace("{" + v + "}", vars[v]); }); return s; }
+  function t(k, vars) { var s = (TXT[k] || [k, k])[LANG === "ur" ? 1 : 0]; if (vars) Object.keys(vars).forEach(function (v) { s = s.split("{" + v + "}").join(vars[v]); }); return s; }
   function paintWords() {
     document.querySelectorAll("[data-t]").forEach(function (el) { el.textContent = t(el.getAttribute("data-t")); });
     q("langBtn").textContent = LANG === "ur" ? "English" : "Urdu";
@@ -209,26 +214,32 @@
       Array.from(ui.sel).forEach(function (a) { if (!ok.has(a)) ui.sel.delete(a); });
       if (!ui.sel.size) ui.selScope = "";
     })();
-    q("homePickup").textContent = pick.length + " " + t("toCollect") + " · " + inc.length + " " + t("incoming");
-    q("homeDelivery").textContent = st.length + " " + t("atStation") + " · " + out.length + " " + t("outNow");
+    q("homePickup").textContent = pick.length + " " + t("toCollect");
+    q("homeDelivery").textContent = (inc.length ? inc.length + " " + t("incoming") + " · " : "") + st.length + " " + t("atStation") + " · " + out.length + " " + t("outNow");
+    q("pickupHelp").textContent = t("pickupHelp", { city: cities });
+    q("nArriving").textContent = inc.length; q("nStation").textContent = st.length; q("nOut").textContent = out.length;
     q("homeTransit").textContent = tr.length + " " + t("toSend");
     var deliveredToday = done.filter(function (p) { return R.day(R.deliveredAt(p)) === today(); });
     q("stats").innerHTML = stat("Delivered today", deliveredToday.length) + stat("Out now", out.length) + stat("Cash to hand over", data.cash ? money(data.cash.net) : "Unavailable", true) + stat("City", cities);
     var attn = st.filter(function (p) { return Number(p.attempts || 0) >= 2 || p.status === "Refused"; }).concat(out.filter(function (p) { return payment(p).conflict; }));
     q("attentionList").innerHTML = attn.map(function (p) { return card(p); }).join("") || '<p class="empty">All clear.</p>';
 
-    // Pickup: grouped by shipper
-    var groups = {};
+    // Pickup: grouped by shipper. A shipper whose address is in another city
+    // goes last, with a warning instead of "Select all".
+    var myCities = (data.rider.cities || []).map(function (c) { return c.toLowerCase(); });
+    var groups = {}, odd = {};
     pick.forEach(function (p) { var k = p.client_id || "?"; (groups[k] = groups[k] || []).push(p); });
-    q("collectList").innerHTML = Object.keys(groups).map(function (k) {
-      var list = groups[k], s = list[0].shipper || {}, ph = R.phone(s.phone);
-      return '<section class="shipper"><div class="shipper-head"><div><b>' + esc(s.name || "Shipper") + '</b><small>' + esc(s.address || "") + '</small></div>' +
-        (/^\+?\d{9,15}$/.test(ph) ? '<a class="call" href="tel:' + esc(ph) + '">' + esc(t("call")) + '</a>' : '') + '</div>' +
-        selectAllBtn("collect", free(list).map(function (p) { return p.awb; })) + list.map(function (p) { return card(p, { select: true }); }).join("") + '</section>';
+    /* An older rider-core.js kept by the phone has no wrongCity: no warning, never a blank screen. */
+    Object.keys(groups).forEach(function (k) { odd[k] = typeof R.wrongCity === "function" ? R.wrongCity((groups[k][0].shipper || {}).address, myCities) : ""; });
+    q("collectList").innerHTML = Object.keys(groups).sort(function (x, y) { return (odd[x] ? 1 : 0) - (odd[y] ? 1 : 0); }).map(function (k) {
+      var list = groups[k], s = list[0].shipper || {}, ph = R.phone(s.phone), okPh = /^\+?\d{9,15}$/.test(ph);
+      return '<section class="shipper' + (odd[k] ? ' odd-city' : '') + '"><div class="shipper-head"><div><b>' + esc(s.name || "Shipper") + '</b><small>' + esc(s.address || "") + '</small></div>' +
+        (okPh ? '<a class="call" href="tel:' + esc(ph) + '">' + esc(t("call")) + '</a>' : '') + '</div>' +
+        (odd[k] ? '<p class="wrong-city" role="alert">' + esc(t("wrongCity", { looks: odd[k], city: cities })) + '</p>'
+          : selectAllBtn("collect", free(list).map(function (p) { return p.awb; }))) + list.map(function (p) { return card(p, { select: true }); }).join("") + '</section>';
     }).join("") || empty();
 
-    // Receive: batches + parcels coming in
-    var myCities = (data.rider.cities || []).map(function (c) { return c.toLowerCase(); });
+    // Arriving (Delivery): batches + parcels on their way here from another city
     var batches = (data.batches || []).filter(function (b) { return myCities.indexOf(String(b.to_city).toLowerCase()) > -1; });
     q("batchList").innerHTML = batches.map(function (b) {
       var got = (b.received || []).length, all = (b.awbs || []).length;
@@ -302,13 +313,14 @@
     document.querySelectorAll(".view").forEach(function (el) { el.classList.toggle("hidden", el.id !== "view-" + ui.view); });
     document.querySelectorAll(".navbtn").forEach(function (b) { var on = b.dataset.view === ui.view; b.classList.toggle("active", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     q("searchRow").classList.toggle("hidden", ["pickup", "delivery", "transit"].indexOf(ui.view) < 0);
-    q("pickupCollect").classList.toggle("hidden", ui.tab.pickup !== "collect"); q("pickupReceive").classList.toggle("hidden", ui.tab.pickup !== "receive");
+    q("deliveryReceive").classList.toggle("hidden", ui.tab.delivery !== "receive");
     q("deliveryStation").classList.toggle("hidden", ui.tab.delivery !== "station"); q("deliveryOut").classList.toggle("hidden", ui.tab.delivery !== "out");
     document.querySelectorAll("[data-tab]").forEach(function (b) { var p = b.dataset.tab.split(":"), on = ui.tab[p[0]] === p[1]; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
   }
   /* What a selection means depends on the screen it was made on. */
   function scopeNow() {
-    if (ui.view === "pickup") return ui.tab.pickup === "collect" ? "collect" : "receive";
+    if (ui.view === "pickup") return "collect";
+    if (ui.view === "delivery" && ui.tab.delivery === "receive") return "receive";
     if (ui.view === "delivery" && ui.tab.delivery === "station") return "station";
     if (ui.view === "transit") return "transit";
     return "";
@@ -586,7 +598,7 @@
       var el = document.querySelector('[data-awb="' + p.awb + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: "center" });
       ping("✓ " + p.awb + " selected (" + ui.sel.size + ")", "ok", 30); return true;
     }
-    var place = { pickup: "Pickup → Collect", incoming: "Pickup → Receive batch", station: "Delivery → At station", out: "Delivery → Out now", transit: "Transit", done: "Delivered" }[p.bucket] || p.status;
+    var place = { pickup: "Pickup", incoming: "Delivery → Arriving", station: "Delivery → At station", out: "Delivery → Out now", transit: "Transit", done: "Delivered" }[p.bucket] || p.status;
     ping(p.awb + " is in " + place + " (" + p.status + ").", "info"); return false;
   }
 

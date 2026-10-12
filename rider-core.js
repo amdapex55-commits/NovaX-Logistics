@@ -56,6 +56,42 @@
     }
     return ["New booked", "Collected by rider"].indexOf(p.status) >= 0 || /return/i.test(p.status);
   }
+  /* A shipper's address that names another city. Sign-up asks for the pickup
+     city and the address separately; on 8 Oct 2026 a Korangi (Karachi)
+     merchant picked Lahore, and the parcel sat in the Lahore rider's pickup
+     list for three days. Area names only -- the lists the booking form warns
+     with (client-app.js NV_CITY_MARKERS_C) minus sector codes such as "F-10",
+     which are house numbers everywhere else. Earliest match wins, then the
+     longest: "Johar Town" is Lahore, "Gulistan-e-Johar" is Karachi. */
+  var CITY_MARKERS = {
+    Karachi: ["gulistan-e-jauhar", "gulistan-e-johar", "gulistan e johar", "gulistan e jauhar", "gulstan-e-johar", "gulstan e johar",
+      "gulishtan-e-johar", "gulshan-e-johar", "johar block", "jauhar block", "gulshan-e-iqbal", "gulshan e iqbal", "gulshan block",
+      "korangi", "nazimabad", "malir", "landhi", "orangi", "liaquatabad", "shah faisal", "lyari", "saddar karachi", "defence karachi",
+      "dha karachi", "clifton", "baldia", "gadap", "surjani", "north karachi", "federal b area", "f.b area", "saadabad", "karachi"],
+    Lahore: ["johar town", "model town", "gulberg lahore", "dha lahore", "defence lahore", "iqbal town", "wapda town", "faisal town",
+      "garden town", "township lahore", "cantt lahore", "lahore"],
+    Islamabad: ["islamabad", "blue area"],
+    Rawalpindi: ["rawalpindi", "satellite town", "chaklala", "westridge", "pindi"]
+  };
+  function cityFromAddress(addr) {
+    var a = String(addr || "").toLowerCase().replace(/\s+/g, " "), best = "", bestAt = Infinity, bestLen = 0;
+    if (!a.trim()) return "";
+    Object.keys(CITY_MARKERS).forEach(function (city) {
+      CITY_MARKERS[city].forEach(function (m) {
+        var at = a.indexOf(m);
+        if (at > -1 && (at < bestAt || (at === bestAt && m.length > bestLen))) { best = city; bestAt = at; bestLen = m.length; }
+      });
+    });
+    return best;
+  }
+  /* The other city an address points to, or "" when it names one of the
+     rider's own cities or no city at all. It only ever warns. */
+  function wrongCity(addr, cities) {
+    var a = String(addr || "").toLowerCase(), mine = (cities || []).map(function (c) { return String(c || "").toLowerCase().trim(); }).filter(Boolean);
+    if (!mine.length || mine.some(function (c) { return a.indexOf(c) > -1; })) return "";
+    var looks = cityFromAddress(a);
+    return looks && mine.indexOf(looks.toLowerCase()) < 0 ? looks : "";
+  }
   function mapParcel(p) {
     return { id: p.id, awb: String(p.awb || ""), clientId: p.client_id,
       consignee: p.consignee || "", phone: p.phone || "", address: p.address || "", city: p.city || "",
@@ -118,5 +154,5 @@
   }
   global.NovaXRider = { ACTIONS: ACTIONS, object: object, timestamp: timestamp, day: day, truth: truth,
     awbs: awbs, deliveredAt: deliveredAt, phone: phone, isOrigin: isOrigin, mapParcel: mapParcel,
-    validate: validate, Queue: Queue, overlay: overlay, retryable: retryable };
+    validate: validate, Queue: Queue, overlay: overlay, retryable: retryable, cityFromAddress: cityFromAddress, wrongCity: wrongCity };
 })(typeof window !== "undefined" ? window : globalThis);

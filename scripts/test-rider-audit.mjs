@@ -33,7 +33,7 @@ const cb=a.w.document.querySelector('[data-pick="N1000003"]');assert.equal(cb.di
 a.dom.window.close();ok('004');
 
 // RIDER-009 + RIDER-010 select all respects the search filter and stops at 200
-a=await app({large:true});a.go('pickup');a.tab('pickup:receive');
+a=await app({large:true});a.go('delivery');a.tab('delivery:receive');
 a.q('riderSearch').value='B1004';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
 a.w.document.querySelector('#receiveList [data-selall]').click();await wait();
 assert.match(a.q('actionGo').textContent,/Mark 1 received/);ok('010');
@@ -86,7 +86,7 @@ assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY))[0].state,'review');asser
 a.dom.window.close();ok('028');
 
 // RIDER-030 switching tabs clears the search
-a=await app();a.go('pickup');a.q('riderSearch').value='N1000000';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
-a.tab('pickup:receive');assert.equal(a.q('riderSearch').value,'');a.dom.window.close();ok('030');
+a=await app();a.go('delivery');a.q('riderSearch').value='N1000000';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
+a.tab('delivery:receive');assert.equal(a.q('riderSearch').value,'');a.dom.window.close();ok('030');
 
 console.log('PASS rider audit regressions: '+passed.join(', '));

@@ -34,7 +34,8 @@ assert.throws(()=>new R.Queue({getItem:()=>'{bad'},'a','r').read(),/unreadable/)
 let a=await app();
 assert.equal(a.q('gate').classList.contains('hidden'),true);
 assert.equal(a.w.document.querySelectorAll('.home-btn').length,3);
-assert.match(a.q('homePickup').textContent,/1 to collect/);
+assert.equal(a.q('homePickup').textContent,'1 to collect');                 // this city's shippers and nothing else
+assert.match(a.q('homeDelivery').textContent,/^\d+ arriving · \d+ at station · \d+ out now$/);
 assert.match(a.q('homeTransit').textContent,/2 to send/);
 assert.match(a.q('routeName').textContent,/Lahore/);
 
@@ -46,8 +47,15 @@ a.q('actionGo').click();await wait(120);
 let req=a.fixture.requests.filter(r=>r.name==='rider_station_action');
 assert.equal(req.length,1);assert.equal(req[0].args.p_action,'collect');assert.equal(JSON.stringify(req[0].args.p_awbs),'["N1000000"]');
 
-// receive batch tab lists incoming parcels; last-4-digit entry selects
-a.tab('pickup:receive');
+// Pickup is the rider's own city: no tabs, and nothing that is coming from another city
+assert.equal(a.w.document.querySelectorAll('#view-pickup [data-tab]').length,0);
+assert.doesNotMatch(a.q('view-pickup').textContent,/N1000002|N1000006/);
+assert.match(a.q('pickupHelp').textContent,/shippers in Lahore/);
+
+// arriving parcels sit under Delivery; last-4-digit entry selects
+a.go('delivery');a.tab('delivery:receive');
+assert.equal(a.q('deliveryReceive').classList.contains('hidden'),false);assert.equal(a.q('deliveryStation').classList.contains('hidden'),true);
+assert.equal(a.q('nArriving').textContent,String(a.q('receiveList').querySelectorAll('.parcel').length));
 assert.match(a.q('receiveList').textContent,/N1000002/);
 a.q('riderSearch').value='0002';a.q('riderSearch').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter'}));await wait();
 assert.match(a.q('actionGo').textContent,/Mark 1 received/);
@@ -58,7 +66,7 @@ a.q('actionGo').click();await wait(120);
 req=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.equal(req.at(-1).args.p_action,'receive');
 
 // delivery: station -> out; out card has outcomes; COD conflict blocks Delivered
-a.go('delivery');a.pick('N1000003');a.q('actionGo').click();await wait(120);
+a.tab('delivery:station');a.pick('N1000003');a.q('actionGo').click();await wait(120);
 assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').at(-1).args.p_action,'out');
 a.tab('delivery:out');
 assert.ok(a.q('outList').querySelector('[data-act="delivered"][data-awb="N1000004"]'));
@@ -103,8 +111,23 @@ assert.equal(a.q('outList').querySelector('[data-act="delivered"]').disabled,tru
 
 // load failure -> retry; large station; session revoked
 a=await app({failLoad:true});assert.equal(a.q('retryBtn').classList.contains('hidden'),false);a.fixture.failLoad=false;a.q('retryBtn').click();await wait(80);assert.equal(a.q('gate').classList.contains('hidden'),true);a.dom.window.close();
-a=await app({large:true});a.go('pickup');a.tab('pickup:receive');assert.equal(a.q('receiveList').querySelectorAll('.parcel').length,1007);a.dom.window.close();
+a=await app({large:true});a.go('delivery');a.tab('delivery:receive');assert.equal(a.q('receiveList').querySelectorAll('.parcel').length,1007);a.dom.window.close();
 a=await app();a.fixture.authChange('SIGNED_OUT',null);assert.equal(a.q('gate').classList.contains('hidden'),false);a.dom.window.close();
+
+// a shipper whose address is in another city: warned, last in the list, no "Select all"; an address in this city is left alone
+assert.equal(R.wrongCity('Korangi Crossing, Allah Wala Town',['Lahore']),'Karachi');
+assert.equal(R.wrongCity('Sector XX DHA phase 3 Lahore',['Lahore']),'');
+assert.equal(R.wrongCity('Clifton Colony, Lahore',['lahore']),'');               // names the rider's own city
+assert.equal(R.wrongCity('House F-10, Model Town',['Lahore']),'');               // a house number is not an Islamabad sector
+assert.equal(R.wrongCity('Gulistan-e-Johar block 7',['Lahore']),'Karachi');
+assert.equal(R.wrongCity('Shop 4, Johar Town',['Karachi']),'Lahore');
+assert.equal(R.wrongCity('Satellite Town',['Islamabad','Rawalpindi']),'');
+assert.equal(R.wrongCity('Main market, shop 12',['Lahore']),'');                 // no city named: nothing to say
+assert.equal(R.wrongCity('Korangi',[]),'');
+a=await app({shipperAddress:'Korangi Crossing, Allah Wala Town'});a.go('pickup');
+assert.match(a.q('collectList').querySelector('.wrong-city').textContent,/looks like Karachi, not Lahore\. Do not go\. Tell the office\./);
+assert.equal(a.q('collectList').querySelectorAll('[data-selall]').length,0);assert.equal(a.q('collectList').querySelectorAll('[data-pick]').length,1);a.dom.window.close();
+a=await app();a.go('pickup');assert.equal(a.q('collectList').querySelector('.wrong-city'),null);assert.equal(a.q('collectList').querySelectorAll('[data-selall]').length,1);a.dom.window.close();
 
 // Roman Urdu switch
 a=await app();a.q('langBtn').click();await wait();assert.match(a.w.document.querySelector('.home-btn b').textContent,/Parcel Uthana/);a.q('langBtn').click();a.dom.window.close();

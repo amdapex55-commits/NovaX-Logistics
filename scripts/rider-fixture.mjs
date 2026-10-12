@@ -53,7 +53,7 @@ export function installFixture(window, options = {}) {
         if(s==='Return received at origin'&&O)return'station';
         if(['Parcel out for delivery','Return out for delivery'].includes(s)&&p.rider_id===rider)return'out';
         if(s==='Delivered'&&p.rider_id===rider)return'done';return null;};
-      const parcels=fixture.rows.map(p=>({...p,origin:o(p).replace(/^./,c=>c.toUpperCase()),bucket:bucket(p),attempts:p.attempts||0,shipper:{name:'Shipper Store',phone:'02134567890',address:'Pickup address, warehouse 5'}})).filter(p=>p.bucket);
+      const parcels=fixture.rows.map(p=>({...p,origin:o(p).replace(/^./,c=>c.toUpperCase()),bucket:bucket(p),attempts:p.attempts||0,shipper:{name:'Shipper Store',phone:'02134567890',address:options.shipperAddress||'Pickup address, warehouse 5'}})).filter(p=>p.bucket);
       return{data:{rider:{id:rider,name:'Lahore Rider',cities:['Lahore'],cash_limit:0},parcels,batches:fixture.batches||[]},error:null};
     }
     const requestKey=args.p_batch_key||args.p_key;

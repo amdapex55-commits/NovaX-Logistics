@@ -611,6 +611,8 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .fld input:not([type=range]):focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 .fld input::placeholder,.fld textarea::placeholder{color:#7d8a83}
 .fld-hint{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.45}
+.fld-hint.fld-warn{color:#8a4b00;background:#fff4d6;border:1px solid #ecd28a;border-radius:8px;padding:8px 10px;font-weight:600}
+.fld-hint[hidden]{display:none}
 
 /* ── the portal: tools manifest ── */
 .tools-grid{display:grid;gap:30px}
@@ -1706,7 +1708,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       <p class="cnic-why">Only NovaX staff can see these photos. We use them to confirm who owns the account and who we pay, keep them while the account is open and delete them when it closes. <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>
     </div>
     <div class="fld"><label for="merchantPhone">Your phone number</label><input id="merchantPhone" type="tel" placeholder="0300 1234567" maxlength="20" inputmode="tel" autocomplete="tel"></div>
-    <div class="fld"><label for="merchantAddress">Your address</label><textarea id="merchantAddress" placeholder="Pickup address" autocomplete="street-address" maxlength="300"></textarea></div>
+    <div class="fld"><label for="merchantAddress">Your address</label><textarea id="merchantAddress" placeholder="Pickup address" autocomplete="street-address" maxlength="300" aria-describedby="merchantCityWarn"></textarea><p class="fld-hint fld-warn" id="merchantCityWarn" role="status" hidden></p></div>
     <div class="fld"><label for="merchantProduct">What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc." maxlength="80"></div>
     <div class="fld"><label for="merchantEmail">Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com" autocomplete="email" inputmode="email" maxlength="254"></div>
     <div class="fld"><label for="merchantPassword">Create password</label><input id="merchantPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password" minlength="8" maxlength="72" aria-describedby="merchantPasswordHint"><div class="form-msg" id="merchantPasswordHint" style="min-height:0"></div></div>
@@ -2256,6 +2258,36 @@ function showMsg(id,txt,ok){ var el=$(id); if(!el) return; el.className="form-ms
   try{ el.scrollIntoView({block:"nearest",behavior:"smooth"}); }catch(e){} }
 function clearMsg(id){ var el=$(id); if(el) el.className="form-msg"; }
 function val(id){ var el=$(id); return el?String(el.value||"").trim():""; }
+/* Which served city an address names, by its area names (the same lists the
+   portal's booking form warns with). Earliest match wins, then the longest:
+   "Johar Town" is Lahore, "Gulistan-e-Johar" is Karachi. */
+var NV_SIGNUP_CITY_MARKERS={
+  Karachi:["gulistan-e-jauhar","gulistan-e-johar","gulistan e johar","gulistan e jauhar","gulstan-e-johar","gulstan e johar","gulishtan-e-johar","gulshan-e-johar","johar block","jauhar block","gulshan-e-iqbal","gulshan e iqbal","gulshan block","korangi","nazimabad","malir","landhi","orangi","liaquatabad","shah faisal","lyari","saddar karachi","defence karachi","dha karachi","clifton","baldia","gadap","surjani","north karachi","federal b area","f.b area","saadabad","karachi"],
+  Lahore:["johar town","model town","gulberg lahore","dha lahore","defence lahore","iqbal town","wapda town","faisal town","garden town","township lahore","cantt lahore","lahore"],
+  Islamabad:["islamabad","blue area"],
+  Rawalpindi:["rawalpindi","satellite town","chaklala","westridge","pindi"]
+};
+function nvSignupCityFromAddress(addr){
+  var a=String(addr||"").toLowerCase().replace(/\s+/g," "), best="", bestAt=Infinity, bestLen=0;
+  if(!a.trim()) return "";
+  Object.keys(NV_SIGNUP_CITY_MARKERS).forEach(function(c){
+    NV_SIGNUP_CITY_MARKERS[c].forEach(function(m){
+      var at=a.indexOf(m);
+      if(at>-1 && (at<bestAt || (at===bestAt && m.length>bestLen))){ best=c; bestAt=at; bestLen=m.length; }
+    });
+  });
+  return best;
+}
+function nvSignupCityCheck(){
+  var w=$("merchantCityWarn"); if(!w) return;
+  var city=val("merchantCity"), address=val("merchantAddress"), looks=nvSignupCityFromAddress(address);
+  if(city && looks && looks!==city && address.toLowerCase().indexOf(city.toLowerCase())<0){
+    w.textContent="This address looks like "+looks+", but your pickup city says "+city+". Our rider is sent by the pickup city, so check which one is right.";
+    w.hidden=false;
+  } else { w.hidden=true; w.textContent=""; }
+}
+(function(){ ["merchantCity","merchantAddress"].forEach(function(id){ var el=$(id); if(!el) return;
+  el.addEventListener("change",nvSignupCityCheck); el.addEventListener("input",nvSignupCityCheck); }); })();
 var PHONE_RE=/^03\d{9}$/;
 /* Signup rejected every valid Pakistani number not already typed as exactly
    03xxxxxxxxx: "+92 300 1234567", "0092...", "0300-1234567" and any pasted
@@ -2487,6 +2519,20 @@ $("fSignup").addEventListener("submit",function(e){
   var NV_PICKUP_CITIES=["Karachi","Lahore","Islamabad","Rawalpindi"];
   if(city && NV_PICKUP_CITIES.indexOf(city)<0){
     showMsg("mSignup","We collect from Karachi, Lahore, Islamabad and Rawalpindi. Please pick one of those.",false); return; }
+  /* The pickup city decides which rider is sent. A Korangi (Karachi) shop
+     signed up as Lahore on 8 Oct 2026 and its first parcel waited three days
+     in the wrong city. Stop once and say so; a second press goes ahead, for
+     the address the list reads wrongly. */
+  var looksCity=nvSignupCityFromAddress(address);
+  if(city && looksCity && looksCity!==city && address.toLowerCase().indexOf(city.toLowerCase())<0){
+    var askedKey=city+"|"+address;
+    if(window.__nvSignupCityAsked!==askedKey){
+      window.__nvSignupCityAsked=askedKey; nvSignupCityCheck();
+      showMsg("mSignup","Your address looks like "+looksCity+", but the pickup city says "+city+". Our rider is sent by the pickup city. Change it to "+looksCity+", or press the button again if "+city+" is right.",false);
+      try{ $("merchantCity").focus(); }catch(e){}
+      return;
+    }
+  }
   if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
     showMsg("mSignup","Store name, owner name, city, phone, address, product, email, and password are all required.",false); return; }
   var cnicPick=window.__nvSignupCnic||null;
