@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NovaX Merchant API: Status webhook guide</title>
+<meta name="author" content="NovaX Logistics">
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm; }
+  :root { --ink:#10201b; --muted:#56655f; --line:#d7e3dd; --green:#087854; --deep:#071d17; --mint:#e7f6ee; --code:#f4f7f5; }
+  * { box-sizing: border-box; }
+  html { font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); font-size: 10.4pt; line-height: 1.5; }
+  body { margin: 0; }
+  .top { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--deep); }
+  .top img { width: 38px; height: 38px; flex: none; border-radius: 9px; }
+  .top b { display: block; font-size: 11pt; letter-spacing: .02em; }
+  .top span { color: var(--muted); font-size: 9pt; }
+  .top .for { margin-left: auto; text-align: right; font-size: 9pt; color: var(--muted); }
+  h1 { font-size: 21pt; line-height: 1.15; margin: 16px 0 4px; letter-spacing: -.01em; }
+  .lede { font-size: 11pt; color: var(--muted); margin: 0 0 14px; max-width: 150mm; }
+  h2 { font-size: 13pt; margin: 20px 0 6px; padding-top: 2px; break-after: avoid; }
+  h2 i { font-style: normal; display: inline-block; min-width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 10px; background: var(--deep); color: #fff; font-size: 9.5pt; margin-right: 8px; vertical-align: 1px; }
+  p { margin: 0 0 7px; }
+  ul, ol { margin: 0 0 8px; padding-left: 18px; }
+  li { margin: 0 0 3px; }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 8.7pt; }
+  code { background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; margin: 6px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 9.4pt; }
+  th { text-align: left; font-size: 8.4pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border-bottom: 1.5px solid var(--deep); padding: 4px 8px 4px 0; }
+  td { border-bottom: 1px solid var(--line); padding: 4.5px 8px 4.5px 0; vertical-align: top; }
+  tr { break-inside: avoid; }
+  td:first-child { white-space: nowrap; }
+  .box { background: var(--mint); border: 1px solid #a7dbc0; border-radius: 6px; padding: 9px 12px; margin: 8px 0 10px; break-inside: avoid; }
+  .box b { color: var(--green); }
+  .call { font-family: "SF Mono", Menlo, monospace; font-size: 9.6pt; font-weight: 700; background: var(--deep); color: #fff; border-radius: 5px; padding: 5px 10px; display: inline-block; margin: 2px 0 6px; }
+  .tag { display: inline-block; font-size: 8pt; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: #eef2f0; color: var(--muted); white-space: nowrap; }
+  .tag.g { background: #dff5e9; color: var(--green); } .tag.r { background: #ffe5e1; color: #a72d24; } .tag.b { background: #e2f2fb; color: #155f8b; } .tag.y { background: #fff4d6; color: #6b4e00; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .foot { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8.6pt; }
+  .keep { break-inside: avoid; }
+  pre.line { white-space: pre; overflow: hidden; font-size: 8pt; }
+  pre.line code { font-size: 8pt; }
+  thead { display: table-header-group; }
+</style>
+</head>
+<body>
+<div class="top">
+  <img src="../assets/icon-192.png" width="38" height="38" alt="">
+  <div><b>NovaX Logistics</b><span>Merchant API</span></div>
+  <div class="for">Prepared for Cleanify Cleaning Solutions<br>Account CL-D7C148 · 13 October 2026</div>
+</div>
+
+<h1>Status webhook guide</h1>
+<p class="lede">Each time one of your parcels changes status, NovaX sends a signed message to an address on your server. This guide covers what we send, how to check it is from us, what happens if your server is down, and how to test before your first real order.</p>
+
+<table>
+  <tr><td><b>Base URL</b></td><td><code>https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/api</code></td></tr>
+  <tr><td><b>Your calls to us</b></td><td>Header <code>Authorization: Bearer &lt;your API key&gt;</code> on every request</td></tr>
+  <tr><td><b>Our calls to you</b></td><td>HTTPS <code>POST</code>, JSON body, normally within one minute of the status change</td></tr>
+</table>
+
+<h2><i>1</i>Register your address</h2>
+<div class="call">PUT /webhook</div>
+<div class="two">
+<pre><code>// you send
+{
+  "url": "https://yourshop.com/novax"
+}</code></pre>
+<pre><code>// we answer: 200
+{ "ok": true, "delivery": "active",
+  "webhook": "https://yourshop.com/novax",
+  "signing_secret": "…" }</code></pre>
+</div>
+<p>The answer contains your <b>signing secret</b>. Keep it on your server only.</p>
+<ul>
+  <li>The address must be public <code>https</code> on port 443. IP addresses and private or local hosts are refused with <code>422 invalid_webhook_url</code>.</li>
+  <li>Calling it again returns the same secret. Add <code>"rotate_secret": true</code> to get a new one.</li>
+  <li>Send <code>"url": ""</code> to switch delivery off.</li>
+</ul>
+
+<h2><i>2</i>What we send</h2>
+<p>There is one event, <code>parcel.status</code>. It is sent when a parcel is booked and at every status change after that. Every event has the same fields; only <code>status</code>, <code>exception</code> and <code>occurred_at</code> change.</p>
+<pre><code>{
+  "event": "parcel.status",
+  "awb": "N1234567",
+  "status": "New booked",
+  "exception": null,
+  "cod_amount": 1500,
+  "delivery_charge": 225,
+  "order_id": "1001",
+  "reference": null,
+  "consignee": "Customer name",
+  "city": "Lahore",
+  "occurred_at": "2026-10-13T10:22:09.816514+00:00",
+  "tracking_url": "https://novaxlogistics.com/tracking.html?awb=N1234567"
+}</code></pre>
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tr><td><code>awb</code></td><td>NovaX tracking number</td></tr>
+  <tr><td><code>status</code></td><td>One of the 18 values in section 3</td></tr>
+  <tr><td><code>exception</code></td><td>Reason given by the rider on a failed attempt or a refusal. <code>null</code> or empty otherwise</td></tr>
+  <tr><td><code>cod_amount</code> / <code>delivery_charge</code></td><td>Cash to collect, and our charge for this parcel, in rupees</td></tr>
+  <tr><td><code>order_id</code> / <code>reference</code></td><td>Your order number and reference, as you sent them when booking. <code>null</code> if none</td></tr>
+  <tr><td><code>consignee</code> / <code>city</code></td><td>The customer's name and delivery city</td></tr>
+  <tr><td><code>occurred_at</code></td><td>When the status changed (ISO 8601, UTC)</td></tr>
+  <tr><td><code>tracking_url</code></td><td>The customer's tracking page for this parcel</td></tr>
+  <tr><td><code>test</code></td><td>Present and <code>true</code> only on test events (section 6)</td></tr>
+</table>
+<p class="keep">Three more samples. Only <code>status</code> and <code>exception</code> are shown; <code>occurred_at</code> changes too.</p>
+<pre class="line"><code>"status": "Delivered",                 "exception": null
+"status": "Consignee not available",   "exception": "No answer on call"
+"status": "Return to shipper",         "exception": null</code></pre>
+<p>Headers on every delivery:</p>
+<table>
+  <thead><tr><th>Header</th><th>Value</th></tr></thead>
+  <tr><td><code>X-NovaX-Event</code></td><td><code>parcel.status</code></td></tr>
+  <tr><td><code>X-NovaX-Delivery</code></td><td>A unique id for this event. A retry repeats the same id.</td></tr>
+  <tr><td><code>X-NovaX-Timestamp</code></td><td>When we sent it, in Unix seconds</td></tr>
+  <tr><td><code>X-NovaX-Signature</code></td><td><code>sha256=&lt;hex&gt;</code>, see section 4</td></tr>
+  <tr><td><code>Content-Type</code> / <code>User-Agent</code></td><td><code>application/json</code> / <code>NovaX-Webhook/1</code></td></tr>
+</table>
+
+<h2><i>3</i>The 18 statuses</h2>
+<p>The <code>status</code> text is exact, including capitals. Treat a value you do not know as "no change" instead of failing; we may add more.</p>
+<table>
+  <thead><tr><th>Status</th><th>What it means</th><th>Stage</th></tr></thead>
+  <tr><td><code>New booked</code></td><td>Booking accepted. Sent as soon as you book.</td><td><span class="tag b">Booked</span></td></tr>
+  <tr><td><code>Collected by rider</code></td><td>Picked up from you.</td><td><span class="tag b">Picked up</span></td></tr>
+  <tr><td><code>Arrived at warehouse</code></td><td>At our hub in the pickup city.</td><td><span class="tag">In progress</span></td></tr>
+  <tr><td><code>Parcel now in transit</code></td><td>On its way to the destination city.</td><td><span class="tag">In progress</span></td></tr>
+  <tr><td><code>Parcel received at destination</code></td><td>At our hub in the destination city.</td><td><span class="tag">In progress</span></td></tr>
+  <tr><td><code>Parcel out for delivery</code></td><td>With the rider, on the way to the customer.</td><td><span class="tag b">Out for delivery</span></td></tr>
+  <tr><td><code>Delivered</code></td><td>Handed to the customer. Any COD was collected.</td><td><span class="tag g">Delivered · final</span></td></tr>
+  <tr><td><code>Consignee not available</code></td><td>Attempt failed: customer could not be reached. Reason in <code>exception</code>.</td><td><span class="tag y">Failed attempt</span></td></tr>
+  <tr><td><code>Reattempt</code></td><td>Attempt failed and another one is planned. Reason in <code>exception</code>.</td><td><span class="tag y">Failed attempt</span></td></tr>
+  <tr><td><code>Reassigned</code></td><td>Given to another rider; it will go out again.</td><td><span class="tag">In progress</span></td></tr>
+  <tr><td><code>Refused</code></td><td>Customer refused the parcel. Reason in <code>exception</code>.</td><td><span class="tag r">Refused</span></td></tr>
+  <tr><td><code>Out of service area</code></td><td>The address is outside the area we deliver to.</td><td><span class="tag r">Not deliverable</span></td></tr>
+  <tr><td><code>Ready for return</code></td><td>The return to you has been started.</td><td><span class="tag y">Returning</span></td></tr>
+  <tr><td><code>Return in transit</code></td><td>Travelling back to the pickup city.</td><td><span class="tag y">Returning</span></td></tr>
+  <tr><td><code>Return received at origin</code></td><td>Back at our hub in the pickup city.</td><td><span class="tag y">Returning</span></td></tr>
+  <tr><td><code>Return out for delivery</code></td><td>With the rider, on its way back to you.</td><td><span class="tag y">Returning</span></td></tr>
+  <tr><td><code>Return to shipper</code></td><td>Handed back to you.</td><td><span class="tag r">Returned · final</span></td></tr>
+  <tr><td><code>Cancelled by client</code></td><td>You cancelled it before pickup.</td><td><span class="tag r">Cancelled · final</span></td></tr>
+</table>
+
+<h2><i>4</i>Check the message is from NovaX</h2>
+<p>We sign every message with your signing secret. On your side:</p>
+<ol>
+  <li>Take the <b>raw request body</b> exactly as received. Do not decode and re-encode it first.</li>
+  <li>Compute HMAC-SHA256 of <code>&lt;X-NovaX-Timestamp&gt;.&lt;raw body&gt;</code> using the secret, as lowercase hex.</li>
+  <li>Compare <code>sha256=&lt;your result&gt;</code> with <code>X-NovaX-Signature</code> using a constant-time comparison.</li>
+  <li>Refuse it if the timestamp is more than 5 minutes old.</li>
+</ol>
+<pre><code>// PHP (WordPress / WooCommerce)
+$secret    = 'your signing secret';
+$body      = file_get_contents('php://input');            // raw body, untouched
+$timestamp = $_SERVER['HTTP_X_NOVAX_TIMESTAMP'] ?? '';
+$signature = $_SERVER['HTTP_X_NOVAX_SIGNATURE'] ?? '';
+$expected  = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $secret);
+
+if (abs(time() - (int) $timestamp) > 300 || !hash_equals($expected, $signature)) {
+    http_response_code(401);
+    exit;
+}
+http_response_code(200);                                  // answer first
+$event = json_decode($body, true);                        // then do your own work</code></pre>
+<pre><code>// Node.js
+const crypto = require("crypto");
+function isFromNovaX(rawBody, headers, secret) {
+  const ts  = headers["x-novax-timestamp"];
+  const sig = headers["x-novax-signature"] || "";
+  const mac = crypto.createHmac("sha256", secret).update(ts + "." + rawBody).digest("hex");
+  const expected = "sha256=" + mac;
+  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) &lt;= 300;
+  return fresh &amp;&amp; sig.length === expected.length &amp;&amp;
+         crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+}</code></pre>
+<div class="box"><b>Check your code with this example.</b> Secret <code>whsec_example_3f9a1c</code>, timestamp <code>1791800000</code>, and exactly this body:
+<pre class="line" style="background:#fff"><code>{"event":"parcel.status","awb":"TEST-1A2B3C4D","status":"Delivered"}</code></pre>
+must give this signature:
+<pre class="line" style="background:#fff;margin-bottom:0"><code>sha256=bd840257069188cdaa22a441f52e65034dcac84f603244683a280f0af1091d32</code></pre></div>
+
+<h2><i>5</i>Answering, and what happens if your server is down</h2>
+<ul>
+  <li><b>Answer with any 2xx within 10 seconds.</b> Reply first and do your own processing afterwards.</li>
+  <li>Anything else counts as a failure: another status code, a redirect (we do not follow them), or no answer in 10 seconds.</li>
+  <li><b>We retry a failed event five more times:</b> about 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after each failure. That is 6 attempts over roughly 9 hours. After that we stop for that event.</li>
+  <li>Every retry carries the same <code>X-NovaX-Delivery</code> id. Store the ids you have handled and ignore a repeat.</li>
+  <li>Events can occasionally arrive twice or out of order. Use <code>occurred_at</code> to decide which is newer.</li>
+  <li>If you ever miss events, <code>GET /orders/{awb}</code> returns the current status and the full history.</li>
+</ul>
+
+<h2><i>6</i>Test before your first real order</h2>
+<p><b>Step 1.</b> Register your address with <code>PUT /webhook</code> (section 1).</p>
+<p><b>Step 2.</b> Ask us to send test events to it:</p>
+<div class="call">POST /webhook/test</div>
+<div class="two">
+<pre><code>// one status
+{ "status": "Delivered" }
+
+// or no body at all:
+// one event for each of the 18 statuses</code></pre>
+<pre><code>// answer: 202
+{
+  "ok": true,
+  "queued": 1,
+  "awb": "TEST-1A2B3C4D",
+  "statuses": ["Delivered"]
+}</code></pre>
+</div>
+<ul>
+  <li>Test events arrive within about a minute, with the same headers, signature and retries as real ones.</li>
+  <li>They are marked <code>"test": true</code>, their tracking number starts with <code>TEST-</code>, and <code>tracking_url</code> is <code>null</code>. No real parcel ever has a <code>TEST-</code> number.</li>
+  <li>Up to 100 test events an hour. Several sent together can arrive in any order.</li>
+  <li>Errors: <code>409 no_webhook_url</code> (register first), <code>422 unknown_status</code> (the answer lists the valid values), <code>429 test_limit</code>.</li>
+</ul>
+<p><b>Step 3.</b> Try a booking without creating a parcel: send your normal <code>POST /orders</code> with <code>"test": true</code> added. It runs every check, returns the price and a <code>TEST-</code> number, creates nothing and sends no webhook.</p>
+<p><b>Step 4.</b> Your first real booking sends <code>New booked</code> to your address within a minute.</p>
+
+<div class="foot">NovaX Logistics · novaxlogistics.com · Questions about this guide: reply to us on WhatsApp.</div>
+</body>
+</html>
