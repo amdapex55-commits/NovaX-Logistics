@@ -8,6 +8,7 @@
  *   GET    /invoices          your invoices
  *   GET    /wallet            COD balance and what is still in flight
  *   PUT    /webhook           where we POST every status change (signed, retried)
+ *   POST   /webhook/test      send sample status events to that address
  *   GET    /ping              key check
  *
  * AUTH: Authorization: Bearer nvx_live_...   (one credential, nothing else)
@@ -606,6 +607,45 @@ Deno.serve(async (req) => {
                     delivered_not_yet_invoiced: inflight });
     }
 
+    // -------------------------------------------------------- webhook test --
+    /* A merchant wiring up their receiver has to see every status arrive
+       before a real parcel depends on it, and a booking with "test": true
+       creates no parcel, so nothing was ever sent. This queues sample events
+       to the address they registered. They take the same road as real ones
+       (same queue, signature, headers and retries) and are marked
+       "test": true with a TEST- tracking number, which no real parcel has. */
+    if (path === "/webhook/test" && req.method === "POST") {
+      const wanted = (body as any)?.status;
+      const res = await rpc("nv_api_webhook_test", {
+        p_key_id: acct.key_id, p_status: wanted == null ? null : String(wanted),
+      });
+      const t = Array.isArray(res.data) ? res.data[0] : res.data;
+      if (!res.ok || !t) return fail(502, "upstream_error", "Could not queue the test. Try again in a moment.");
+      if (t.ok === false) {
+        if (t.error === "no_webhook_url") {
+          return fail(409, "no_webhook_url", 'Register your address first: PUT /webhook {"url":"https://..."}');
+        }
+        if (t.error === "unknown_status") {
+          return json({ ok: false, error: "unknown_status",
+            hint: "Send one of the values in `valid`, or leave `status` out to receive one of each.",
+            valid: t.valid }, 422);
+        }
+        if (t.error === "test_limit") {
+          return fail(429, "test_limit", `Test events are limited to ${t.limit_per_hour} an hour. Try again later.`);
+        }
+        return fail(400, String(t.error || "not_queued"));
+      }
+      return json({
+        ok: true,
+        queued: t.queued,
+        awb: t.awb,
+        statuses: t.statuses,
+        webhook: t.webhook,
+        delivery: "Sent within about a minute, signed and retried exactly like a real event.",
+        note: 'Each event carries "test": true and this TEST- tracking number. Several sent together can arrive in any order; sort by occurred_at.',
+      }, 202);
+    }
+
     // ------------------------------------------------------------- webhook --
     if (path === "/webhook" && (req.method === "PUT" || req.method === "POST")) {
       const b = body as any;
@@ -647,7 +687,7 @@ Deno.serve(async (req) => {
     }
 
     return fail(404, "unknown_endpoint",
-      "Valid: POST /orders · GET /orders · GET /orders/:awb · POST /orders/:awb/cancel · GET /invoices · GET /wallet · PUT /webhook · GET /ping");
+      "Valid: POST /orders · GET /orders · GET /orders/:awb · POST /orders/:awb/cancel · GET /invoices · GET /wallet · PUT /webhook · POST /webhook/test · GET /ping");
     })();
     return logResult(out);
   } catch (e) {
