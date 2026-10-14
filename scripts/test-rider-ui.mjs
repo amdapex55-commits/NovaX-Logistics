@@ -94,6 +94,12 @@ assert.equal(a.q('reasonPresets').innerHTML,'','the dialog is left clean for the
 a.tab('delivery:station');
 { const dir=[...a.q('stationList').querySelectorAll('a.call')].find(x=>/Directions/.test(x.textContent));
   assert.equal(dir.getAttribute('href'),'https://www.google.com/maps/search/?api=1&query=Destination%20address%2C%20Lahore%2C%20Pakistan','the card opens Maps on the cleaned address'); }
+// WhatsApp opens with the message typed: who is writing, the parcel, the shop, the cash, and a link to check it is real
+const waText=(root,awb)=>{ const card=root.querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent));
+  const u=new URL(w.getAttribute('href')); assert.equal(u.origin+u.pathname,'https://wa.me/923001234567'); return u.searchParams.get('text'); };
+assert.equal(waText(a.q('stationList'),'N1000003'),['Assalam o Alaikum! I am Lahore Rider from NovaX Logistics. I am bringing your parcel.',
+  'Please send me your location here on WhatsApp so I can reach you.','','Parcel: N1000003','From: Shipper Store','Cash to pay: Rs 1,200',
+  'Track it: https://novaxlogistics.com/tracking.html?awb=N1000003'].join('\n'));
 a.pick('N1000003');a.q('actionGo').click();await wait(120);
 assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').at(-1).args.p_action,'out');
 a.tab('delivery:out');
@@ -186,6 +192,16 @@ a.q('actionGo').click();await wait(60);
 assert.match(a.q('reasonPresets').textContent,/^1 of 2 tickedKAR-LAH-1012-HO \(2\)N1000002/,'grouped under the batch the screen showed');
 a.dialog.close('confirm');await wait(120);
 { const r=a.fixture.requests.filter(x=>x.name==='rider_station_action');assert.equal(r.length,1);assert.equal(JSON.stringify(r[0].args.p_awbs),'["N1000002"]');assert.equal(a.q('dialogConfirm').disabled,false); }
+a.dom.window.close();
+
+// the message for a return, a prepaid exchange, and in Roman Urdu
+a=await app({swap:true});a.go('delivery');a.tab('delivery:out');
+{ const txt=awb=>{ const card=a.q('outList').querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent)); return new URL(w.getAttribute('href')).searchParams.get('text'); };
+  const sw=txt('N1000004');assert.match(sw,/Already paid, nothing to pay\.\nPlease keep the item you are exchanging ready\.\nTrack it: /);assert.doesNotMatch(sw,/Cash to pay/);
+  const back=txt('N1000008');assert.match(back,/^Assalam o Alaikum! I am Lahore Rider from NovaX Logistics\. I am bringing back your returned parcel\.\nPlease send me your location here on WhatsApp\.\n\nParcel: N1000008\nCustomer: Recipient 8, Karachi\nNothing to pay\./);
+  a.q('langBtn').click();await wait();
+  assert.match(txt('N1000004'),/^Assalam o Alaikum! Main Lahore Rider, NovaX Logistics se\. Aap ka parcel le kar aa raha hoon\.\nMeherbani kar ke yahan WhatsApp par apni location bhej dein/);
+  a.q('langBtn').click(); }
 a.dom.window.close();
 
 // Roman Urdu switch

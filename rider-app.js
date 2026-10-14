@@ -155,6 +155,35 @@
     var pc = p.meta.pickupContact;
     return { name: p.consignee, phone: p.phone, address: p.address, city: p.city, alt: pc };
   }
+  /* The WhatsApp button opens a chat with this message already typed (14 Oct
+     2026). A rider writes to a customer mostly to ask where they are, and a
+     message from an unknown number asking for a location reads like a scam
+     unless it says who is writing, which parcel, from which shop, and what
+     is owed. The tracking link lets the customer check that it is real. A
+     return goes to the shop, so it says whose parcel is coming back. Written
+     in the language the rider has chosen in the app. */
+  function waText(p, pay) {
+    var ur = LANG === "ur", rider = (data.rider && data.rider.name) || "", shop = (p.shipper && p.shipper.name) || "";
+    var m = p.meta || {}, lines;
+    if (isReturn(p) || m.swapLeg === "back") {
+      lines = ur
+        ? ["Assalam o Alaikum! Main " + rider + ", NovaX Logistics se. Aap ka wapis aane wala parcel le kar aa raha hoon.", "Meherbani kar ke yahan WhatsApp par apni location bhej dein.", "",
+           "Parcel: " + p.awb, "Customer: " + (p.consignee || "") + (p.city ? ", " + p.city : ""), "Kuch ada nahi karna."]
+        : ["Assalam o Alaikum! I am " + rider + " from NovaX Logistics. I am bringing back your returned parcel.", "Please send me your location here on WhatsApp.", "",
+           "Parcel: " + p.awb, "Customer: " + (p.consignee || "") + (p.city ? ", " + p.city : ""), "Nothing to pay."];
+    } else {
+      var cash = pay.conflict ? "" : pay.collectable > 0 ? (ur ? "Ada karne hain: " : "Cash to pay: ") + money(pay.collectable)
+        : (ur ? "Pehle se ada ho chuka hai, kuch nahi dena." : "Already paid, nothing to pay.");
+      lines = ur
+        ? ["Assalam o Alaikum! Main " + rider + ", NovaX Logistics se. Aap ka parcel le kar aa raha hoon.", "Meherbani kar ke yahan WhatsApp par apni location bhej dein taa ke main aap tak pohanch sakoon.", "",
+           "Parcel: " + p.awb, shop ? "Bhejne wala: " + shop : "", m.category ? "Saman: " + m.category : "", m.orderId ? "Order: " + m.orderId : "", cash]
+        : ["Assalam o Alaikum! I am " + rider + " from NovaX Logistics. I am bringing your parcel.", "Please send me your location here on WhatsApp so I can reach you.", "",
+           "Parcel: " + p.awb, shop ? "From: " + shop : "", m.category ? "Contents: " + m.category : "", m.orderId ? "Order: " + m.orderId : "", cash];
+      if (m.swapLeg === "out") lines.push(ur ? "Badalne wala purana saman tayyar rakhein." : "Please keep the item you are exchanging ready.");
+    }
+    lines.push((ur ? "Track: " : "Track it: ") + "https://novaxlogistics.com/tracking.html?awb=" + encodeURIComponent(p.awb));
+    return lines.filter(function (x, i) { return x !== "" || i === 2; }).join("\n");
+  }
   /* Why the server would refuse to take this parcel out right now. */
   function outLock(p) {
     if (p.bucket !== "station") return "";
@@ -199,7 +228,7 @@
     if (opts.contacts && (validPhone || c.address)) {
       var wa = call.replace(/^\+/, "");
       body += '<div class="contacts">' +
-        (validPhone ? '<a class="call" href="tel:' + esc(call) + '">' + esc(t("call")) + '</a><a class="call" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+        (validPhone ? '<a class="call" href="tel:' + esc(call) + '">' + esc(t("call")) + '</a><a class="call" href="https://wa.me/' + esc(wa) + '?text=' + esc(encodeURIComponent(waText(p, pay))) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
         (c.address ? '<a class="call" href="' + esc(typeof R.directionsUrl === "function" ? R.directionsUrl(c.address, c.city)
           : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(c.address + ", " + (c.city || ""))) + '" target="_blank" rel="noopener">' + esc(t("directions")) + '</a>' : '') + '</div>';
     }
