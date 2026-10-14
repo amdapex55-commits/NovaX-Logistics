@@ -39,6 +39,7 @@ export function installFixture(window, options = {}) {
   async function rpc(name,args={}) {
     fixture.requests.push({name,args});
     if(name==='rider_cash_summary')return{data:{...fixture.cash},error:null};
+    if(name==='rider_station_stamp')return fixture.online?{data:fixture.stamp,error:null}:{error:{message:'Failed to fetch'}};
     if(name==='rider_queue_discard'){fixture.discards=(fixture.discards||[]).concat([args]);return{data:{ok:true},error:null};}
     if(name==='rider_station_view'){
       if(!fixture.online||fixture.failLoad)return{error:{message:'Failed to fetch'}};
@@ -54,7 +55,7 @@ export function installFixture(window, options = {}) {
         if(['Parcel out for delivery','Return out for delivery'].includes(s)&&p.rider_id===rider)return'out';
         if(s==='Delivered'&&p.rider_id===rider)return'done';return null;};
       const parcels=fixture.rows.map(p=>({...p,origin:o(p).replace(/^./,c=>c.toUpperCase()),bucket:bucket(p),attempts:p.attempts||0,shipper:{name:'Shipper Store',phone:'02134567890',address:options.shipperAddress||'Pickup address, warehouse 5'}})).filter(p=>p.bucket);
-      return{data:{rider:{id:rider,name:'Lahore Rider',cities:['Lahore'],cash_limit:0},parcels,batches:fixture.batches||[]},error:null};
+      return{data:{rider:{id:rider,name:'Lahore Rider',cities:['Lahore'],cash_limit:0},parcels,batches:fixture.batches||[],route:fixture.route,stamp:fixture.stamp},error:null};
     }
     const requestKey=args.p_batch_key||args.p_key;
     if(fixture.saved.has(requestKey))return{data:fixture.saved.get(requestKey)};

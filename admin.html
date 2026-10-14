@@ -4483,6 +4483,10 @@ html,body{ background:var(--bg); color:var(--ink); }
     .nv-rb-table td .footer-note{margin-top:2px;line-height:1.35}
     .nv-rb-dep:last-child{border-bottom:0}
     .nv-rb-sm{padding:4px 9px;font-size:12px;margin-top:4px}
+    .nv-rb-legs{margin:4px 0 8px}.nv-rb-legs summary{cursor:pointer;font-size:13px;color:var(--muted);padding:4px 0}
+    .nv-rb-legs tr.nv-rb-flag td{background:color-mix(in srgb, var(--red) 8%, transparent)}
+    .nv-rb-flagtxt{color:var(--red);font-weight:800}
+    .nv-rb-table td.nv-rb-dist{white-space:normal;min-width:130px}
     @media (max-width:600px){ .nv-rb-addr{max-width:150px} }
     /* Phones: each rider row becomes a card, label on the left. */
     @media (max-width:700px){
@@ -17019,6 +17023,40 @@ html,body{ background:var(--bg); color:var(--ink); }
     function nvRbStat(n, label, tone){
       return '<div class="nv-rb-stat' + (tone ? ' ' + tone : '') + '"><b>' + n + '</b><span>' + label + '</span></div>';
     }
+    /* ── Distance (14 Oct 2026) ───────────────────────────────────────────
+       From admin_rider_routes(): every action a rider takes in the app keeps
+       where he was. The km are straight lines from one stop to the next, so
+       the road is longer. "Same place" = a delivery or refusal marked within
+       50 m of the previous one for other parcels: several customers marked
+       from one spot, usually long after the visit or without one. */
+    var NV_RB_ACT = { delivered: "Delivered", refused: "Refused", not_available: "Not available", reattempt: "Reattempt",
+      out: "Took out", collect: "Collected", receive: "Received at station", transit: "Sent in batch" };
+    var NV_RB_FLAG = { same: "same place as the stop before", weak: "weak GPS, not counted", nogps: "no GPS", jump: "GPS jumped, not counted" };
+    function nvRbRoute(id){
+      var rs = NV_RB.routes && NV_RB.routes.riders; if (!rs) return null;
+      return rs.find(function(x){ return x.id === id; }) || { id: id, today: null, period: [] };
+    }
+    function nvRbKm(v){ var n = Number(v || 0); return (n < 10 ? n.toFixed(1) : String(Math.round(n))) + " km"; }
+    function nvRbTime(iso){
+      try { return new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Asia/Karachi", hour: "numeric", minute: "2-digit", hour12: true }); } catch (e) { return ""; }
+    }
+    function nvRbStops(rt){
+      var stops = rt && Array.isArray(rt.stops) ? rt.stops : [];
+      if (!stops.length) return '<div class="footer-note nv-rb-meta">No stops recorded in the app today.</div>';
+      var pts = stops.filter(function(s){ return s.lat != null && (!s.flag || s.flag === "same"); }).slice(-10);
+      var map = pts.length > 1 ? "https://www.google.com/maps/dir/" + pts.map(function(s){ return Number(s.lat).toFixed(6) + "," + Number(s.lng).toFixed(6); }).join("/") : "";
+      var rows = stops.map(function(s){
+        var a = s.awbs || [];
+        return '<tr class="' + (s.flag === "same" || s.flag === "jump" ? "nv-rb-flag" : "") + '"><td data-l="Time">' + escLabelText(nvRbTime(s.at)) + '</td><td data-l="Action">' + escLabelText(NV_RB_ACT[s.action] || s.action || "") +
+          '</td><td data-l="Parcels">' + escLabelText(a.length > 3 ? a.slice(0, 3).join(", ") + " +" + (a.length - 3) : a.join(", ")) + '</td><td class="num" data-l="From last stop">' + (s.km != null ? escLabelText(nvRbKm(s.km)) : '—') +
+          '</td><td data-l="Place">' + (s.lat != null ? '<a href="https://www.google.com/maps?q=' + encodeURIComponent(s.lat + ',' + s.lng) + '" target="_blank" rel="noopener">±' + (s.acc != null ? Number(s.acc) : '?') + ' m</a>' : '') +
+          (s.flag ? ' <span class="footer-note">' + escLabelText(NV_RB_FLAG[s.flag] || s.flag) + '</span>' : '') + '</td></tr>';
+      }).join("");
+      return '<details class="nv-rb-legs"><summary>Today\'s stops (' + stops.length + ') · ' + escLabelText(nvRbKm(rt.km)) + ' · ' + Number(rt.gps || 0) + ' with GPS' +
+        (Number(rt.same) ? ' · <b class="nv-rb-flagtxt">' + Number(rt.same) + ' marked from the same place</b>' : '') + '</summary>' +
+        '<div class="table-wrap"><table class="nv-rb-table nv-rb-cards"><thead><tr><th>Time</th><th>Action</th><th>Parcels</th><th class="num">From last stop</th><th>Place</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        (map ? '<a class="ghost-btn nv-rb-sm" href="' + map + '" target="_blank" rel="noopener">Open route on map</a>' : '') + '</details>';
+    }
 
     async function nvRbLoad(force){
       if (NV_RB.busy) return;
@@ -17029,9 +17067,13 @@ html,body{ background:var(--bg); color:var(--ink); }
         var el = document.getElementById(id); if (el && !NV_RB.data) el.innerHTML = '<p class="footer-note">Loading riders…</p>';
       });
       try {
-        var r = await sb.rpc("admin_rider_board", { p_days: NV_RB.days });
+        /* The routes (km between stops, 14 Oct 2026) come with the board; if
+           they fail, the board still shows and the distance says unavailable. */
+        var got = await Promise.all([sb.rpc("admin_rider_board", { p_days: NV_RB.days }),
+          Promise.resolve(sb.rpc("admin_rider_routes", { p_days: Math.min(NV_RB.days, 31) })).catch(function(e){ return { error: e }; })]);
+        var r = got[0];
         if (r.error) throw r.error;
-        NV_RB.data = r.data || {}; NV_RB.at = Date.now();
+        NV_RB.data = r.data || {}; NV_RB.routes = got[1] && !got[1].error ? (got[1].data || {}) : null; NV_RB.at = Date.now();
       } catch (e) {
         ["nvRbRoute", "nvRbReport", "nvRbSummary"].forEach(function(id){
           var el = document.getElementById(id);
@@ -17058,11 +17100,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         var n = (r.out_now || []).length; out += n; if (n) onRoute++;
         del += Number(r.today && r.today.delivered || 0); fail += Number(r.today && r.today.failed || 0); cod += Number(r.today && r.today.cod || 0);
       });
-      var active = riders.filter(function(r){ return (r.out_now || []).length || Number(r.today && (r.today.delivered + r.today.failed) || 0); });
+      var active = riders.filter(function(r){ var rt = nvRbRoute(r.id); return (r.out_now || []).length || Number(r.today && (r.today.delivered + r.today.failed) || 0) || (rt && rt.today && Number(rt.today.n)); });
       var idle = riders.filter(function(r){ return active.indexOf(r) < 0; });
       active.sort(function(a, b){ return (b.out_now || []).length - (a.out_now || []).length; });
       var cards = active.map(function(r){
-        var list = r.out_now || [], shown = list.slice(0, 25);
+        var list = r.out_now || [], shown = list.slice(0, 25), rt = nvRbRoute(r.id), rtd = rt && rt.today;
         var gps = r.last_gps && r.last_gps.lat != null
           ? '<a href="https://www.google.com/maps?q=' + encodeURIComponent(r.last_gps.lat + ',' + r.last_gps.lng) + '" target="_blank" rel="noopener">Last GPS ' + escLabelText(nvRbAgo(r.last_gps.at)) + '</a>'
           : '<span>No GPS yet</span>';
@@ -17075,8 +17117,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           '<div class="nv-rb-card-head"><div><b>' + escLabelText(r.name) + '</b> <span class="footer-note">' + escLabelText((r.cities || []).join(", ") || r.branch || "") + '</span></div>' +
           '<span class="chip ' + (r.access === "Blocked" ? 'bad">Blocked' : list.length ? 'good">On route' : 'info">Back') + '</span></div>' +
           '<div class="nv-rb-line">' + nvRbStat(list.length, "out now") + nvRbStat(Number(r.today.delivered || 0), "delivered today", "good") +
-          nvRbStat(Number(r.today.failed || 0), "failed today", Number(r.today.failed) ? "warn" : "") + nvRbStat(money(r.today.cod || 0), "COD today") + '</div>' +
+          nvRbStat(Number(r.today.failed || 0), "failed today", Number(r.today.failed) ? "warn" : "") + nvRbStat(money(r.today.cod || 0), "COD today") +
+          (rt ? nvRbStat(nvRbKm(rtd && rtd.km), "km between stops", rtd && Number(rtd.same) ? "warn" : "") : '') + '</div>' +
           '<div class="footer-note nv-rb-meta">Last scan ' + escLabelText(nvRbAgo(r.last_scan)) + ' · ' + gps + '</div>' +
+          (rt ? nvRbStops(rtd) : '') +
           (list.length ? '<div class="table-wrap"><table class="nv-rb-table nv-rb-route"><thead><tr><th>AWB</th><th>Customer</th><th>City</th><th class="num">COD</th><th>Out since</th></tr></thead><tbody>' + rows +
             (list.length > shown.length ? '<tr><td colspan="5" class="footer-note">+' + (list.length - shown.length) + ' more parcels</td></tr>' : '') + '</tbody></table></div>' : '') +
           '</div>';
@@ -17094,16 +17138,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       var el = document.getElementById("nvRbReport"); if (!el || !NV_RB.data) return;
       var riders = (NV_RB.data.riders || []).filter(nvRbCityOk).slice();
       riders.sort(function(a, b){ return Number(b.period.delivered || 0) - Number(a.period.delivered || 0); });
-      var T = { picked: 0, delivered: 0, failed: 0, returned: 0, cod: 0, confirmed: 0 };
+      var T = { picked: 0, delivered: 0, failed: 0, returned: 0, cod: 0, confirmed: 0, km: 0, fuel: 0 }, haveRoutes = !!NV_RB.routes;
       var rows = riders.map(function(r){
         var p = r.period || {}, tries = Number(p.delivered || 0) + Number(p.failed || 0);
         var rate = tries ? Math.round(Number(p.delivered || 0) * 100 / tries) : null;
         T.picked += Number(p.picked || 0); T.delivered += Number(p.delivered || 0); T.failed += Number(p.failed || 0);
         T.returned += Number(p.returned || 0); T.cod += Number(p.cod || 0); T.confirmed += Number(r.cash && r.cash.confirmed_period || 0);
+        var days = (nvRbRoute(r.id) || {}).period || [], km = 0, fuel = 0, acts = 0, gpsN = 0, same = 0;
+        days.forEach(function(d){ km += Number(d.km || 0); fuel += Number(d.fuel || 0); acts += Number(d.n || 0); gpsN += Number(d.gps || 0); same += Number(d.same || 0); });
+        T.km += km; T.fuel += fuel;
+        var dist = !haveRoutes ? '<span class="footer-note">unavailable</span>' : acts ? '<b>' + escLabelText(nvRbKm(km)) + '</b><div class="footer-note">' + gpsN + ' of ' + acts + ' actions with GPS</div>' +
+            (same ? '<div class="footer-note nv-rb-flagtxt">' + same + ' marked from the same place</div>' : '') : '<span class="footer-note">no app actions</span>';
         return '<tr><td><b>' + escLabelText(r.name) + '</b><div class="footer-note">' + escLabelText(r.branch || "") + '</div></td>' +
           '<td class="num" data-l="Picked up">' + Number(p.picked || 0) + '</td><td class="num" data-l="Delivered"><b>' + Number(p.delivered || 0) + '</b></td><td class="num" data-l="Failed">' + Number(p.failed || 0) +
           '</td><td class="num" data-l="Returned">' + Number(p.returned || 0) + '</td><td class="num" data-l="Success">' + (rate == null ? '—' : '<span class="chip ' + (rate >= 80 ? 'good' : rate >= 60 ? 'warn' : 'bad') + '">' + rate + '%</span>') +
-          '</td><td class="num" data-l="COD delivered">' + money(p.cod || 0) + '</td><td class="num" data-l="Cash confirmed">' + money(r.cash && r.cash.confirmed_period || 0) + '</td></tr>';
+          '</td><td class="num" data-l="COD delivered">' + money(p.cod || 0) + '</td><td class="num" data-l="Cash confirmed">' + money(r.cash && r.cash.confirmed_period || 0) +
+          '</td><td class="num nv-rb-dist" data-l="Distance">' + dist + '</td><td class="num" data-l="Fuel claimed">' + (fuel ? money(fuel) : '<span class="footer-note">—</span>') + '</td></tr>';
       }).join("");
       var tt = T.delivered + T.failed, trate = tt ? Math.round(T.delivered * 100 / tt) + '%' : '—';
       var label = NV_RB.days === 1 ? "Today" : "Last " + NV_RB.days + " days";
@@ -17112,11 +17162,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         }).join("") + nvRbCityPicker() + '</div>' +
         '<div class="nv-rb-line nv-rb-top">' + nvRbStat(T.delivered, "delivered", "good") + nvRbStat(T.failed, "failed attempts", T.failed ? "warn" : "") +
         nvRbStat(trate, "success rate") + nvRbStat(money(T.cod), "COD delivered") + nvRbStat(money(T.confirmed), "cash confirmed in") + '</div>' +
-        '<div class="table-wrap"><table class="nv-rb-table nv-rb-cards"><thead><tr><th>Rider · ' + escLabelText(label) + '</th><th class="num">Picked up</th><th class="num">Delivered</th><th class="num">Failed</th><th class="num">Returned</th><th class="num">Success</th><th class="num">COD delivered</th><th class="num">Cash confirmed</th></tr></thead><tbody>' +
-        (rows || '<tr><td colspan="8">No riders.</td></tr>') +
-        '<tr class="nv-rb-total"><td>Total</td><td class="num" data-l="Picked up">' + T.picked + '</td><td class="num" data-l="Delivered">' + T.delivered + '</td><td class="num" data-l="Failed">' + T.failed + '</td><td class="num" data-l="Returned">' + T.returned + '</td><td class="num" data-l="Success">' + trate + '</td><td class="num" data-l="COD delivered">' + money(T.cod) + '</td><td class="num" data-l="Cash confirmed">' + money(T.confirmed) + '</td></tr>' +
+        '<div class="table-wrap"><table class="nv-rb-table nv-rb-cards"><thead><tr><th>Rider · ' + escLabelText(label) + '</th><th class="num">Picked up</th><th class="num">Delivered</th><th class="num">Failed</th><th class="num">Returned</th><th class="num">Success</th><th class="num">COD delivered</th><th class="num">Cash confirmed</th><th class="num">Distance</th><th class="num">Fuel claimed</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="10">No riders.</td></tr>') +
+        '<tr class="nv-rb-total"><td>Total</td><td class="num" data-l="Picked up">' + T.picked + '</td><td class="num" data-l="Delivered">' + T.delivered + '</td><td class="num" data-l="Failed">' + T.failed + '</td><td class="num" data-l="Returned">' + T.returned + '</td><td class="num" data-l="Success">' + trate + '</td><td class="num" data-l="COD delivered">' + money(T.cod) + '</td><td class="num" data-l="Cash confirmed">' + money(T.confirmed) + '</td><td class="num" data-l="Distance">' + (haveRoutes ? escLabelText(nvRbKm(T.km)) : '—') + '</td><td class="num" data-l="Fuel claimed">' + money(T.fuel) + '</td></tr>' +
         '</tbody></table></div>' +
-        '<p class="footer-note mt-8">Counted from each parcel\'s status history, credited to the rider who holds the parcel now. Failed = refused, customer not available or sent for reattempt. Success = delivered ÷ (delivered + failed).</p>';
+        '<p class="footer-note mt-8">Counted from each parcel\'s status history, credited to the rider who holds the parcel now. Failed = refused, customer not available or sent for reattempt. Success = delivered ÷ (delivered + failed). Distance = straight lines between the places a rider stood when he pressed an action in the app (recorded from 14 Oct 2026); the road is longer, and actions without GPS or with a reading weaker than 150 m are not counted. Fuel claimed = the rider\'s Fuel expenses on those days.</p>';
     }
 
     /* ── Rider Summary: roster and cash ─────────────────────────────────── */

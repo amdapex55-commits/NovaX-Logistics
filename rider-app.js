@@ -31,7 +31,7 @@
       finally { clearTimeout(timer); if (source) source.removeEventListener("abort", abort); }
     } } });
   if (sb && !DEMO) window.NovaXRiderClient = sb;   /* rider.html's Instant check uses this one client */
-  var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, connected = false;
+  var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, lastFull = 0, stampOff = false, checking = false, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
   var ui = { view: "home", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {} };
@@ -76,7 +76,18 @@
     installIos: ["Tap the Share button (the square with an arrow) at the bottom of Safari, then “Add to Home Screen”, then “Add”.", "Safari ke neeche Share button (teer wala dabba) dabayein, phir “Add to Home Screen”, phir “Add”."],
     installIosOther: ["Tap the Share button, then “Add to Home Screen”. If it is not there, open this page in Safari and do the same.", "Share button dabayein, phir “Add to Home Screen”. Agar na ho to yeh page Safari mein kholein aur wahi karein."],
     installDesktop: ["This is made for the rider’s phone. On a computer, click the install icon at the right end of the address bar in Chrome or Edge.", "Yeh rider ke phone ke liye hai. Computer par Chrome ya Edge mein address bar ke dayein kinare install ka nishan dabayein."],
-    installReady: ["Ready. Tap Add now.", "Tayyar hai. Ab Lagayein dabayein."], installOpenChrome: ["Open in Chrome", "Chrome mein kholein"]
+    installReady: ["Ready. Tap Add now.", "Tayyar hai. Ab Lagayein dabayein."], installOpenChrome: ["Open in Chrome", "Chrome mein kholein"],
+    gpsWait: ["Getting GPS…", "GPS dhoond rahe hain…"],
+    geoOff: ["Location is off for this app, so the office cannot see where you deliver. Turn it on: tap the icon left of the web address, then Permissions, then Location, then Allow. Or phone Settings, Apps, Chrome, Permissions, Location.",
+      "Is app ki Location band hai, office ko pata nahi chalta aap ne kahan deliver kiya. On karein: web address ke baayein nishan dabayein, phir Permissions, phir Location, phir Allow. Ya phone Settings, Apps, Chrome, Permissions, Location."],
+    routeTitle: ["Today's route", "Aaj ka rasta"], routeSum: ["{n} stops · {km} km", "{n} stop · {km} km"], distToday: ["Distance today", "Aaj ka faasla"],
+    routeNote: ["Straight line from each stop to the next. The road is longer. Stops without GPS are not counted.", "Har stop se agle tak seedhi line. Sarak ka rasta lamba hota hai. Baghair GPS wale stop nahi gine jaate."],
+    routeMap: ["Open on map", "Map par dekhein"],
+    act_delivered: ["Delivered", "Deliver"], act_refused: ["Refused", "Mana"], act_not_available: ["Not available", "Nahi mila"], act_reattempt: ["Reattempt", "Dobara"],
+    act_out: ["Took out", "Delivery ke liye nikale"], act_collect: ["Collected", "Uthaye"], act_receive: ["Received", "Station par mile"], act_transit: ["Sent", "Bheje"],
+    flag_same: ["same place as the stop before", "pichle stop wali jagah"], flag_weak: ["weak GPS, not counted", "GPS kamzor, nahi gina"],
+    flag_nogps: ["no GPS", "GPS nahi"], flag_jump: ["GPS jumped, not counted", "GPS ghalat, nahi gina"],
+    shopNote: ["Shop's note", "Shop ka note"], mayOpen: ["May open before paying", "Pay se pehle khol sakta hai"], noOpen: ["Do not open", "Kholne na dein"], fragile: ["Fragile", "Nazuk"]
   };
   function t(k, vars) { var s = (TXT[k] || [k, k])[LANG === "ur" ? 1 : 0]; if (vars) Object.keys(vars).forEach(function (v) { s = s.split("{" + v + "}").join(vars[v]); }); return s; }
   function paintWords() {
@@ -114,7 +125,8 @@
     q("network").style.color = connected && navigator.onLine ? "#087854" : "#a72d24";
     var waiting = queue ? jobs().filter(function (j) { return j.state !== "review"; }).length : 0;
     if (waiting) q("network").textContent += " · " + waiting + " saved, waiting to send";
-    q("lastSync").textContent = lastSync ? "Synced " + Math.max(0, Math.floor((Date.now() - lastSync) / 60000)) + " min ago" : "Not synced yet";
+    var mins = Math.floor((Date.now() - lastSync) / 60000);
+    q("lastSync").textContent = !lastSync ? "Not synced yet" : mins < 1 ? "Up to date" : "Synced " + mins + " min ago";
   }
   function paintQueue() {
     var list = jobs(), review = list.filter(function (j) { return j.state === "review"; });
@@ -213,6 +225,16 @@
       wrong_address: ["Customer says the address is wrong", "Customer ne kaha: address ghalat hai"] })[cr.choice] : null;
     var crWhen = ""; try { if (cr && cr.at) crWhen = new Date(cr.at).toLocaleString("en-GB", { timeZone: "Asia/Karachi", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }); } catch (e) {}
     if (crSay) tag += '<p class="swaptag custsay">' + esc(LANG === "ur" ? crSay[1] : crSay[0]) + (cr.note ? ' · ' + esc(cr.note) : '') + (crWhen ? ' · ' + esc(crWhen) : '') + '</p>';
+    /* What the shop wrote when booking (printed on the label, never shown
+       here until 14 Oct 2026): whether the customer may open it before
+       paying, fragile, and the shop's own note. */
+    if (p.bucket === "station" || p.bucket === "out") {
+      var sn = [], open = String(p.meta.allowOpen || ""), note = String(p.meta.comments || "").trim();
+      if (open === "Yes") sn.push('<b class="open-yes">' + esc(t("mayOpen")) + '</b>'); else if (open === "No") sn.push('<b class="open-no">' + esc(t("noOpen")) + '</b>');
+      if (String(p.meta.fragile || "") === "Yes" && !/fragile/i.test(note)) sn.push(esc(t("fragile")));
+      if (note) sn.push(esc(t("shopNote")) + ': ' + esc(note.slice(0, 180)));
+      if (sn.length) tag += '<p class="shopnote">' + sn.join(' · ') + '</p>';
+    }
     var money2 = (isReturn(p) || p.meta.swapLeg === "back") ? (LANG === "ur" ? "Shipper ko wapsi · kuch collect nahi karna" : "Return to shipper · collect nothing") : p.cod > 0 ? (pay.conflict ? '<span class="error-text">COD/prepaid conflict — marked Prepaid. Call the office.</span>' : "COD " + money(p.cod)) : "Prepaid · collect nothing";
     var att = Number(p.attempts || 0), attTxt = att ? (att + " " + t("attempts") + (att > 1 ? (LANG === "ur" ? "" : "s") : "")) : "";
     var route = (p.origin || "") + " → " + (p.city || "");
@@ -281,7 +303,9 @@
     q("nArriving").textContent = inc.length; q("nStation").textContent = st.length; q("nOut").textContent = out.length;
     q("homeTransit").textContent = tr.length + " " + t("toSend");
     var deliveredToday = done.filter(function (p) { return R.day(R.deliveredAt(p)) === today(); });
-    q("stats").innerHTML = stat("Delivered today", deliveredToday.length) + stat("Out now", out.length) + stat("Cash to hand over", data.cash ? money(data.cash.net) : "Unavailable", true) + stat("City", cities);
+    q("stats").innerHTML = stat("Delivered today", deliveredToday.length) + stat("Out now", out.length) + stat("Cash to hand over", data.cash ? money(data.cash.net) : "Unavailable", true) +
+      (data.route ? stat(t("distToday"), kmText(data.route.km)) : "") + stat("City", cities);
+    renderRoute();
     var attn = st.filter(function (p) { return Number(p.attempts || 0) >= 2 || p.status === "Refused"; }).concat(out.filter(function (p) { return payment(p).conflict; }));
     q("attentionList").innerHTML = attn.map(function (p) { return card(p); }).join("") || '<p class="empty">All clear.</p>';
 
@@ -353,8 +377,32 @@
 
     renderCash(); paintView(); applySearch(); paintQueue(); paintBar(); controls();
     document.querySelectorAll("[data-blocked]").forEach(function (b) { b.disabled = true; });
+    geoSync(); paintGeo();
   }
   function stat(label, value, cash) { return '<div class="stat' + (cash ? ' money' : '') + '"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'; }
+  function kmText(v) { var n = Number(v || 0); return (n < 10 ? n.toFixed(1) : String(Math.round(n))) + " km"; }
+  function clock(iso) {
+    try { return new Date(R.timestamp(iso)).toLocaleTimeString("en-GB", { timeZone: "Asia/Karachi", hour: "numeric", minute: "2-digit", hour12: true }); } catch (_) { return ""; }
+  }
+  /* Today's stops from the server (nv_rider_route), the km from each stop
+     to the one before, and a map of the last ten that have a place. */
+  function renderRoute() {
+    var el = q("routeBox"); if (!el) return;
+    var rt = data.route, stops = rt && Array.isArray(rt.stops) ? rt.stops : [];
+    el.classList.toggle("hidden", !stops.length);
+    if (!stops.length) { el.innerHTML = ""; return; }
+    var pts = stops.filter(function (s) { return s.lat != null && (!s.flag || s.flag === "same"); }).slice(-10);
+    var map = pts.length > 1 ? "https://www.google.com/maps/dir/" + pts.map(function (s) { return Number(s.lat).toFixed(6) + "," + Number(s.lng).toFixed(6); }).join("/")
+      : pts.length ? "https://www.google.com/maps/search/?api=1&query=" + Number(pts[0].lat).toFixed(6) + "," + Number(pts[0].lng).toFixed(6) : "";
+    var rows = stops.slice().reverse().map(function (s) {
+      var awbs = s.awbs || [], what = awbs.length > 2 ? awbs.length + " parcels" : awbs.join(", ");
+      return '<li class="' + (s.flag ? "flag-" + esc(s.flag) : "") + '"><span class="rt-time">' + esc(clock(s.at)) + '</span><span class="rt-what"><b>' + esc(t("act_" + s.action)) + '</b> ' + esc(what) +
+        (s.flag ? '<small>' + esc(t("flag_" + s.flag)) + '</small>' : '') + '</span><span class="rt-km">' + (s.km != null ? "+" + esc(kmText(s.km)) : "") + '</span></li>';
+    }).join("");
+    el.innerHTML = '<details data-route' + (ui.routeOpen ? " open" : "") + '><summary><b>' + esc(t("routeTitle")) + '</b><span>' + esc(t("routeSum", { n: stops.length, km: kmText(rt.km).replace(" km", "") })) + '</span></summary>' +
+      '<ol class="route-list">' + rows + '</ol><p class="sub">' + esc(t("routeNote")) + '</p>' +
+      (map ? '<a class="call" href="' + esc(map) + '" target="_blank" rel="noopener">' + esc(t("routeMap")) + '</a>' : '') + '</details>';
+  }
   function renderCash() {
     var cash = data.cash;
     var mine = data.parcels.filter(function (p) { return p.status === "Delivered" && p.cod > 0 && p.rider_id === riderId; });
@@ -442,18 +490,20 @@
     loading = true; controls();
     try {
       await identity();
-      var pr = await sb.from("profiles").select("role,status,rider_id").eq("id", userId).single();
+      /* The three answers are fetched together (14 Oct 2026). One after the
+         other they took about 2 s on office wifi, longer on a phone. */
+      var got = await Promise.all([sb.from("profiles").select("role,status,rider_id").eq("id", userId).single(), sb.rpc("rider_station_view"), sb.rpc("rider_cash_summary")]);
+      var pr = got[0], v = got[1], cash = got[2];
       if (pr.error) throw pr.error;
       if (!pr.data || String(pr.data.role).toLowerCase() !== "rider" || String(pr.data.status).toLowerCase() !== "active" || pr.data.rider_id !== riderId) { authorized = false; throw new Error("Rider access changed. Sign in again or contact the office."); }
-      var v = await sb.rpc("rider_station_view"); if (v.error) throw v.error;
-      var cash = await sb.rpc("rider_cash_summary");
+      if (v.error) throw v.error;
       await identity();
       var view = v.data || {};
       data = { rider: view.rider || { name: "Rider", cities: [] }, parcels: (view.parcels || []).map(function (p) {
           var m = R.mapParcel(p); m.bucket = p.bucket; m.origin = p.origin || "Karachi"; m.attempts = Number(p.attempts || 0);
           m.shipper = p.shipper || null; m.exception = p.exception || ""; m.customerReply = p.customer_reply || null; m.rider_id = p.rider_id; m.client_id = p.client_id; m.heldBy = p.held_by || ""; return m;
-        }), batches: view.batches || [], cash: cash.error ? null : cash.data };
-      connected = true; lastSync = Date.now();
+        }), batches: view.batches || [], cash: cash.error ? null : cash.data, route: view.route || null, stamp: view.stamp || "" };
+      connected = true; lastSync = lastFull = Date.now();
       try { store.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
       catch (_) { msg("This phone cannot save the station for offline use. Do not reload without signal.", "error"); }
       q("gate").classList.add("hidden"); render();
@@ -611,19 +661,66 @@
       dialog.showModal();
     });
   }
-  /* Best GPS reading within 10 s, stopping early at 25 m. */
-  function gps() {
-    if (DEMO) return Promise.resolve({ lat: 31.5204, lng: 74.3587, accuracy: 15, at: new Date().toISOString() });   /* no location prompt on a preview */
+  /* ---- GPS (14 Oct 2026) --------------------------------------------------
+     A phone needs time to find itself: asked at the moment of "Delivered",
+     the reading came after up to 10 s of waiting, often weak, and the rider
+     stood there watching "Getting GPS fix". Now the phone follows the rider
+     while he has parcels out (or is on Pickup with shippers to visit) and the
+     app is open, so a sharp reading is usually ready the moment he taps.
+     Every action that happens at a door (delivered, refused, not available,
+     reattempt, exchange, collected) and taking parcels out at the station
+     saves where he was; the office sees the stops and the km between them. */
+  var geo = { watch: null, fix: null, fixAt: 0, denied: false };
+  function geoWanted() {
+    return !DEMO && authorized && !document.hidden && !!navigator.geolocation && typeof navigator.geolocation.watchPosition === "function" &&
+      (inBucket("out").length > 0 || (ui.view === "pickup" && inBucket("pickup").length > 0));
+  }
+  function geoStop() { if (geo.watch != null) { try { navigator.geolocation.clearWatch(geo.watch); } catch (_) {} geo.watch = null; } }
+  function geoSync() {
+    if (!geoWanted()) { geoStop(); return; }
+    if (geo.watch != null) return;
+    try {
+      geo.watch = navigator.geolocation.watchPosition(function (p) {
+        if (!p || !p.coords) return; var was = geo.denied; geo.fix = p; geo.fixAt = Date.now(); geo.denied = false; if (was) paintGeo();
+      }, function (e) { if (e && e.code === 1) { geo.denied = true; geoStop(); paintGeo(); } }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
+    } catch (_) { geo.watch = null; }
+  }
+  function paintGeo() {
+    var el = q("geoNote"); if (!el) return;
+    el.classList.toggle("hidden", !(geo.denied && authorized && (inBucket("out").length || ui.view === "pickup")));
+    el.textContent = t("geoOff");
+  }
+  /* The reading saved with an action. "at" is when the rider tapped, so an
+     action saved offline still lands at the right time on his route. wait:
+     how long to keep looking for a reading within 30 m; 0 = use what the
+     phone already has. */
+  function gps(wait) {
+    var at = new Date().toISOString();
+    if (DEMO) return Promise.resolve({ lat: 31.5204, lng: 74.3587, accuracy: 15, at: at, fix_at: at });   /* no location prompt on a preview */
+    if (!navigator.geolocation) return Promise.resolve({ unavailable: true, reason: "no_gps", at: at });
+    var GOOD = 30, FRESH = 20000;
+    function out(p, when) { return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy), at: at, fix_at: new Date(when).toISOString() }; }
+    var best = geo.fix && Date.now() - geo.fixAt <= FRESH ? geo.fix : null, bestAt = geo.fixAt;
+    if (best && best.coords.accuracy <= GOOD) return Promise.resolve(out(best, bestAt));
+    if (!wait) return Promise.resolve(best ? out(best, bestAt) : { unavailable: true, reason: geo.denied ? "denied" : "no_fix", at: at });
     return new Promise(function (resolve) {
-      var at = new Date().toISOString();
-      if (!navigator.geolocation) { resolve({ unavailable: true, at: at }); return; }
-      var best = null, done = false, watch = null, timer = null;
-      function out(p) { return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy), at: at }; }
-      function finish() { if (done) return; done = true; clearTimeout(timer); if (watch != null) { try { navigator.geolocation.clearWatch(watch); } catch (_) {} } resolve(best ? out(best) : { unavailable: true, at: at }); }
-      function take(p) { if (!p || !p.coords) return; if (!best || p.coords.accuracy < best.coords.accuracy) best = p; if (best.coords.accuracy <= 25) finish(); else msg("Getting GPS fix… ±" + Math.round(best.coords.accuracy) + " m", "info"); }
-      if (typeof navigator.geolocation.watchPosition !== "function") { navigator.geolocation.getCurrentPosition(function (p) { best = p; finish(); }, finish, { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }); return; }
-      timer = setTimeout(finish, 10000); msg("Getting GPS fix…", "info");
-      try { watch = navigator.geolocation.watchPosition(take, function (e) { if (e && e.code === 1) finish(); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }); } catch (_) { finish(); }
+      var done = false, watch = null, timer = null;
+      function finish(reason) {
+        if (done) return; done = true; clearTimeout(timer);
+        if (watch != null) { try { navigator.geolocation.clearWatch(watch); } catch (_) {} }
+        resolve(best ? out(best, bestAt) : { unavailable: true, reason: reason || (geo.denied ? "denied" : "no_fix"), at: at });
+      }
+      function take(p) {
+        if (!p || !p.coords) return;
+        geo.fix = p; geo.fixAt = Date.now(); geo.denied = false;
+        if (!best || p.coords.accuracy < best.coords.accuracy) { best = p; bestAt = geo.fixAt; }
+        if (best.coords.accuracy <= GOOD) finish(); else msg(t("gpsWait") + " ±" + Math.round(best.coords.accuracy) + " m", "info");
+      }
+      function fail(e) { if (e && e.code === 1) { geo.denied = true; paintGeo(); finish("denied"); } }
+      msg(t("gpsWait"), "info");
+      timer = setTimeout(function () { finish(); }, wait);
+      if (typeof navigator.geolocation.watchPosition !== "function") { navigator.geolocation.getCurrentPosition(function (p) { take(p); finish(); }, function (e) { fail(e); finish(); }, { enableHighAccuracy: true, timeout: wait, maximumAge: 0 }); return; }
+      try { watch = navigator.geolocation.watchPosition(take, fail, { enableHighAccuracy: true, timeout: wait, maximumAge: 0 }); } catch (_) { finish(); }
     });
   }
 
@@ -631,6 +728,9 @@
   async function station(list, action, reason, extra, location) {
     await save({ kind: "station", list: list.map(function (a) { return String(a).toUpperCase(); }).sort(), action: action, reason: reason || "", extra: extra || {}, location: location || null });
   }
+  /* Collecting at a shipper and taking parcels out at the station are stops
+     on the route too: a short wait, never the full one. */
+  var BAR_GPS = { collect: 5000, out: 5000 };
   async function runBar() {
     if (busy || flushing || !authorized) return;
     var scope = scopeNow(), list = Array.from(ui.sel);
@@ -643,7 +743,10 @@
         if (!keep) return;   /* closed without confirming: the selection stays as it was */
         list = keep;   /* what was unticked did not arrive: it is left out, and the selection clears below */
       }
-      if (action) { for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action); }
+      if (action) {
+        var here = BAR_GPS[action] ? await gps(BAR_GPS[action]) : null;
+        for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action, "", null, here);
+      }
       else if (scope === "transit") {
         if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
         await sendTransit(list);
@@ -671,7 +774,6 @@
         var what = p.status === "Return out for delivery" ? "Confirm " + p.awb + " was handed back to the shipper." :
           p.awb + ": confirm the customer received it and you collected exactly " + money(payment(p).collectable) + ".";
         if (!await confirm(p.status === "Return out for delivery" ? t("returned") : t("delivered"), what)) return;
-        location = await gps();
       } else if (action === "reattempt") {
         var d = R.day(new Date(Date.now() + 864e5)), dMin = today(), dMax = R.day(new Date(Date.now() + 14 * 864e5));
         var r = await confirm(t("reattempt"), "Why is it coming back to the station, and when to try again?", ["Customer asked for tomorrow", "Phone off", "Not at home", "Address incomplete"],
@@ -684,8 +786,11 @@
       } else if (action === "not_available") {
         reason = await confirm(t("notAvailable"), "What happened at this stop?", ["No answer on call", "Not at address", "Address not found", "Shop closed"]); if (!reason) return;
       }
+      /* Where the rider is when it happens: a refusal or "not at home" is
+         proof of a visit only with a place on it. */
+      location = await gps(10000);
       await station([awb], action, reason === true ? "" : reason, extra, location);
-      if (location && location.unavailable) msg("Saved without GPS. Server confirmation is still pending.", "info");
+      if (location && location.unavailable) msg(location.reason === "denied" ? t("geoOff") : "Saved without GPS. Server confirmation is still pending.", location.reason === "denied" ? "error" : "info");
       else if (location && location.accuracy > 100) msg("Saved. GPS was weak (±" + location.accuracy + " m), so the office sees the location as approximate.", "info");
     } catch (e) { msg(String(e.message || e), "error"); }
     finally { busy = false; render(); void flush(); }
@@ -703,7 +808,7 @@
         reason = await confirm("Exchange did not happen", "Keep the new item. It goes back to the merchant.", ["Customer does not have the old item", "Customer changed their mind", "Customer not available", "Address not found"]);
         if (!reason) return;
       }
-      var location = result === "exchanged" ? await gps() : null;
+      var location = await gps(result === "exchanged" ? 10000 : 0);   /* the server keeps the place of an exchange only */
       await save({ kind: "swap", awb: p.awb, outcome: result, reason: reason === true ? "" : reason, location: location });
     } catch (e) { msg(String(e.message || e), "error"); }
     finally { busy = false; render(); void flush(); }
@@ -880,6 +985,7 @@
   q("actionClear").onclick = function () { ui.sel.clear(); ui.selScope = ""; render(); };
   document.addEventListener("toggle", function (e) {
     var d = e.target; if (d && d.matches && d.matches("details[data-batch]")) ui.openBatch[d.dataset.batch] = d.open;
+    if (d && d.matches && d.matches("details[data-route]")) ui.routeOpen = d.open;
   }, true);
   document.addEventListener("change", function (e) {
     var cb = e.target.closest && e.target.closest("[data-pick]"); if (!cb) return;
@@ -945,7 +1051,11 @@
     var tab = e.target.closest("[data-tab]");
     if (tab) { var p = tab.dataset.tab.split(":"); ui.tab[p[0]] = p[1]; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); return; }
     var view = e.target.closest("[data-view]");
-    if (view) { ui.view = view.dataset.view; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); window.scrollTo(0, 0); return; }
+    if (view) {
+      ui.view = view.dataset.view; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); window.scrollTo(0, 0);
+      if (ui.view === "cash" && Date.now() - lastFull > 30000) void load(true);   /* cash figures are not in the 15-second check */
+      return;
+    }
   });
   q("logoutBtn").onclick = async function () {
     if (DEMO) { location.href = "index.html"; return; }
@@ -994,18 +1104,44 @@
         if (event === "SIGNED_OUT" || session && session.user.id !== userId) {
           authorized = false; connected = false; data = { rider: null, parcels: [], batches: [], cash: null };
           q("gate").classList.remove("hidden"); failGate("Your session changed. Sign in again.");
-          try { store.removeItem(cacheKey); store.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} if (event === "SIGNED_OUT") forgetNote(); controls();
+          try { store.removeItem(cacheKey); store.removeItem("novaxRiderIdentity:" + userId); } catch (_) {} if (event === "SIGNED_OUT") forgetNote(); geoStop(); controls();
         }
       }).data.subscription;
       await load(true);
       if (!connected && data.rider) msg("Offline. Showing your last saved station.", "error");
     } catch (e) { authorized = false; failGate(String(e.message || e)); }
   }
+  /* ---- staying current (14 Oct 2026) -------------------------------------
+     The app used to download the whole station (about 310 KB for Lahore)
+     once a minute, and again every time the rider came back from WhatsApp,
+     a call or Maps. Now it asks every 15 seconds whether anything changed,
+     which costs a few bytes, and downloads only when something did, or at
+     least every 3 minutes for the cash figures. If the server has no such
+     check it falls back to the old download once a minute. */
+  var CHECK_MS = 15000, FULL_MS = 180000;
+  async function check() {
+    if (document.hidden || !authorized || loading || busy || flushing || checking) return;
+    if (!navigator.onLine) { paintNetwork(); return; }
+    var age = Date.now() - lastFull;
+    if (stampOff || !data.stamp) { if (age >= 60000) void load(true); else paintNetwork(); return; }
+    if (age >= FULL_MS) { void load(true); return; }
+    checking = true;
+    try {
+      var r; try { r = await sb.rpc("rider_station_stamp"); } catch (e) { r = { error: e }; }
+      if (r.error) {
+        if (R.retryable(r.error)) { connected = false; return; }
+        if (/PGRST202|could not find the function/i.test(String(r.error.code || "") + " " + String(r.error.message || ""))) stampOff = true;
+        void load(true); return;   /* a refusal (blocked, signed out): the full load says why */
+      }
+      connected = true;
+      if (r.data !== data.stamp) void load(true); else lastSync = Date.now();
+    } finally { checking = false; paintNetwork(); }
+  }
   window.addEventListener("online", function () { void load(true); });
   window.addEventListener("offline", function () { connected = false; controls(); });
   window.addEventListener("storage", function (e) { if (queue && e.key === queue.key && authorized) render(); });
-  document.addEventListener("visibilitychange", function () { if (document.hidden) stopScan(); else { paintNetwork(); void load(true); } });
-  setInterval(function () { paintNetwork(); if (!document.hidden && authorized && !busy && !flushing) void load(true); }, 60000);
+  document.addEventListener("visibilitychange", function () { if (document.hidden) { stopScan(); geoSync(); } else { paintNetwork(); geoSync(); void check(); } });
+  setInterval(function () { paintNetwork(); void check(); }, CHECK_MS);
   if (!DEMO && "serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) navigator.serviceWorker.register("/sw.js").catch(function () { msg("Offline app files could not be saved. Avoid reloading without signal.", "error"); });
   /* ---- preview: the station that lives in this page's memory -------------- */
   function demoClient() {
@@ -1041,7 +1177,17 @@
       var x = expenses.reduce(function (t, e) { return t + (e.settled ? 0 : e.amount); }, 0), row = function (p) { return { awb: p.awb, consignee: p.consignee, city: p.city, cod: p.cod_amount, delivered_at: p.delivered_at }; };
       return { gross: g, expenses: x, net: Math.max(0, g - x), count: hand.length, pending: deposits.reduce(function (t, d) { return t + d.net; }, 0), review: x > g, hand_rows: hand.map(row), pending_rows: deposits, confirmed_rows: [], expense_rows: expenses };
     }
+    var rev = 1;   /* the preview's answer to "has anything changed?" */
+    /* A made-up morning in Lahore: out from the station, two deliveries, one refusal. */
+    var route = (function () {
+      var st = [{ h: 3, action: "out", awbs: ["N9000020", "N9000021", "N9000022", "N9000026", "N9000027"], lat: 31.5204, lng: 74.3587, acc: 12 },
+        { h: 2, action: "delivered", awbs: ["N9000027"], lat: 31.5102, lng: 74.3431, acc: 9, km: 1.86 },
+        { h: 1.5, action: "refused", awbs: ["N9000019"], lat: 31.4983, lng: 74.3302, acc: 16, km: 1.8 },
+        { h: 1, action: "delivered", awbs: ["N9000026"], lat: 31.4721, lng: 74.2717, acc: 11, km: 6.27 }];
+      return { day: R.day(new Date()), km: 9.9, n: st.length, gps: st.length, same: 0, stops: st.map(function (s) { var o = Object.assign({ at: iso(s.h) }, s); delete o.h; return o; }) };
+    })();
     function act(a) {
+      rev++;
       var codes = (a.p_awbs || []).map(up), ex = a.p_extra || {}, moved = [], batch = null;
       if (a.p_action === "transit") {
         batch = "LAH-" + String(ex.to_city || "").replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase() + "-DEMO-" + (batches.length + 1);
@@ -1066,7 +1212,8 @@
     function rpc(name, a) {
       a = a || {}; var d = {};
       if (name === "rider_station_view") d = { rider: { id: me, name: "Demo Rider", branch: "Lahore Hub", cities: ["Lahore"], cash_limit: 75000 }, parcels: rows.filter(function (p) { return p.bucket; }),
-        batches: batches.filter(function (b) { return b.mine || b.status !== "Received"; }), server_time: iso(0) };
+        batches: batches.filter(function (b) { return b.mine || b.status !== "Received"; }), route: route, stamp: "demo-" + rev, server_time: iso(0) };
+      else if (name === "rider_station_stamp") d = "demo-" + rev;
       else if (name === "rider_cash_summary") d = cash();
       else if (name === "rider_station_action") d = act(a);
       else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }
