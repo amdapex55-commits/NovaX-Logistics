@@ -118,6 +118,7 @@
     var parts = a.split(",").map(function (part) {
       return part
         .replace(/\b(house|home|h)\s*(no|number|num)?\s*[.#:]*\s*[a-z]?\d+[a-z]?(\s*[-\/]\s*[a-z0-9]+)?\b/gi, " ")
+        .replace(/\b(house|h)\s*(no|number|#)\s*[.#:]*\s*([a-z]{1,4}\b\s*\d*[a-z]?)?/gi, " ")   /* "House No E", "house no ram 5" */
         .replace(/\b(flat|apartment|apt|plot|shop|office|unit|room|portion|building|bldg)\s*(no|number)?\s*[-.#:]*\s*[a-z]?\d+[a-z]?\b/gi, " ")
         .replace(/\b(street|st|gali|lane)\s*(no|number)?\s*[-.#:]*\s*[a-z]?\d+[a-z]?\b/gi, " ")
         .replace(/\b\d{5}\b/g, " ").replace(/\s+/g, " ").trim().replace(own || /$^/, "")

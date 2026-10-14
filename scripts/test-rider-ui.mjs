@@ -42,6 +42,8 @@ for (const [addr,city,want] of [
   ['Mohalla Islampura, Lahore Road, Sheikhupura','Lahore','Mohalla Islampura, Lahore Road, Sheikhupura, Lahore, Pakistan'],
   ['Shop 6, Liberty Market, Gulberg 0300-1234567','Lahore','Liberty Market, Gulberg, Lahore, Pakistan'],
   ['House 12, Street 9','Lahore','House 12, Street 9, Lahore, Pakistan'],
+  ['Art Village, Hamza Avenue, Lahore Cantt, House No E','Lahore','Art Village, Hamza Avenue, Lahore Cantt, Lahore, Pakistan'],
+  ['Railway colony, new campus, house no ram 5','Lahore','Railway colony, new campus, Lahore, Pakistan'],
   ['','Lahore','Lahore, Pakistan'],
 ]) assert.equal(R.mapsQuery(addr,city),want,addr);
 assert.equal(R.directionsUrl('Sector F-10/2','Islamabad'),'https://www.google.com/maps/search/?api=1&query=F-10%2F2%2C%20Islamabad%2C%20Pakistan');
