@@ -40,7 +40,7 @@ assert.match(a.q('actionGo').textContent,/Mark 1 received/);ok('010');
 a.q('riderSearch').value='';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
 a.q('actionClear').click();a.w.document.querySelector('#receiveList [data-selall]').click();await wait();
 assert.match(a.q('actionGo').textContent,/Mark 200 received/);ok('009 cap');
-a.q('actionGo').click();await wait(200);
+a.q('actionGo').click();await wait(60);a.dialog.close('confirm');await wait(200);
 const recv=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.ok(recv.every(r=>r.args.p_awbs.length<=200));ok('009 server calls within 200');
 a.dom.window.close();
 

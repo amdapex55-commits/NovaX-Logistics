@@ -48,7 +48,7 @@ async function app(search,{withRealLogin}={}){
   a.go('home');assert.match(a.q('homePickup').textContent,/^3 to collect$/);assert.match(a.q('homeDelivery').textContent,/10 at station/);assert.match(a.q('homeTransit').textContent,/^4 to send$/);
   // receive the batch from Karachi
   a.go('delivery');a.tab('delivery:receive');assert.match(a.q('batchList').textContent,/KAR-LAH-DEMO.*0 \/ 4 received/s);
-  a.q('batchList').querySelector('[data-selall]').click();await wait();assert.match(a.q('actionGo').textContent,/Mark 4 received/);a.q('actionGo').click();await wait(250);
+  a.q('batchList').querySelector('[data-selall]').click();await wait();assert.match(a.q('actionGo').textContent,/Mark 4 received/);a.q('actionGo').click();await wait(60);a.dialog.close('confirm');await wait(250);
   assert.equal(a.q('batchList').querySelectorAll('.parcel').length,0);assert.equal(a.q('nArriving').textContent,'1');assert.equal(a.q('nStation').textContent,'14');
   // deliver one that is out: cash to hand over goes up by its COD
   a.tab('delivery:out');const btn=a.q('outList').querySelector('[data-act="delivered"]');const cod=Number(/COD Rs ([\d,]+)/.exec(btn.closest('.parcel').textContent)[1].replace(/,/g,''));

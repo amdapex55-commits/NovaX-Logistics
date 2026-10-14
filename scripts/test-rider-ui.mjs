@@ -64,8 +64,13 @@ assert.match(a.q('actionGo').textContent,/Mark 1 received/);
 // a parcel from another screen is not selected, the rider is told where it is
 a.q('riderSearch').value='N1000003';a.q('riderSearch').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter'}));await wait();
 assert.match(a.w.document.getElementById('riderToast').textContent,/At station/);
-a.q('actionGo').click();await wait(120);
-req=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.equal(req.at(-1).args.p_action,'receive');
+// "Mark received" first shows the parcels to check; nothing is sent until the rider confirms
+a.q('actionGo').click();await wait(60);
+assert.equal(a.dialog.open,true);assert.equal(a.q('dialogTitle').textContent,'Check the parcel');assert.match(a.q('reasonPresets').textContent,/N100\s*0002/);
+assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action'&&r.args.p_action==='receive').length,0);
+a.dialog.close('confirm');await wait(120);
+req=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.equal(req.at(-1).args.p_action,'receive');assert.equal(JSON.stringify(req.at(-1).args.p_awbs),'["N1000002"]');
+assert.equal(a.q('reasonPresets').innerHTML,'','the dialog is left clean for the next question');assert.equal(a.q('dialogConfirm').textContent,'Confirm');
 
 // delivery: station -> out; out card has outcomes; COD conflict blocks Delivered
 a.tab('delivery:station');a.pick('N1000003');a.q('actionGo').click();await wait(120);
@@ -133,6 +138,34 @@ a=await app({shipperAddress:'Korangi Crossing, Allah Wala Town'});a.go('pickup')
 assert.match(a.q('collectList').querySelector('.wrong-city').textContent,/looks like Karachi, not Lahore\. Do not go\. Tell the office\./);
 assert.equal(a.q('collectList').querySelectorAll('[data-selall]').length,0);assert.equal(a.q('collectList').querySelectorAll('[data-pick]').length,1);a.dom.window.close();
 a=await app();a.go('pickup');assert.equal(a.q('collectList').querySelector('.wrong-city'),null);assert.equal(a.q('collectList').querySelectorAll('[data-selall]').length,1);a.dom.window.close();
+
+// a batch card lists its tracking numbers; the check before receiving lets the rider untick what did not come
+a=await app();a.fixture.batches=[{code:'KAR-LAH-1012-HO',kind:'forward',from_city:'Karachi',to_city:'Lahore',reference:'Head office dispatch',awbs:['N1000002','N1000006','N9999990'],received:[],status:'Sent'}];
+a.q('refreshBtn').click();await wait(80);a.go('delivery');a.tab('delivery:receive');
+{ const card=a.q('batchList').querySelector('.batch'), list=card.querySelector('details.batch-awbs');
+  assert.match(list.querySelector('summary').textContent,/Show the 3 tracking numbers/);
+  const rows=[...list.querySelectorAll('li')].map(li=>li.textContent.replace(/\s+/g,' ').trim());
+  assert.match(rows[0],/N1000002.*Recipient 2.*on the way/);assert.match(rows[2],/N9999990.*not in your list/);
+  list.open=true;list.dispatchEvent(new a.w.Event('toggle'));
+  card.querySelector('[data-selall]').click();await wait();
+  assert.match(a.q('actionGo').textContent,/Mark 2 received/);
+  assert.equal(a.q('batchList').querySelector('details.batch-awbs').open,true,'stays open after the screen redraws');
+  assert.match(a.q('batchList').querySelector('li').textContent,/ticked/); }
+// closing the check sends nothing and keeps the selection
+a.q('actionGo').click();await wait(60);assert.equal(a.q('dialogTitle').textContent,'Check the 2 parcels');assert.match(a.q('checkCount').textContent,/^2 of 2 ticked$/);
+a.dialog.close('cancel');await wait(80);
+assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').length,0);assert.match(a.q('actionGo').textContent,/Mark 2 received/);
+// untick one: only the ticked one is marked received
+a.q('actionGo').click();await wait(60);
+{ const cb=a.q('reasonPresets').querySelector('[data-keep="N1000006"]');cb.checked=false;cb.dispatchEvent(new a.w.Event('change',{bubbles:true}));
+  assert.match(a.q('checkCount').textContent,/^1 of 2 ticked$/);assert.equal(a.q('dialogConfirm').textContent,'Mark 1 received');
+  const all=[...a.q('reasonPresets').querySelectorAll('[data-keep]')];all.forEach(x=>{x.checked=false;x.dispatchEvent(new a.w.Event('change',{bubbles:true}));});
+  assert.equal(a.q('dialogConfirm').disabled,true,'nothing ticked, nothing to confirm');
+  a.q('reasonPresets').querySelector('[data-keep="N1000002"]').checked=true;a.q('reasonPresets').dispatchEvent(new a.w.Event('change',{bubbles:true})); }
+assert.match(a.q('reasonPresets').textContent,/^1 of 2 tickedKAR-LAH-1012-HO \(2\)N1000002/,'grouped under the batch the screen showed');
+a.dialog.close('confirm');await wait(120);
+{ const r=a.fixture.requests.filter(x=>x.name==='rider_station_action');assert.equal(r.length,1);assert.equal(JSON.stringify(r[0].args.p_awbs),'["N1000002"]');assert.equal(a.q('dialogConfirm').disabled,false); }
+a.dom.window.close();
 
 // Roman Urdu switch
 a=await app();a.q('langBtn').click();await wait();assert.match(a.w.document.querySelector('.home-btn b').textContent,/Parcel Uthana/);a.q('langBtn').click();a.dom.window.close();

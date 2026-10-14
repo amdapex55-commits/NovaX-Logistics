@@ -34,7 +34,7 @@
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
-  var ui = { view: "home", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "" };
+  var ui = { view: "home", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {} };
 
   /* ---- words: English / Roman Urdu -------------------------------------- */
   var LANG = "en";
@@ -58,6 +58,11 @@
     saved: ["Saved on phone — sending…", "Phone par save — bhej rahe hain…"], attempts: ["attempt", "koshish"], toCollect: ["to collect", "uthane hain"],
     incoming: ["arriving", "aane wale"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
     exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"],
+    showAwbs: ["Show the {n} tracking numbers", "{n} tracking number dekhein"], stReceived: ["received", "mil gaya"], stSelected: ["ticked", "tick"],
+    stWaiting: ["on the way", "raste mein"], stElsewhere: ["not in your list", "aap ki list mein nahi"],
+    checkTitle: ["Check the {n} parcels", "{n} parcel check karein"], checkTitle1: ["Check the parcel", "Parcel check karein"],
+    checkText: ["Keep the tick on every parcel you have in your hands. Untick any that did not arrive. Only ticked parcels are marked received.", "Jo parcel aap ke haath mein hai us par tick rehne dein. Jo nahi aaya us ka tick hata dein. Sirf tick wale received honge."],
+    checkCount: ["{k} of {n} ticked", "{n} mein se {k} par tick"], returnsGroup: ["Returns coming back", "Wapis aane wale"], noBatch: ["Not in a batch", "Batch ke baghair"],
     demoBar: ["Preview with sample data. Nothing here is real, and nothing is saved.", "Yeh sirf namoona hai. Yahan kuch asli nahi, aur kuch save nahi hota."], demoExit: ["Exit", "Band"],
     demoNoCall: ["Preview: calls and WhatsApp are switched off.", "Namoona: call aur WhatsApp band hain."],
     installTitle: ["Add NovaX Rider to your home screen", "NovaX Rider ko home screen par lagayein"], installSub: ["It opens like an app, with one tap.", "App ki tarah ek tap se khulega."],
@@ -218,6 +223,8 @@
         : raUsed ? '<p class="sla-note">' + esc(LANG === "ur" ? "Reattempt ho chuka — deliver karein ya Refused / Not available lagayein." : "Already reattempted once. Deliver it, or mark Refused or Not available.") + '</p>' : '');
   }
   function empty() { return '<p class="empty">' + esc(t("nothing")) + '</p>'; }
+  /* A tracking number with its last four digits large: the part a rider reads and types. */
+  function awbHtml(a) { a = String(a || ""); return '<span class="awbx">' + esc(a.slice(0, -4)) + '<b>' + esc(a.slice(-4)) + '</b></span>'; }
   function selectAllBtn(scope, awbs) {
     if (!awbs.length) return "";
     return '<button class="btn secondary selall" type="button" data-selall="' + esc(scope) + '" data-awbs="' + esc(awbs.join(",")) + '">' + esc(t("selectAll")) + ' (' + awbs.length + ')</button>';
@@ -268,8 +275,16 @@
     q("batchList").innerHTML = batches.map(function (b) {
       var got = (b.received || []).length, all = (b.awbs || []).length;
       var awaiting = (b.awbs || []).filter(function (a) { return (b.received || []).indexOf(a) < 0; });
+      /* The card used to say only "0 / 11 received": a rider pressing Select all
+         could not see which tracking numbers he was about to confirm. */
+      var rows = (b.awbs || []).map(function (a) {
+        var p = inc.filter(function (x) { return x.awb === a; })[0], state = (b.received || []).indexOf(a) > -1 ? "stReceived" : !p ? "stElsewhere" : ui.sel.has(a) ? "stSelected" : "stWaiting";
+        var any = p || data.parcels.filter(function (x) { return x.awb === a; })[0];   /* a received one is now At station: still show whose it is */
+        return '<li class="' + state + '">' + awbHtml(a) + '<span class="who">' + esc(any ? any.consignee : "") + '</span><span class="st">' + esc(t(state)) + '</span></li>';
+      }).join("");
       return '<article class="parcel batch"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc(b.status) + '</span></div><p>' + esc(b.from_city) + ' → ' + esc(b.to_city) + ' · ' + esc(b.reference || "") + '<br>' + got + ' / ' + all + ' received</p>' +
         (got && awaiting.length ? '<p class="meta-line error-text">Not arrived yet: ' + esc(awaiting.join(", ")) + '</p>' : '') +
+        '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc(t("showAwbs", { n: all })) + '</summary><ol>' + rows + '</ol></details>' +
         selectAllBtn("receive", awaiting.filter(function (a) { return inc.some(function (p) { return p.awb === a && !pend.has(a); }); })) + '</article>';
     }).join("");
     q("receiveList").innerHTML = (inc.length ? selectAllBtn("receive", free(inc).map(function (p) { return p.awb; })) : "") + (inc.map(function (p) { return card(p, { select: true }); }).join("") || empty());
@@ -527,6 +542,45 @@
       dialog.showModal();
     });
   }
+  /* Before parcels are marked received: every one listed, ticked, grouped by
+     batch, so the rider checks them against what is in his hands and unticks
+     what did not come. Resolves with the ticked tracking numbers, or null. */
+  function checkParcels(list) {
+    return new Promise(function (resolve) {
+      var dialog = q("actionDialog"), box = q("reasonPresets"), go = q("dialogConfirm"), was = go.textContent, groups = {}, order = [];
+      list.forEach(function (a) {
+        var p = data.parcels.filter(function (x) { return x.awb === a; })[0] || { awb: a, consignee: "", meta: {} };
+        /* the batch that lists it (what the screen shows), else the code on the parcel */
+        var bt = (data.batches || []).filter(function (b) { return (b.awbs || []).indexOf(a) > -1; })[0];
+        var g = bt ? bt.code : p.meta && p.meta.transitBatch ? p.meta.transitBatch : isReturn(p) ? t("returnsGroup") : t("noBatch");
+        if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(p);
+      });
+      q("dialogTitle").textContent = list.length === 1 ? t("checkTitle1") : t("checkTitle", { n: list.length });
+      q("dialogText").textContent = t("checkText");
+      q("dialogError").textContent = ""; q("reasonLabel").classList.add("hidden"); q("extraLabel").classList.add("hidden");
+      box.classList.add("check"); box.onclick = null;
+      box.innerHTML = '<p class="check-count" id="checkCount"></p>' + order.map(function (g) {
+        return '<h3 class="grp">' + esc(g) + ' (' + groups[g].length + ')</h3>' + groups[g].map(function (p) {
+          return '<label class="check-row"><input type="checkbox" data-keep="' + esc(p.awb) + '" checked>' + awbHtml(p.awb) +
+            '<span class="who">' + esc(p.consignee || "") + (p.city ? '<small>' + esc((p.origin || "") + " → " + p.city) + '</small>' : '') + '</span></label>';
+        }).join("");
+      }).join("");
+      function count() {
+        var k = box.querySelectorAll("[data-keep]:checked").length;
+        q("checkCount").textContent = t("checkCount", { k: k, n: list.length });
+        go.textContent = t("receiveN", { n: k }); go.disabled = !k;
+      }
+      box.onchange = count; count();
+      dialog.querySelector("form").onsubmit = null;
+      dialog.returnValue = "cancel";
+      dialog.onclose = function () {
+        var keep = dialog.returnValue === "confirm" ? Array.from(box.querySelectorAll("[data-keep]:checked")).map(function (x) { return x.dataset.keep; }) : null;
+        go.textContent = was; go.disabled = false; box.classList.remove("check"); box.onchange = null; box.innerHTML = "";
+        dialog.onclose = null; resolve(keep && keep.length ? keep : null);
+      };
+      dialog.showModal();
+    });
+  }
   /* Best GPS reading within 10 s, stopping early at 25 m. */
   function gps() {
     if (DEMO) return Promise.resolve({ lat: 31.5204, lng: 74.3587, accuracy: 15, at: new Date().toISOString() });   /* no location prompt on a preview */
@@ -554,6 +608,11 @@
     busy = true; controls();
     try {
       var action = { collect: "collect", receive: "receive", station: "out" }[scope];
+      if (action === "receive") {
+        var keep = await checkParcels(list);
+        if (!keep) return;   /* closed without confirming: the selection stays as it was */
+        list = keep;   /* what was unticked did not arrive: it is left out, and the selection clears below */
+      }
       if (action) { for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action); }
       else if (scope === "transit") {
         if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
@@ -789,6 +848,9 @@
   q("langBtn").onclick = function () { LANG = LANG === "ur" ? "en" : "ur"; try { localStorage.setItem("novaxRiderLang", LANG); } catch (_) {} render(); paintWords(); };
   q("actionGo").onclick = function () { void runBar(); };
   q("actionClear").onclick = function () { ui.sel.clear(); ui.selScope = ""; render(); };
+  document.addEventListener("toggle", function (e) {
+    var d = e.target; if (d && d.matches && d.matches("details[data-batch]")) ui.openBatch[d.dataset.batch] = d.open;
+  }, true);
   document.addEventListener("change", function (e) {
     var cb = e.target.closest && e.target.closest("[data-pick]"); if (!cb) return;
     var awb = cb.dataset.pick;
