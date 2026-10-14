@@ -200,7 +200,8 @@
       var wa = call.replace(/^\+/, "");
       body += '<div class="contacts">' +
         (validPhone ? '<a class="call" href="tel:' + esc(call) + '">' + esc(t("call")) + '</a><a class="call" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
-        (c.address ? '<a class="call" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.address + ", " + (c.city || "")) + '" target="_blank" rel="noopener">' + esc(t("directions")) + '</a>' : '') + '</div>';
+        (c.address ? '<a class="call" href="' + esc(typeof R.directionsUrl === "function" ? R.directionsUrl(c.address, c.city)
+          : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(c.address + ", " + (c.city || ""))) + '" target="_blank" rel="noopener">' + esc(t("directions")) + '</a>' : '') + '</div>';
     }
     if (pend) body += '<p class="pending-label">' + esc(t("saved")) + '</p>';
     else if (opts.outcomes) body += '<div class="actions">' + outcomeButtons(p, pay) + '</div>';

@@ -92,6 +92,59 @@
     var looks = cityFromAddress(a);
     return looks && mine.indexOf(looks.toLowerCase()) < 0 ? looks : "";
   }
+  /* What the Directions button sends to Google Maps (14 Oct 2026).
+     The whole typed address went in as a search, and the house and street
+     numbers decided the answer: "H No 123 St No 45 F11,3 Islamabad" opened
+     Street 45 in G-9, another sector, because Google matched the numbers to a
+     street it knew. Pakistani addresses are found by their area -- sector,
+     block, phase, society, road, chowk -- and the rider finds the door by
+     asking or calling. So the house, flat, plot and street numbers are taken
+     out, phone numbers and repeats dropped, Islamabad sectors written the
+     way maps know them (F-11/3), and the city and country put on the end
+     once. If nothing is left but numbers, the cleaned full address is used. */
+  function mapsQuery(address, city) {
+    var c = String(city || "").trim(), lc = c.toLowerCase();
+    var a = String(address || "").replace(/[\r\n;|]+/g, ", ")
+      .replace(/(\+?92[\s-]?|0)?3\d{2}[\s-]?\d{7}/g, " ").replace(/\d{10,}/g, " ")
+      .replace(/\b(address|addr)\s*[:.]/gi, " ").replace(/\.{2,}/g, ", ").replace(/\s+/g, " ");
+    if (/^(islamabad|rawalpindi)$/.test(lc) || /islamabad/i.test(a))
+      a = a.replace(/\b([DEFGHI])\s*[-.]?\s*(\d{1,2})(?:\s*[\/,\-]\s*(\d))?\b/g, function (m, l, n, sub) {
+        n = Number(n); return n >= 5 && n <= 17 ? l.toUpperCase() + "-" + n + (sub ? "/" + sub : "") : m;
+      }).replace(/\bsector\s+(?=[DEFGHI]-\d)/gi, "");
+    var drop = /^(pakistan|punjab|sindh|(islamabad )?capital territory|ict|\d{5})$/i, seen = {};
+    /* The city goes on the end once. Only a trailing "... lahore" is taken off a
+       part: "Lahore Road" or "Multan Road" is a road, not the city. */
+    var own = lc ? new RegExp("\\s+" + lc.replace(/[^a-z ]/g, "") + "$", "i") : null;
+    var parts = a.split(",").map(function (part) {
+      return part
+        .replace(/\b(house|home|h)\s*(no|number|num)?\s*[.#:]*\s*[a-z]?\d+[a-z]?(\s*[-\/]\s*[a-z0-9]+)?\b/gi, " ")
+        .replace(/\b(flat|apartment|apt|plot|shop|office|unit|room|portion|building|bldg)\s*(no|number)?\s*[-.#:]*\s*[a-z]?\d+[a-z]?\b/gi, " ")
+        .replace(/\b(street|st|gali|lane)\s*(no|number)?\s*[-.#:]*\s*[a-z]?\d+[a-z]?\b/gi, " ")
+        .replace(/\b\d{5}\b/g, " ").replace(/\s+/g, " ").trim().replace(own || /$^/, "")
+        .replace(/\b(ground|first|second|third|fourth|\d+(st|nd|rd|th))\s+floor\b/gi, " ")
+        .replace(/\b(near|nearby|opp|opposite|behind|beside|in front of)\b\.?/gi, " ")
+        .replace(/\b(phase\s*-?\s*\d+)\s+town\b/gi, "$1")
+        .replace(/\s+/g, " ").replace(/^[\s.#:\-\/]+|[\s.#:\-\/]+$/g, "");
+    }).filter(function (part) {
+      var k = part.toLowerCase();
+      if (!part || part.length < 3 || /^[\d\s#\/-]+$/.test(part) || drop.test(part) || k === lc || seen[k]) return false;
+      seen[k] = true; return true;
+    });
+    var tail = (c ? c + ", " : "") + "Pakistan";
+    if (!parts.length) {
+      var full = a.replace(/\s*,\s*/g, ", ").replace(/^[,\s]+|[,\s]+$/g, "");
+      return full ? full + ", " + tail : tail;
+    }
+    return parts.join(", ") + ", " + tail;
+  }
+  /* A search, not a route: Maps shows the place it found (a sector, a
+     block, a chowk) with its own Directions button, so a wrong guess is seen
+     before the rider rides to it. Tested 14 Oct on F-11/3, F-10/2, Sector A
+     DHA Phase 6, Askari 11 Sector B, G block DHA Phase 5 and Lajna Chowk:
+     each landed on its area. */
+  function directionsUrl(address, city) {
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(mapsQuery(address, city));
+  }
   function mapParcel(p) {
     return { id: p.id, awb: String(p.awb || ""), clientId: p.client_id,
       consignee: p.consignee || "", phone: p.phone || "", address: p.address || "", city: p.city || "",
@@ -154,5 +207,6 @@
   }
   global.NovaXRider = { ACTIONS: ACTIONS, object: object, timestamp: timestamp, day: day, truth: truth,
     awbs: awbs, deliveredAt: deliveredAt, phone: phone, isOrigin: isOrigin, mapParcel: mapParcel,
-    validate: validate, Queue: Queue, overlay: overlay, retryable: retryable, cityFromAddress: cityFromAddress, wrongCity: wrongCity };
+    validate: validate, Queue: Queue, overlay: overlay, retryable: retryable, cityFromAddress: cityFromAddress, wrongCity: wrongCity,
+    mapsQuery: mapsQuery, directionsUrl: directionsUrl };
 })(typeof window !== "undefined" ? window : globalThis);

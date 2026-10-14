@@ -29,6 +29,22 @@ assert.equal(R.day('2026-09-27 00:30'),'2026-09-27');
 assert.equal(R.phone('0092 300-1234567'),'+923001234567');
 const storage=memory(),qa=new R.Queue(storage,'a','r1'),qb=new R.Queue(storage,'b','r2');qa.add({key:'job'});assert.equal(qb.read().length,0);
 assert.throws(()=>new R.Queue({getItem:()=>'{bad'},'a','r').read(),/unreadable/);
+// Directions: the area, not the house and street numbers that sent riders to the wrong sector (14 Oct 2026)
+for (const [addr,city,want] of [
+  ['H No 123 St No 45 F11,3 Islamabad\nIslamabad\nIslamabad Capital Territory','Islamabad','F-11/3, Islamabad, Pakistan'],
+  ['Flat 4, Second Floor, Street 21, Sector F-10/2','Islamabad','F-10/2, Islamabad, Pakistan'],
+  ['G-10-2 Back 13 flat-12','Islamabad','G-10/2 Back 13, Islamabad, Pakistan'],
+  ['House No. 12A, ali street, lajna chowk, college road lahore\nLahore\nPakistan','Lahore','ali street, lajna chowk, college road, Lahore, Pakistan'],
+  ['House no. 1234 St D3 sector A, DHA Phase 6 town Lahore\nLahore 54000\nPakistan','Lahore','sector A, DHA Phase 6, Lahore, Pakistan'],
+  ['askari 11 sector B building 12 apartment 4D, Lahore, Pakistan','Lahore','askari 11 sector B, Lahore, Pakistan'],
+  ['House number 245 street 12 G block DHA phase 5, Lahore, Pakistan','Lahore','G block DHA phase 5, Lahore, Pakistan'],
+  ['House 5, Street 2, Multan Road, Lahore','Lahore','Multan Road, Lahore, Pakistan'],
+  ['Mohalla Islampura, Lahore Road, Sheikhupura','Lahore','Mohalla Islampura, Lahore Road, Sheikhupura, Lahore, Pakistan'],
+  ['Shop 6, Liberty Market, Gulberg 0300-1234567','Lahore','Liberty Market, Gulberg, Lahore, Pakistan'],
+  ['House 12, Street 9','Lahore','House 12, Street 9, Lahore, Pakistan'],
+  ['','Lahore','Lahore, Pakistan'],
+]) assert.equal(R.mapsQuery(addr,city),want,addr);
+assert.equal(R.directionsUrl('Sector F-10/2','Islamabad'),'https://www.google.com/maps/search/?api=1&query=F-10%2F2%2C%20Islamabad%2C%20Pakistan');
 
 // home: three buttons with counts, city in the header
 let a=await app();
@@ -73,7 +89,10 @@ req=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.equal(r
 assert.equal(a.q('reasonPresets').innerHTML,'','the dialog is left clean for the next question');assert.equal(a.q('dialogConfirm').textContent,'Confirm');
 
 // delivery: station -> out; out card has outcomes; COD conflict blocks Delivered
-a.tab('delivery:station');a.pick('N1000003');a.q('actionGo').click();await wait(120);
+a.tab('delivery:station');
+{ const dir=[...a.q('stationList').querySelectorAll('a.call')].find(x=>/Directions/.test(x.textContent));
+  assert.equal(dir.getAttribute('href'),'https://www.google.com/maps/search/?api=1&query=Destination%20address%2C%20Lahore%2C%20Pakistan','the card opens Maps on the cleaned address'); }
+a.pick('N1000003');a.q('actionGo').click();await wait(120);
 assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').at(-1).args.p_action,'out');
 a.tab('delivery:out');
 assert.ok(a.q('outList').querySelector('[data-act="delivered"][data-awb="N1000004"]'));
