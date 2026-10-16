@@ -896,6 +896,23 @@ async function handleOrdersCreate(v: Verified): Promise<Response> {
   return text("ok");
 }
 
+/** A NovaX account in review mode (clients.meta.shopify_review_mode = true):
+ *  the account Shopify's reviewers sign in with, and NovaX's own test account.
+ *  Its test orders are booked, and nvsh_review_autocollect() marks its parcels
+ *  collected a minute later so the order is fulfilled in Shopify without a
+ *  rider. Any failure reads as "not in review mode". */
+async function reviewMode(clientId: string | null | undefined): Promise<boolean> {
+  if (!clientId) return false;
+  try {
+    const c = await selectOne<{ meta: Record<string, unknown> | null }>(
+      "clients", `id=eq.${encodeURIComponent(clientId)}&select=meta`,
+    );
+    return c?.meta?.shopify_review_mode === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Book one order. Safe to call again for the same order: it re-reads the row
  *  and stops if someone else already booked it. */
 async function processOrder(shop: string, orderId: string, order: ShopifyOrder): Promise<void> {
@@ -920,6 +937,7 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
     // booked no matter what the merchant ticked. The checkbox now sets it.
     const mapped = mapOrderToBooking(order, {
       bookPrepaid: Boolean(shopRow.rule_require_confirmed),
+      allowTest: await reviewMode(shopRow.client_id),
     });
     if (mapped.action === "skip") {
       await update("nvsh_order", where, {

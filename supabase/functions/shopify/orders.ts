@@ -181,6 +181,11 @@ export interface MapOptions {
    *  booking with cod 0 is still a real delivery the merchant pays for, so we
    *  do not make that call for them silently. */
   bookPrepaid?: boolean;
+  /** Book Shopify test orders (the Bogus Gateway sets order.test). Only for
+   *  the NovaX accounts in review mode (clients.meta.shopify_review_mode):
+   *  Shopify's reviewers can only place test orders, and a skipped test order
+   *  left them nothing to check. A real merchant's test order is never booked. */
+  allowTest?: boolean;
 }
 
 // --------------------------------------------------------------- phone ------
@@ -352,7 +357,7 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
     };
   }
 
-  if (order.test) return { action: "skip", reason: "test order" };
+  if (order.test && !opts.allowTest) return { action: "skip", reason: "test order" };
   if (order.cancelled_at) return { action: "skip", reason: "order cancelled in Shopify" };
 
   // A10: the COD amount was taken as a bare number and handed to a rider who

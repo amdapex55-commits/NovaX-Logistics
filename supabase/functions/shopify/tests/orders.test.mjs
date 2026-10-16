@@ -116,6 +116,17 @@ for (const [name, order, re] of skips) {
   t(`skip: ${name}`, r.action === "skip" && re.test(r.reason), JSON.stringify(r));
 }
 
+// review mode: a test order is booked for a review-mode account only, and
+// every other rule still applies to it
+{
+  const r = mapOrderToBooking({ ...base, test: true }, { allowTest: true });
+  t("review mode: test order booked", r.action === "book", JSON.stringify(r));
+  const usd = mapOrderToBooking({ ...base, test: true, currency: "USD" }, { allowTest: true });
+  t("review mode: currency rule still applies", usd.action === "skip" && /USD/.test(usd.reason), JSON.stringify(usd));
+  const plain = mapOrderToBooking({ ...base, test: true }, {});
+  t("not review mode: test order skipped", plain.action === "skip" && /test order/i.test(plain.reason), JSON.stringify(plain));
+}
+
 // prepaid IS booked when the merchant opts in, at cod 0
 {
   const r = mapOrderToBooking({ ...base, financial_status: "paid" }, { bookPrepaid: true });
