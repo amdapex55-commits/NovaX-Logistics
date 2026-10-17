@@ -545,13 +545,40 @@ h2{font:800 clamp(30px,6.4vw,50px)/1.06 var(--display);letter-spacing:-.035em;ma
 .facts dd{margin:5px 0 0;font:800 15.5px/1.3 var(--display);letter-spacing:-.01em}
 @media (min-width:900px){.facts dl{grid-template-columns:repeat(4,1fr)}.facts dl>div{padding:20px 22px}.facts dl>div:first-child{padding-left:0}.facts dd{font-size:17px}}
 /* New stations band under the facts (17 Oct 2026). */
-.newst{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;border-top:1px solid var(--line);padding:13px 14px 14px}
+.newst{border-top:1px solid var(--line);padding:16px 14px 18px}
+.newst-top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px}
 .newst-tag{display:flex;align-items:center;gap:7px;margin:0;font:700 10.5px/1.3 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--green-3)}
 .newst-tag i{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none;box-shadow:0 0 0 3px var(--mint)}
-.newst-list{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
-.newst-list li{font:700 13px/1 var(--display);padding:7px 10px;border-radius:999px;background:var(--mint);border:1px solid var(--mint-line);color:var(--ink)}
 .newst-note{margin:0;font:600 12.5px/1.35 var(--body);color:var(--muted)}
-@media (min-width:900px){.newst{padding:14px 0 16px}.newst-note{margin-left:auto}}
+.newst-note b{color:var(--ink);font-weight:800}
+/* The route. Phone first: vertical lines, main road left, branch right. */
+.st-map{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:4px 14px;margin-top:14px}
+.st-line{--dot:11px;position:relative;list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.st-line::before{content:"";position:absolute;left:calc(var(--dot)/2 - 1px);top:calc(var(--dot)/2);bottom:calc(var(--dot)/2);width:2px;
+  background:linear-gradient(var(--green),var(--green)) 0 0/2px 100% no-repeat,var(--mint-line);border-radius:2px}
+.st-line li{position:relative;display:flex;align-items:center;gap:9px;min-height:var(--dot);font:700 14px/1.15 var(--display);color:var(--ink)}
+.st-line li::before{content:"";flex:none;width:var(--dot);height:var(--dot);border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--mint-line);position:relative;z-index:1}
+.st-line li.hub::before{background:var(--card);box-shadow:inset 0 0 0 2.5px var(--ink),0 0 0 3px var(--card)}
+.st-line li.hub b{font-weight:800}
+.st-line li small{font:700 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.st-line li.parcel{position:absolute;left:calc(var(--dot)/2 - 5px);top:0;width:10px;height:10px;min-height:0;border-radius:3px;background:var(--ink);
+  box-shadow:0 0 0 2px var(--card);z-index:2;animation:nvRouteV 6s cubic-bezier(.45,.05,.35,1) infinite}
+.st-line li.parcel::before{display:none}
+.st-branch{align-self:start}
+.st-branch li.parcel{animation-duration:3.2s;animation-delay:1.2s}
+@keyframes nvRouteV{0%{top:0;opacity:0}8%{opacity:1}88%{opacity:1}100%{top:calc(100% - 10px);opacity:0}}
+@media (min-width:760px){
+  .newst{padding:20px 0 22px}
+  .st-map{grid-template-columns:minmax(0,1fr) minmax(0,200px);gap:0 28px;margin-top:18px}
+  .st-line{flex-direction:row;justify-content:space-between;gap:0;padding-top:0}
+  .st-line::before{left:calc(var(--dot)/2);right:calc(var(--dot)/2);top:calc(var(--dot)/2 - 1px);bottom:auto;width:auto;height:2px}
+  .st-line li{flex-direction:column;align-items:flex-start;gap:8px;font-size:13.5px;white-space:nowrap}
+  .st-line li:nth-last-child(2){align-items:flex-end}
+  .st-line li.parcel{top:calc(var(--dot)/2 - 5px);left:0;animation-name:nvRouteH}
+  @keyframes nvRouteH{0%{left:0;opacity:0}8%{opacity:1}88%{opacity:1}100%{left:calc(100% - 10px);opacity:0}}
+}
+@media (min-width:760px) and (max-width:1020px){ .st-line li{font-size:12px} .st-map{grid-template-columns:minmax(0,1fr) minmax(0,150px);gap:0 20px} }
+@media (prefers-reduced-motion:reduce){ .st-line li.parcel{display:none} }
 
 /* ── track a parcel ── */
 .track{background:#eef6ff;border-bottom:1px solid #d5e5f3;padding:28px 0 30px}
@@ -689,12 +716,27 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 /* ── the portal: tools manifest ── */
 .tools-grid{display:grid;gap:30px}
 @media (min-width:960px){.tools-grid{grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:44px;align-items:start}}
-.manifest{list-style:none;margin:0;padding:0;border-top:1.5px solid var(--ink);counter-reset:m}
-.manifest li{display:grid;grid-template-columns:30px minmax(0,1fr);align-content:start;column-gap:12px;padding:14px 0;border-bottom:1px solid var(--line);counter-increment:m}
-.manifest li::before{content:counter(m,decimal-leading-zero);grid-row:1 / span 2;padding-top:3px;font:700 12px/1.3 var(--mono);color:var(--muted)}
-.manifest b{font:800 17px/1.3 var(--display);letter-spacing:-.01em}
-.manifest span{grid-column:2;color:var(--muted);font-size:14.5px;margin-top:2px}
-@media (min-width:700px){.manifest{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}}
+/* Ten tools as an icon grid, one short line each (17 Oct 2026: was ten
+   numbered paragraphs, ~1,000px tall on a phone). */
+.tools{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tools li{display:flex;flex-direction:column;gap:3px;padding:14px 13px 15px;border:1px solid var(--line);border-radius:14px;background:var(--card);
+  transition:border-color .2s,transform .2s}
+.tools li:hover{border-color:var(--mint-line);transform:translateY(-2px)}
+.tools .mi{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--mint);margin-bottom:8px}
+.tools .mi svg{width:20px;height:20px;fill:none;stroke:var(--green-3);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tools b{font:800 15px/1.25 var(--display);letter-spacing:-.01em;color:var(--ink)}
+.tools li>span:last-child{color:var(--muted);font-size:13px;line-height:1.4}
+/* Phone: compact rows, icon on the left, so ten tools fit in about one screen. */
+@media (max-width:699px){
+  .tools{grid-template-columns:minmax(0,1fr);gap:8px}
+  .tools li{display:grid;grid-template-columns:36px minmax(0,1fr);column-gap:12px;row-gap:1px;align-items:center;padding:11px 12px}
+  .tools .mi{grid-row:1 / span 2;margin:0}
+  .tools li:hover{transform:none}
+}
+@media (min-width:700px){.tools{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.tools li{padding:16px 16px 17px}.tools b{font-size:16px}}
+@media (min-width:960px){.tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1180px){.tools{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){.tools li,.tools li:hover{transition:none;transform:none}}
 .demo-card{background:var(--navy);color:var(--navy-ink);border-radius:18px;padding:22px}
 @media (min-width:960px){.demo-card{position:sticky;top:calc(var(--hdr) + 24px);padding:26px}}
 .demo-card h3{font:800 22px/1.2 var(--display);letter-spacing:-.02em;color:#fff}
@@ -724,9 +766,12 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .msg.b{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
 .tool{align-self:flex-start;padding:1px 4px;font:600 11.5px/1.4 var(--mono);color:var(--muted)}
 .tool em{font-style:normal;color:var(--green-2)}
-.ap-facts{list-style:none;margin:24px 0 0;padding:0;border-top:1px solid var(--line)}
-.ap-facts li{padding:13px 0;border-bottom:1px solid var(--line);font-size:15px;color:var(--ink-2)}
-.ap-facts b{color:var(--ink)}
+.ap-facts{list-style:none;margin:22px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ap-facts li{display:flex;flex-direction:column;gap:2px;padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.ap-facts .mi{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--mint);margin-bottom:7px}
+.ap-facts .mi svg{width:18px;height:18px;fill:none;stroke:var(--green-3);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.ap-facts b{font:800 14.5px/1.25 var(--display);color:var(--ink)}
+.ap-facts li>span:last-child{font-size:13px;line-height:1.35;color:var(--muted)}
 .credit{margin-top:14px;font-size:13px;font-weight:600;color:var(--muted)}
 
 /* ── merchant ratings (real rows only) ── */
@@ -1129,11 +1174,6 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
         <p class="tk-note">The Rs 100 comes from your NovaX Wallet. It stays if the customer agrees on the call and then refuses again at the door.</p>
       </div>
     </div>
-    <ol class="nvi-how" aria-label="How Nova Recover works">
-      <li><b>Pick the orders</b>Open Nova Recover in your portal, tick the refused or returned parcels and send them to us.</li>
-      <li><b>An agent calls</b>A NovaX agent phones each customer and offers the order again. You decide how much discount they may give.</li>
-      <li><b>It goes out again</b>A recovered order is delivered at your normal rate. You follow each order and its result in your portal.</li>
-    </ol>
   </div>
 </section>
 
@@ -1146,11 +1186,34 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       <div><dt>Free pickup</dt><dd>11&nbsp;am–9&nbsp;pm, working days</dd><dd class="live-line" id="pickupNow"><i aria-hidden="true"></i><span>Book a pickup slot from your portal</span></dd></div>
       <div><dt>No setup fee</dt><dd>From Rs&nbsp;225 a parcel</dd></div>
     </dl>
-    <!-- New stations, 17 Oct 2026: delivery only, Zone B rate. -->
-    <div class="newst" aria-label="New delivery stations">
-      <p class="newst-tag"><i aria-hidden="true"></i>New stations</p>
-      <ul class="newst-list"><li>Faisalabad</li><li>Multan</li><li>Sahiwal</li><li>Okara</li><li>Chichawatni</li><li>Harappa</li><li>Yousuf&nbsp;Wala</li><li>Adda&nbsp;Gamber</li></ul>
-      <p class="newst-note">Rs&nbsp;250 first kg, +Rs&nbsp;85 a kg · <span class="nw">2–3&nbsp;working days</span></p>
+    <!-- New stations, 17 Oct 2026: delivery only, Zone B rate. Drawn as the
+         road they sit on: Lahore to Multan with the Sahiwal-belt towns in road
+         order, and Faisalabad as a branch from Lahore. The travelling parcel is
+         decoration only (aria-hidden, off under reduced motion); every name is
+         plain text that shows with or without it. -->
+    <div class="newst" aria-labelledby="newstH">
+      <div class="newst-top">
+        <p class="newst-tag" id="newstH"><i aria-hidden="true"></i>New stations · now delivering</p>
+        <p class="newst-note"><b>Rs&nbsp;250</b> first kg · +Rs&nbsp;85 a kg · <span class="nw">2–3&nbsp;working days</span></p>
+      </div>
+      <div class="st-map">
+        <ol class="st-line" aria-label="Lahore to Multan">
+          <li class="hub"><b>Lahore</b><small>hub</small></li>
+          <li><b>Okara</b></li>
+          <li><b>Adda&nbsp;Gamber</b></li>
+          <li><b>Yousuf&nbsp;Wala</b></li>
+          <li><b>Sahiwal</b></li>
+          <li><b>Harappa</b></li>
+          <li><b>Chichawatni</b></li>
+          <li><b>Multan</b></li>
+          <li class="parcel" aria-hidden="true"></li>
+        </ol>
+        <ol class="st-line st-branch" aria-label="Lahore to Faisalabad">
+          <li class="hub"><b>Lahore</b><small>hub</small></li>
+          <li><b>Faisalabad</b></li>
+          <li class="parcel" aria-hidden="true"></li>
+        </ol>
+      </div>
     </div>
   </div>
 </div>
@@ -1214,7 +1277,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
           <tr data-fee="500"><th scope="row">Nova Bolt<small><span class="nw">6–12&nbsp;hours</span></small></th><td class="fee">Rs&nbsp;500<small>flat</small></td><td class="get">Rs&nbsp;49,500</td></tr>
         </tbody>
       </table>
-      <p class="pcalc-note" id="payNote">A flat fee, whatever the amount. The same fees the portal shows before you confirm a withdrawal.</p>
+      <p class="pcalc-note" id="payNote">A flat fee, whatever the amount.</p>
       <ul class="checks">
         <li>The fee is shown before you confirm.</li>
         <li>Every transfer carries a bank reference.</li>
@@ -1279,18 +1342,18 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       <p class="head-p">Book, print, track and get paid from the same screen — on your phone or your laptop. Add your team without sharing your password.</p>
     </div>
     <div class="tools-grid">
-      <ol class="manifest">
-        <li><b>Paste a WhatsApp order</b><span>Paste the order message and the booking fills itself in.</span></li>
-        <li><b>Bulk upload</b><span>A whole day's orders from one spreadsheet.</span></li>
-        <li><b>Shopify app</b><span>New orders book themselves with an AWB, and Shopify shows them fulfilled with tracking.</span></li>
-        <li><b>Merchant API</b><span>Book from your own website; signed webhooks report every status.</span></li>
-        <li><b>Labels and load sheet</b><span>Print AWB labels and the sheet your rider signs at pickup.</span></li>
-        <li><b>Live tracking link</b><span>Send it to your customer on WhatsApp in one tap.</span></li>
-        <li><b>Nova Swap</b><span>We deliver the new item and bring the old one back in the same visit.</span></li>
-        <li><b>Refusal list</b><span>See which customers refused or missed more than one delivery, before you ship to them again.</span></li>
-        <li><b>Team seats</b><span>Owner, Finance, Warehouse and Support each see only their part.</span></li>
-        <li><b>Statements</b><span>A monthly wallet statement and invoices, ready for your accountant.</span></li>
-      </ol>
+      <ul class="tools">
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4h6v3H9z"/><path d="M15 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg></span><b>Paste a WhatsApp order</b><span>The booking fills itself in.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></svg></span><b>Bulk upload</b><span>A day&rsquo;s orders from one sheet.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span><b>Shopify app</b><span>Orders book and fulfil themselves.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg></span><b>Merchant API</b><span>Book from your site; webhooks report back.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="8" rx="1.5"/><path d="M7 14h10v6H7z"/></svg></span><b>Labels and load sheet</b><span>AWB labels and the pickup sheet.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span><b>Live tracking link</b><span>One tap to send on WhatsApp.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></span><b>Nova Swap</b><span>New item in, old item back, one visit.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg></span><b>Refusal list</b><span>Spot repeat refusers before you ship.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.3"/><path d="M15.5 14.6A4.5 4.5 0 0 1 21 19"/></svg></span><b>Team seats</b><span>Each role sees only its part.</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/></svg></span><b>Statements</b><span>Monthly statement and invoices.</span></li>
+      </ul>
       <div class="demo-card">
         <h3>Try the real portal before you sign up.</h3>
         <p>Sample parcels, every tab working, nothing sent anywhere. No account and no sales call.</p>
@@ -1312,12 +1375,12 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       <h2>Ask in Roman Urdu. It answers from your own account.</h2>
       <p class="lead">“How many parcels are stuck?” “What am I owed this week?” Autopilot sits inside your portal, already knows who you are, and answers from your live parcels — not from a script.</p>
       <ul class="ap-facts">
-        <li><b>Two layers.</b> Everyday questions are answered instantly from your live account; anything open-ended goes to Claude Opus 5 by Anthropic.</li>
-        <li><b>Only your account.</b> Another seller's parcels don't exist as far as it is concerned.</li>
-        <li><b>It acts</b> — raises tickets, fixes addresses, orders re-attempts — after you confirm.</li>
-        <li><b>Roman Urdu, Urdu or English.</b> 3&nbsp;am included.</li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg></span><b>Instant answers</b><span>From your live parcels</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><b>Only your account</b><span>No other seller&rsquo;s data</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><b>It acts</b><span>Tickets, address fixes, re-attempts, once you confirm</span></li>
+        <li><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16v10H9l-5 4z"/></svg></span><b>3 languages</b><span>Roman Urdu, Urdu, English</span></li>
       </ul>
-      <p class="credit">Your chats are never used to train the model, and no other seller can see them.</p>
+      <p class="credit">Open-ended questions go to Claude Opus 5 by Anthropic. Your chats are never used to train it, and no other seller can see them.</p>
     </div>
     <div class="chat" role="img" aria-label="Example Autopilot conversation in Roman Urdu: the seller asks where a parcel is, Autopilot replies it was delivered and the COD is in the wallet, then raises a ticket for three delayed Rawalpindi parcels after the seller confirms.">
       <div class="chat-head"><span class="chat-av">N</span><div><b>NovaX Autopilot</b><small><i></i>Reading your live account</small></div></div>
