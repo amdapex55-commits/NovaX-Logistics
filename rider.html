@@ -37,12 +37,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="NovaX Rider">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="stylesheet" href="rider.css?v=873c8426">
+  <link rel="stylesheet" href="rider.css?v=19cf21e4">
   <script defer src="assets/vendor/supabase-2.117.2.js"></script>
   <script defer src="nv-payment.js"></script>
   <script defer src="nv-journey.js?v=77db2b46"></script>
   <script defer src="rider-core.js?v=67225093"></script>
-  <script defer src="rider-app.js?v=b02e5a35"></script>
+  <script defer src="rider-app.js?v=2821bdce"></script>
 </head>
 <body>
   <div class="gate" id="gate"><div class="gatebox">
@@ -139,6 +139,29 @@
     <label id="extraLabel" class="hidden"><span id="extraLabelText">Details</span><input id="extraInput" maxlength="80" autocomplete="off"></label>
     <p id="dialogError" class="error-text" role="alert"></p><div class="actions"><button class="btn secondary" value="cancel">Cancel</button><button class="btn" id="dialogConfirm" value="confirm">Confirm</button></div>
   </form></dialog>
+  <!-- Voice note after Refused / Not available (18 Oct 2026). Mandatory:
+       the dialog cannot be dismissed; the only way past without a recording
+       is "microphone blocked", which the office sees. -->
+  <dialog id="voiceDialog" class="voice" aria-labelledby="voiceTitle">
+    <h2 id="voiceTitle" data-t="voiceTitle">Voice note for the shipper</h2>
+    <p class="voice-for" id="voiceFor"></p>
+    <p class="voice-ask" id="voiceAsk" data-t="voiceAsk">Tell the shipper what happened at the door. Up to 60 seconds.</p>
+    <div class="voice-stage" id="voiceStage">
+      <button type="button" class="voice-rec" id="voiceRec" aria-describedby="voiceTime"><span class="voice-dot" aria-hidden="true"></span><span id="voiceRecText" data-t="voiceTapStart">Tap to record</span></button>
+      <div class="voice-meter" aria-hidden="true"><i id="voiceBar"></i></div>
+      <p class="voice-time" id="voiceTime" aria-live="polite">0:00 / 1:00</p>
+    </div>
+    <div class="voice-review hidden" id="voiceReview">
+      <p class="voice-len" id="voiceLen"></p>
+      <audio id="voicePlay" controls preload="auto"></audio>
+      <div class="actions"><button type="button" class="btn secondary" id="voiceAgain" data-t="voiceAgain">Record again</button><button type="button" class="btn" id="voiceSend" data-t="voiceSend">Send voice note</button></div>
+    </div>
+    <div class="voice-blocked hidden" id="voiceBlocked">
+      <p id="voiceBlockedText"></p>
+      <div class="actions"><button type="button" class="btn" id="voiceRetryMic" data-t="voiceRetryMic">Try again</button><button type="button" class="btn secondary" id="voiceSkip" data-t="voiceSkip">Can’t record: microphone blocked</button></div>
+    </div>
+    <p id="voiceError" class="error-text" role="alert"></p>
+  </dialog>
   <script>
     setTimeout(function () {
       var gate = document.getElementById("gate"), spin = document.getElementById("gateSpin");

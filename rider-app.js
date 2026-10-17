@@ -58,6 +58,18 @@
     saved: ["Saved on phone — sending…", "Phone par save — bhej rahe hain…"], attempts: ["attempt", "koshish"], toCollect: ["to collect", "uthane hain"],
     incoming: ["arriving", "aane wale"], atStation: ["at station", "station par"], outNow: ["out now", "rastay mein"], toSend: ["to send", "bhejne hain"],
     exchange: ["Exchange done", "Exchange ho gaya"], cantExchange: ["Can’t exchange", "Exchange nahi hua"],
+    voiceTitle: ["Voice note for the shipper", "Shipper ke liye awaaz ka paigham"],
+    voiceAsk: ["Tell the shipper what happened at the door. Up to 60 seconds.", "Shipper ko batayein darwaze par kya hua. 60 second tak."],
+    voiceTapStart: ["Tap to record", "Record karein"], voiceTapStop: ["Tap to stop", "Rokein"],
+    voiceAgain: ["Record again", "Dobara record"], voiceSend: ["Send voice note", "Paigham bhejein"],
+    voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Can’t record: microphone blocked", "Record nahi ho raha: mic band hai"],
+    voiceShort: ["Too short. Speak for at least 3 seconds.", "Bohat chhota. Kam az kam 3 second bolein."],
+    voiceBig: ["This recording is too large. Record a shorter note.", "Recording bohat bari hai. Chhota paigham record karein."],
+    voiceBlocked: ["Your phone blocked the microphone. Allow it for this app (tap the lock icon next to the address, then Microphone), then tap Try again.", "Phone ne mic band kar diya hai. Is app ke liye mic allow karein (address ke saath lock icon, phir Microphone), phir Dobara koshish dabayein."],
+    voiceNoMic: ["The microphone could not be started on this phone.", "Is phone par mic shuru nahi ho saka."],
+    voiceRecorded: ["Recorded {len}. Listen, then send.", "{len} record hua. Sun kar bhejein."],
+    voicePending: ["Voice note waiting to send", "Awaaz ka paigham bhejna baqi hai"], voiceSent: ["Voice note sent", "Awaaz ka paigham chala gaya"],
+    voiceSaved: ["Voice note saved. It sends after the parcel update.", "Paigham save ho gaya. Parcel update ke baad jayega."],
     showAwbs: ["Show the {n} tracking numbers", "{n} tracking number dekhein"], stReceived: ["received", "mil gaya"], stSelected: ["ticked", "tick"],
     stWaiting: ["on the way", "raste mein"], stElsewhere: ["not in your list", "aap ki list mein nahi"],
     checkTitle: ["Check the {n} parcels", "{n} parcel check karein"], checkTitle1: ["Check the parcel", "Parcel check karein"],
@@ -208,6 +220,7 @@
   function card(p, opts) {
     opts = opts || {};
     var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p), lock = opts.select ? outLock(p) : "";
+    var vn = VOICE.pending[p.awb.toUpperCase()];
     var call = R.phone(c.phone), validPhone = /^\+?\d{9,15}$/.test(call);
     var sel = opts.select ? '<input type="checkbox" class="pick" data-pick="' + esc(p.awb) + '"' + (ui.sel.has(p.awb) && !lock ? " checked" : "") + (pend || lock ? " disabled" : "") + ' aria-label="Select ' + esc(p.awb) + '">' : "";
     var tag = p.meta.swapLeg === "out" ? '<p class="swaptag">NOVA SWAP · collect the old item' + (p.meta.swapPairAwb ? ' · return AWB <b>' + esc(p.meta.swapPairAwb) + '</b>' : '') + '</p>' :
@@ -241,6 +254,7 @@
     var ageD = Math.floor((Date.now() - R.timestamp(p.statusSince)) / 864e5);
     var age = isFinite(ageD) && ageD >= 1 ? (ageD + (LANG === "ur" ? " din" : (ageD === 1 ? " day" : " days"))) : "";
     var body = '<div class="parcel-head">' + sel + '<b class="awb">' + esc(p.awb) + '</b><span class="status">' + esc(p.status) + '</span></div>' + tag +
+      (vn ? '<p class="vnote">\ud83c\udf99 ' + esc(vn === "review" ? "Voice note not accepted. See saved actions on Home." : t("voicePending")) + '</p>' : '') +
       '<p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(c.address || "Address missing. Call the office.") + (c.phone ? '<br>' + esc(c.phone) : "") + '</p>' +
       '<p class="meta-line">' + esc(route) + (age ? ' · <b class="' + (ageD >= 3 ? 'age-old' : '') + '">' + esc(age) + '</b>' : '') + (attTxt ? ' · ' + esc(attTxt) : '') + (p.meta.weight ? ' · ' + esc(p.meta.weight) : '') + (p.exception ? ' · ' + esc(p.exception) : '') + '</p>' +
       (p.heldBy && p.bucket === "out" ? '<p class="meta-line">Was with ' + esc(p.heldBy) + ' — now yours</p>' : '') +
@@ -542,7 +556,7 @@
   function clearSaved() { ["notice", "expenseResult", "cashResult"].forEach(function (id) { var el = q(id); if (el && el.textContent === SAVED_MSG) { el.className = "notice"; el.textContent = ""; } }); }
   var DONE_WORDS = { collect: "collected", receive: "received", out: "out for delivery", delivered: "delivered", reattempt: "set for reattempt", refused: "marked refused", not_available: "marked not available", transit: "sent" };
   async function flush() {
-    if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) return;
+    if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) { void voiceFlush(); return; }
     flushing = true; controls(); var changed = false, rejected = false;
     try {
       await lock(async function () {
@@ -593,7 +607,7 @@
         }
       });
     } catch (e) { connected = false; msg(String(e.message || e), "error"); }
-    finally { flushing = false; if (changed && !jobs().some(function (j) { return j.state !== "review"; })) clearSaved(); render(); if (changed || rejected) void load(true); }
+    finally { flushing = false; if (changed && !jobs().some(function (j) { return j.state !== "review"; })) clearSaved(); render(); if (changed || rejected) void load(true); void voiceFlush(); }
   }
 
   /* ---- dialogs ----------------------------------------------------------- */
@@ -661,6 +675,193 @@
       dialog.showModal();
     });
   }
+  /* ---- voice notes (18 Oct 2026) -------------------------------------------
+     After Refused or Not available the rider records up to 60 seconds for the
+     shipper, who plays it in the portal. The status saves first, exactly as
+     before; the recording waits on this phone (IndexedDB, survives a closed
+     app) and uploads only after NovaX has confirmed that status, because the
+     storage rule checks it. Database side: sql_novax_rider_voice_notes_20261018.sql.
+     The only way past the recorder without a note is a blocked microphone,
+     which is recorded (rider_voice_skip) and shows on the office report. */
+  var VOICE = { db: null, mem: {}, pending: {}, flushing: false, timer: null, MAX: 60000, MIN: 3000, BYTES: 1048576 };
+  /* Pilot first (18 Oct 2026): the recorder is mandatory only for the riders
+     listed here, and always in the demo. Put "*" in the list to switch it on
+     for every rider. Waiting notes still send for anyone. */
+  var VOICE_RIDERS = ["234b3d41-47ef-46bd-b427-d27f0ea9fd53"];   // Khalid, Lahore
+  function voiceOn() { return DEMO || VOICE_RIDERS.indexOf("*") > -1 || VOICE_RIDERS.indexOf(String(riderId || "")) > -1; }
+  function voiceDb() {
+    if (VOICE.db) return VOICE.db;
+    VOICE.db = new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open("novaxRiderVoice", 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore("notes", { keyPath: "key" }); };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { resolve(null); };
+      } catch (_) { resolve(null); }
+    });
+    return VOICE.db;
+  }
+  /* Falls back to memory when IndexedDB is unavailable (private window): the
+     note still sends, but only while the app stays open. */
+  function voiceTx(mode, fn) {
+    return voiceDb().then(function (db) {
+      if (!db) return fn(null);
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction("notes", mode), st = tx.objectStore("notes"), out = fn(st);
+        tx.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function voiceAll() {
+    return voiceTx("readonly", function (st) { return st ? st.getAll() : null; }).then(function (rows) {
+      var list = (rows || Object.keys(VOICE.mem).map(function (k) { return VOICE.mem[k]; }));
+      return list.filter(function (x) { return x && x.user === userId && x.rider === riderId; });
+    });
+  }
+  function voicePut(row) { VOICE.mem[row.key] = row; return voiceTx("readwrite", function (st) { if (st) st.put(row); }); }
+  function voiceDel(k) { delete VOICE.mem[k]; return voiceTx("readwrite", function (st) { if (st) st["delete"](k); }); }
+  function voiceRefresh() {
+    return voiceAll().then(function (rows) {
+      var m = {}; rows.forEach(function (r) { m[r.awb] = r.state === "review" ? "review" : (m[r.awb] || "pending"); });
+      VOICE.pending = m; VOICE.rows = rows;
+    }).catch(function () {});
+  }
+  function voiceMime() {
+    if (!window.MediaRecorder) return null;
+    var c = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+    for (var i = 0; i < c.length; i++) { try { if (MediaRecorder.isTypeSupported(c[i])) return c[i]; } catch (_) {} }
+    return "";
+  }
+  function voiceKind(m) {
+    m = String(m || "").split(";")[0].trim();
+    return { "audio/webm": ["audio/webm", "webm"], "audio/mp4": ["audio/mp4", "m4a"], "audio/ogg": ["audio/ogg", "ogg"],
+             "audio/aac": ["audio/aac", "aac"], "audio/mpeg": ["audio/mpeg", "mp3"] }[m] || ["audio/webm", "webm"];
+  }
+  function voiceClock(ms) { var x = Math.max(0, Math.round(ms / 1000)); return Math.floor(x / 60) + ":" + String(x % 60).padStart(2, "0"); }
+  /* Resolves when the rider has sent a note or recorded why there is none. */
+  function voiceCapture(p, action, reason, location) {
+    return new Promise(function (resolve) {
+      var dialog = q("voiceDialog"), rec = q("voiceRec"), recText = q("voiceRecText"), bar = q("voiceBar"), time = q("voiceTime");
+      var stage = q("voiceStage"), review = q("voiceReview"), blocked = q("voiceBlocked"), err = q("voiceError"), play = q("voicePlay");
+      var stream = null, mr = null, chunks = [], startedAt = 0, recordedAt = "", tick = null, blob = null, dur = 0, url = "", mime = "";
+      var status = action === "refused" ? t("refused") : t("notAvailable");
+      q("voiceFor").innerHTML = "<b>" + esc(p.awb) + "</b> · " + esc(status) + (reason ? " · " + esc(reason) : "");
+      function show(which) { stage.classList.toggle("hidden", which !== "stage"); review.classList.toggle("hidden", which !== "review"); blocked.classList.toggle("hidden", which !== "blocked"); }
+      function idle() { rec.classList.remove("on"); recText.textContent = t("voiceTapStart"); bar.style.width = "0"; time.textContent = "0:00 / 1:00"; }
+      function stopTracks() { try { if (stream) stream.getTracks().forEach(function (tr) { tr.stop(); }); } catch (_) {} stream = null; }
+      function reset() { err.textContent = ""; if (url) { URL.revokeObjectURL(url); url = ""; } play.removeAttribute("src"); blob = null; dur = 0; idle(); show("stage"); }
+      function fail(why, text) { stopTracks(); clearInterval(tick); idle(); q("voiceBlockedText").textContent = text; blocked.dataset.why = why; show("blocked"); }
+      function finish(row) {
+        clearInterval(tick); stopTracks(); if (url) URL.revokeObjectURL(url);
+        dialog.removeEventListener("cancel", noCancel); dialog.close(); resolve(row);
+      }
+      function noCancel(e) { e.preventDefault(); }
+      async function start() {
+        err.textContent = "";
+        mime = voiceMime();
+        if (mime === null || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fail("mic_error", t("voiceNoMic")); return; }
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } }); }
+        catch (e) { fail(e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "no_mic" : "mic_error", e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? t("voiceBlocked") : t("voiceNoMic")); return; }
+        try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 24000 }, mime ? { mimeType: mime } : {})); }
+        catch (_) { try { mr = new MediaRecorder(stream); } catch (e2) { fail("mic_error", t("voiceNoMic")); return; } }
+        chunks = [];
+        mr.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.onstop = function () {
+          clearInterval(tick); stopTracks(); rec.classList.remove("on");
+          dur = Math.min(VOICE.MAX, Date.now() - startedAt);
+          blob = new Blob(chunks, { type: mr.mimeType || mime || "audio/webm" });
+          if (dur < VOICE.MIN) { idle(); err.textContent = t("voiceShort"); blob = null; return; }
+          if (blob.size > VOICE.BYTES) { idle(); err.textContent = t("voiceBig"); blob = null; return; }
+          url = URL.createObjectURL(blob); play.src = url; time.textContent = voiceClock(dur);
+          q("voiceLen").textContent = t("voiceRecorded", { len: voiceClock(dur) }); show("review");
+        };
+        mr.start(1000); startedAt = Date.now(); recordedAt = new Date().toISOString();
+        rec.classList.add("on"); recText.textContent = t("voiceTapStop");
+        tick = setInterval(function () {
+          var e = Date.now() - startedAt; bar.style.width = Math.min(100, e / VOICE.MAX * 100) + "%"; time.textContent = voiceClock(e) + " / 1:00";
+          if (e >= VOICE.MAX && mr && mr.state === "recording") mr.stop();
+        }, 200);
+        try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {}
+      }
+      rec.onclick = function () { if (mr && mr.state === "recording") mr.stop(); else void start(); };
+      q("voiceAgain").onclick = reset;
+      q("voiceRetryMic").onclick = function () { reset(); void start(); };
+      q("voiceSend").onclick = async function () {
+        if (!blob) return;
+        var kind = voiceKind(blob.type), cid = p.client_id || p.clientId || "";
+        var rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+        var row = { key: "voice-" + riderId + "-" + crypto.randomUUID(), type: "note", user: userId, rider: riderId, awb: p.awb.toUpperCase(), action: action,
+          path: cid + "/" + p.awb.toUpperCase() + "/" + riderId + "-" + Date.now() + "-" + rand + "." + kind[1], mime: kind[0], bytes: blob.size, duration_ms: Math.round(dur),
+          reason: reason || "", lat: location && location.lat || null, lng: location && location.lng || null, accuracy: location && location.accuracy || null,
+          recorded_at: recordedAt, blob: blob, state: "pending", at: new Date().toISOString() };
+        try { await voicePut(row); } catch (e) { err.textContent = String(e && e.message || e); return; }
+        ping(t("voiceSaved"), "info", 30); finish(row);
+      };
+      q("voiceSkip").onclick = async function () {
+        var row = { key: "voice-" + riderId + "-" + crypto.randomUUID(), type: "skip", why: blocked.dataset.why === "no_mic" ? "no_mic" : "mic_error",
+          user: userId, rider: riderId, awb: p.awb.toUpperCase(), action: action, state: "pending", at: new Date().toISOString() };
+        try { await voicePut(row); } catch (e) { err.textContent = String(e && e.message || e); return; }
+        finish(row);
+      };
+      dialog.addEventListener("cancel", noCancel);
+      reset(); dialog.showModal();
+    }).then(function (row) { return voiceRefresh().then(function () { render(); return row; }); });
+  }
+  /* Sends waiting notes once their parcel's status has reached NovaX. */
+  async function voiceFlush() {
+    if (VOICE.flushing || flushing || !authorized || !navigator.onLine || !sb) return;
+    VOICE.flushing = true;
+    try {
+      var rows = (await voiceAll()).filter(function (r) { return r.state !== "review"; }), waiting = pendingAwbs();
+      for (var r of rows) {
+        if (waiting.has(r.awb)) continue;   /* its Refused / not available is still on the phone */
+        var res;
+        if (r.type === "skip") {
+          try { res = await sb.rpc("rider_voice_skip", { p_awb: r.awb, p_why: r.why }); } catch (e) { res = { error: e }; }
+        } else {
+          var up;
+          try { up = await sb.storage.from("parcel-voice").upload(r.path, r.blob, { contentType: r.mime, upsert: false, cacheControl: "3600" }); } catch (e) { up = { error: e }; }
+          /* Already there from an earlier try that lost its answer: attach it. */
+          if (up && up.error && !/exist|duplicate|409/i.test(String(up.error.message || up.error.statusCode || up.error))) res = up;
+          else {
+            try {
+              res = await sb.rpc("rider_voice_attach", { p_awb: r.awb, p_path: r.path, p_duration_ms: r.duration_ms, p_mime: r.mime, p_bytes: r.bytes,
+                p_reason: r.reason || null, p_lat: r.lat, p_lng: r.lng, p_accuracy: r.accuracy, p_recorded_at: r.recorded_at });
+            } catch (e) { res = { error: e }; }
+          }
+        }
+        if (res && res.error) {
+          if (R.retryable(res.error) || /fetch|network/i.test(String(res.error.message || res.error))) {
+            clearTimeout(VOICE.timer); VOICE.timer = setTimeout(function () { void voiceFlush(); }, 30000); break;
+          }
+          await voicePut(Object.assign({}, r, { state: "review", error: String(res.error.message || res.error) }));
+          continue;
+        }
+        await voiceDel(r.key);
+        if (r.type === "note") ping("🎙 " + t("voiceSent") + " · " + r.awb, "ok", [30]);
+      }
+    } catch (e) { /* the next refresh tries again */ }
+    finally { VOICE.flushing = false; await voiceRefresh(); paintVoiceQueue(); render(); }
+  }
+  /* Notes NovaX would not accept stay on the phone until the rider retries or
+     removes them, beside the other saved actions. */
+  function paintVoiceQueue() {
+    var host = q("voiceReview2");
+    if (!host) { host = document.createElement("div"); host.id = "voiceReview2"; host.className = "list"; var qr = q("queueReview"); if (!qr) return; qr.insertAdjacentElement("afterend", host); }
+    var bad = (VOICE.rows || []).filter(function (r) { return r.state === "review"; });
+    host.innerHTML = bad.map(function (r) {
+      return '<article class="parcel"><b>Voice note not accepted: ' + esc(r.awb) + '</b><p>' + esc(r.error || "") + '</p><div class="actions"><button class="btn secondary" type="button" data-vretry="' + esc(r.key) + '">Retry</button><button class="btn danger" type="button" data-vdrop="' + esc(r.key) + '">Remove from phone</button></div></article>';
+    }).join("");
+    host.onclick = async function (e) {
+      var a = e.target.closest("[data-vretry]"), b = e.target.closest("[data-vdrop]");
+      var k = a ? a.dataset.vretry : b ? b.dataset.vdrop : ""; if (!k) return;
+      var row = (VOICE.rows || []).find(function (x) { return x.key === k; }); if (!row) return;
+      if (a) { await voicePut(Object.assign({}, row, { state: "pending", error: "" })); void voiceFlush(); }
+      else if (window.confirm("Remove this voice note from the phone? The shipper will not hear it.")) { await voiceDel(k); await voiceRefresh(); paintVoiceQueue(); render(); }
+    };
+  }
+
   /* ---- GPS (14 Oct 2026) --------------------------------------------------
      A phone needs time to find itself: asked at the moment of "Delivered",
      the reading came after up to 10 s of waiting, often weak, and the rider
@@ -790,6 +991,9 @@
          proof of a visit only with a place on it. */
       location = await gps(10000);
       await station([awb], action, reason === true ? "" : reason, extra, location);
+      /* 18 Oct 2026: a refusal or "not available" is explained to the shipper
+         in the rider's own voice. Mandatory; the status is already saved. */
+      if ((action === "refused" || action === "not_available") && voiceOn()) await voiceCapture(p, action, reason === true ? "" : reason, location);
       if (location && location.unavailable) msg(location.reason === "denied" ? t("geoOff") : "Saved without GPS. Server confirmation is still pending.", location.reason === "denied" ? "error" : "info");
       else if (location && location.accuracy > 100) msg("Saved. GPS was weak (±" + location.accuracy + " m), so the office sees the location as approximate.", "info");
     } catch (e) { msg(String(e.message || e), "error"); }
@@ -1094,7 +1298,7 @@
       if (profile.data && String(profile.data.role).toLowerCase() === "sales") { location.replace("sales.html"); return; }
       if (profile.data && String(profile.data.role).toLowerCase() === "support") { location.replace("care.html"); return; }
       if (!profile.data || String(profile.data.role).toLowerCase() !== "rider" || String(profile.data.status).toLowerCase() !== "active" || !profile.data.rider_id) throw new Error("This account is not an active rider. Contact the office.");
-      riderId = profile.data.rider_id; queue = new R.Queue(store, userId, riderId); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
+      riderId = profile.data.rider_id; queue = new R.Queue(store, userId, riderId); void voiceRefresh().then(function () { paintVoiceQueue(); render(); void voiceFlush(); }); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
       if (navigator.onLine) { try { store.setItem("novaxRiderIdentity:" + userId, JSON.stringify({ user: userId, at: Date.now(), profile: profile.data })); } catch (_) {} }
       rememberNote(s.data.session.user.email);
       try { var cached = JSON.parse(store.getItem(cacheKey) || "null"); if (cached && cached.user === userId && cached.rider === riderId) { data = cached.data; data.cash = null; lastSync = cached.at; render(); q("gate").classList.add("hidden"); } } catch (_) {}
@@ -1137,7 +1341,7 @@
       if (r.data !== data.stamp) void load(true); else lastSync = Date.now();
     } finally { checking = false; paintNetwork(); }
   }
-  window.addEventListener("online", function () { void load(true); });
+  window.addEventListener("online", function () { void load(true); void voiceFlush(); });
   window.addEventListener("offline", function () { connected = false; controls(); });
   window.addEventListener("storage", function (e) { if (queue && e.key === queue.key && authorized) render(); });
   document.addEventListener("visibilitychange", function () { if (document.hidden) { stopScan(); geoSync(); } else { paintNetwork(); geoSync(); void check(); } });
@@ -1225,6 +1429,7 @@
     }
     var session = { data: { session: { user: { id: "demo-user", email: "" } } }, error: null };
     return { rpc: rpc,
+      storage: { from: function () { return { upload: function (path) { return Promise.resolve({ data: { path: path }, error: null }); } }; } },
       auth: { getSession: function () { return Promise.resolve(session); }, signOut: function () { return Promise.resolve({ error: null }); }, onAuthStateChange: function () { return { data: { subscription: { unsubscribe: function () {} } } }; } },
       from: function () { var o = { select: function () { return o; }, eq: function () { return o; }, single: function () { return Promise.resolve({ data: { role: "rider", status: "active", rider_id: me }, error: null }); } }; return o; } };
   }
