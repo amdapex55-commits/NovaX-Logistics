@@ -3725,7 +3725,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          parcel the portal holds: its buttons look the parcel up in state. */
       ((typeof hasResolvableException==="function" && hasResolvableException(p) && (state.parcels||[]).some(x=>x&&x.awb===p.awb))
         ? '<div class="nvdr-sec nvdr-decide">'+renderExceptionCard(p)+'</div>' : '')+
-      '<div class="nvdr-sec"><h4>Journey</h4>'+nvJourneyHtml(p,rows)+'</div>'+
+      '<div class="nvdr-sec"><h4>Journey</h4>'+
+        /* Rider's voice note after the merchant has decided (the decision card,
+           which carries it, is gone by then). Locked notes never show. */
+        ((!(typeof hasResolvableException==="function" && hasResolvableException(p)) && !/^(Delivered|Return to shipper)$/.test(p.status||""))
+          ? '<div class="nvvn" data-nvvn="'+escLabelText(p.awb)+'"></div>' : '')+
+        nvJourneyHtml(p,rows)+'</div>'+
       '<div class="nvdr-actions">'+
         (tel?'<a href="tel:'+escLabelText(tel)+'">Call consignee</a>':'')+
         /* The primary follows the status. Print AWB is exactly right while the
@@ -18006,7 +18011,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var need=[];
       document.querySelectorAll("[data-nvvn]").forEach(function(el){
         var awb=el.getAttribute("data-nvvn"); if(!awb) return;
-        if(NV_VN.cache[awb]===undefined){ need.push(awb); return; }
+        /* "No note yet" is asked again after a minute: a note recorded while
+           the live channel was down would otherwise never appear until reload. */
+        if(NV_VN.cache[awb]===undefined || (!NV_VN.cache[awb].length && Date.now()-(NV_VN.asked[awb]||0)>60000)){ need.push(awb); return; }
         var html=nvVnHtml(awb, NV_VN.cache[awb]);
         if(el.__nvvnHtml!==html){ el.innerHTML=html; el.__nvvnHtml=html; }
       });
@@ -18086,7 +18093,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             delete NV_VN.cache[row.awb]; delete NV_VN.asked[row.awb];
             toast("New voice note from the rider for "+row.awb+".","info");
             nvVnFill();
-          }).subscribe();
+          }).subscribe(function(status){
+            /* A channel that errors or closes is dropped, so the 5-second check
+               below opens a new one instead of staying silent for the session. */
+            if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){ try{ sb.removeChannel(NV_VN.ch); }catch(e){} NV_VN.ch=null; }
+          });
       }catch(e){ NV_VN.ch=null; }
     }
     setInterval(function(){ try{ nvVnListen(); }catch(e){} }, 5000);

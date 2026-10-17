@@ -789,6 +789,10 @@
           blob = new Blob(chunks, { type: mr.mimeType || mime || "audio/webm" });
           if (dur < VOICE.MIN) { idle(); err.textContent = t("voiceShort"); blob = null; return; }
           if (blob.size > VOICE.BYTES) { idle(); err.textContent = t("voiceBig"); blob = null; return; }
+          /* A phone that records but hands back (almost) nothing, e.g. after a
+             call interrupted it: offer another try or the microphone exit now,
+             rather than a note NovaX would refuse later. */
+          if (blob.size < 800) { blob = null; fail("mic_error", t("voiceNoMic")); return; }
           url = URL.createObjectURL(blob); play.src = url; time.textContent = voiceClock(dur);
           q("voiceLen").textContent = t("voiceRecorded", { len: voiceClock(dur) }); show("review");
         };
