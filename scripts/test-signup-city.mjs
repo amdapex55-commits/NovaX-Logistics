@@ -52,5 +52,12 @@ const looks = new Function(src[0] + "return nvSignupCityFromAddress;")();
   const noCodes = (l) => l.filter((x) => !/^[a-z]-\d+$/.test(x));
   for (const c of Object.keys(P)) { assert.deepEqual(S[c], noCodes(P[c]), "sign-up " + c); assert.deepEqual(Rm[c], noCodes(P[c]), "rider " + c); }
   ok("one list of area names in three places: portal booking form, sign-up, rider app");
+  // New stations (17 Oct 2026) are delivery-only, so they are not in sign-up; portal and rider must still agree.
+  const NEW = ["Faisalabad", "Multan", "Sahiwal", "Okara", "Chichawatni", "Harappa", "Yousuf Wala", "Adda Gamber"];
+  const names2 = (text, open) => { const m = new RegExp(open + "[\\s\\S]*?\\n\\s*\\};").exec(text)[0]; const out = {};
+    for (const c of NEW) { const k = c.includes(" ") ? '"' + c + '"' : c; const r = new RegExp(k + ":\\s*\\[([\\s\\S]*?)\\]").exec(m); out[c] = r ? [...r[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null; } return out; };
+  const P2 = names2(portal, "var NV_CITY_MARKERS_C = \\{"), R2 = names2(core, "var CITY_MARKERS = \\{");
+  for (const c of NEW) { assert.ok(P2[c] && P2[c].length, "portal knows " + c); assert.deepEqual(R2[c], P2[c], "rider " + c); }
+  ok("the eight new stations: same area names in the portal and the rider app");
 }
 console.log("SIGN-UP CITY CHECKS PASSED");

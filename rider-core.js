@@ -71,7 +71,16 @@
     Lahore: ["johar town", "model town", "gulberg lahore", "dha lahore", "defence lahore", "iqbal town", "wapda town", "faisal town",
       "garden town", "township lahore", "cantt lahore", "lahore"],
     Islamabad: ["islamabad", "blue area"],
-    Rawalpindi: ["rawalpindi", "satellite town", "chaklala", "westridge", "pindi"]
+    Rawalpindi: ["rawalpindi", "satellite town", "chaklala", "westridge", "pindi"],
+    /* New stations, 17 Oct 2026 (same lists as the portal). */
+    Faisalabad: ["faisalabad", "faisal abad", "lyallpur"],
+    Multan: ["multan"],
+    Sahiwal: ["sahiwal"],
+    Okara: ["okara"],
+    Chichawatni: ["chichawatni", "chicha watni"],
+    Harappa: ["harappa", "harrapa", "harapa"],
+    "Yousuf Wala": ["yousuf wala", "yousufwala", "yousaf wala", "yousafwala", "yusuf wala"],
+    "Adda Gamber": ["adda gamber", "adda gambar", "gamber", "gambar"]
   };
   function cityFromAddress(addr) {
     var a = String(addr || "").toLowerCase().replace(/\s+/g, " "), best = "", bestAt = Infinity, bestLen = 0;
@@ -79,6 +88,8 @@
     Object.keys(CITY_MARKERS).forEach(function (city) {
       CITY_MARKERS[city].forEach(function (m) {
         var at = a.indexOf(m);
+        /* A town name followed by "road"/"bypass" is a street: "Multan Road" runs through Lahore. */
+        while (at > -1 && m === city.toLowerCase() && /^\s*(road|rd\b|bypass)/.test(a.slice(at + m.length))) at = a.indexOf(m, at + 1);
         if (at > -1 && (at < bestAt || (at === bestAt && m.length > bestLen))) { best = city; bestAt = at; bestLen = m.length; }
       });
     });
