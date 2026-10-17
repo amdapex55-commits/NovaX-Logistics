@@ -12432,7 +12432,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvEditFill(p){
       nvSetVal("nvEdName",p.consignee);
       nvSetVal("nvEdPhone",p.phone);
-      nvSetVal("nvEdCity",p.city);
+      nvSetVal("nvEdCity",nvStationName(p.city)||p.city);   // "lahore" from an old API booking selects Lahore
       nvSetVal("nvEdCod",Number(p.cod||0));
       nvSetVal("nvEdCategory",p.category);
       nvSetVal("nvEdWeight",p.weight);
@@ -13319,6 +13319,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         host.innerHTML = nvRateNoticeHtml();
         host.classList.add("nv-stations");
         var go = document.getElementById("nvRateNoticeGo");
+        /* Staff whose role cannot book (Finance, Support) get the news without a
+           button that would only bounce them back to Home. */
+        try{ if(go && typeof nvCanUseTab==="function" && !nvCanUseTab("newBooking")) go.remove(), go=null; }catch(e){}
         if(go) go.addEventListener("click", function(){
           try{ localStorage.setItem(key, "dismissed"); }catch(e){}
           host.style.display = "none";

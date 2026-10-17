@@ -8053,7 +8053,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         citySel.insertAdjacentHTML("beforeend",
           '<option value="' + nvEscAdmin(cur) + '">' + nvEscAdmin(cur) + ' (not a serviceable city)</option>');
       }
-      citySel.value = cur;
+      /* Older API bookings stored "lahore" or "RAWALPINDI": select the matching
+         option, not a value no option has (which showed blank and blocked Save). */
+      var curOpt = Array.prototype.find.call(citySel.options, function(o){ return o.value && o.value.toLowerCase() === cur.toLowerCase(); });
+      citySel.value = curOpt ? curOpt.value : cur;
       document.getElementById("npeCod").value = Number(p.cod || 0);
       document.getElementById("npeFee").value = Number(p.fee || 0);
       document.getElementById("npeWeight").value = p.weight || "";
@@ -17301,8 +17304,14 @@ html,body{ background:var(--bg); color:var(--ink); }
           { name: "limit", label: "Cash limit (Rs)", type: "number", value: "75000", required: true }
         ], ok: "Add rider" });
       if (!v) return;
+      /* The server keeps only exact station names and drops the rest without a
+         word, so "Harrapa" or "Yousaf Wala" vanished. Spell them the station way
+         here, and stop on anything that is not a station. */
+      var typed = String(v.cities || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+      var unknown = typed.filter(function(s){ return !nvStationName(s); });
+      if (unknown.length) { toast("Not a NovaX station: " + unknown.join(", ") + ". Use: " + NV_STATIONS_ALL.join(", ") + ".", "error"); return; }
       var res = await window.__nvSb.rpc("admin_add_rider", { p_name: v.name, p_branch: v.branch,
-        p_cities: String(v.cities || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean), p_phone: v.phone || "", p_limit: Number(v.limit) });
+        p_cities: typed.map(nvStationName), p_phone: v.phone || "", p_limit: Number(v.limit) });
       if (res.error) { toast("Could not add: " + res.error.message, "error"); return; }
       nvRbAfter(null, null, v.name + " added. Create their login in Users → Create Users.");
     }
