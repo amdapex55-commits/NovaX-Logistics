@@ -7,7 +7,9 @@ import { readFileSync } from "node:fs";
 const s = readFileSync(new URL("../client-app.js", import.meta.url), "utf8");
 function grab(n){ const i=s.indexOf("function "+n+"("); if(i<0) throw new Error("missing "+n); let d=0; for(let k=s.indexOf("{",i);k<s.length;k++){ if(s[k]==="{")d++; else if(s[k]==="}"){ d--; if(!d) return s.slice(i,k+1); } } }
 const a=s.indexOf("var NV_ADDR_START=");
-const parse=(0,eval)("(function(){"+grab("nvNormalizePkPhone")+";var NV_CITY_LIST=['lahore','karachi','islamabad','rawalpindi'];"+grab("nvFindCity")+";"+s.slice(a,s.indexOf("\n",a))+";"+grab("prodLabelEarly")+";"+grab("nvAddrStartTok")+";"+grab("nvPasteRemainder")+";"+grab("parsePastedOrder")+";return parsePastedOrder;})()");
+const st=s.slice(s.indexOf("    var NV_STATIONS_CORE="),s.indexOf("    const ZONE_CITY_MAP=")).replace(/^\s*try\{ window\..*$/m,"");
+const cl=s.slice(s.indexOf("    var NV_CITY_LIST="),s.indexOf("    function nvFindCity("));
+const parse=(0,eval)("(function(){"+grab("nvNormalizePkPhone")+";"+st+";"+cl+";"+grab("nvFindCity")+";"+s.slice(a,s.indexOf("\n",a))+";"+grab("prodLabelEarly")+";"+grab("nvAddrStartTok")+";"+grab("nvPasteRemainder")+";"+grab("parsePastedOrder")+";return parsePastedOrder;})()");
 const placeholder=(readFileSync(new URL("../client.html", import.meta.url),"utf8").match(/id="nvPasteInput"[^>]*placeholder="e\.g\. ([^"]+)"/)||[])[1];
 const cases=[
  {
@@ -104,7 +106,13 @@ const cases=[
    "cod": "900",
    "address": "House 5, DHA Phase 6, Karachi"
   }
- }
+ },
+ /* New stations, 17 Oct 2026. */
+ { "in": "Bilal 03214567890 Multan COD 1800 shoes size 42", "want": { "phone": "03214567890", "city": "Multan", "cod": "1800" } },
+ { "in": "Sana 03001112233 Yousaf Wala COD 950 lawn suit", "want": { "city": "Yousuf Wala", "cod": "950" } },
+ { "in": "Imran 03451234567 Adda Gamber COD 1200 watch", "want": { "city": "Adda Gamber" } },
+ { "in": "Zara 03111234567 harrapa COD 700 bangles", "want": { "city": "Harappa" } },
+ { "in": "Name: Usman\nPhone: 03007654321\nAddress: House 9, Multan Road, Lahore\nCOD: 2100", "want": { "city": "Lahore", "cod": "2100" } }
 ];
 if(placeholder) cases.unshift({in:placeholder,want:{product:"black hoodie",address:"DHA Phase 5 house 22"}});
 let fail=0;

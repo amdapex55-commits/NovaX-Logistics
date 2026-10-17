@@ -2669,6 +2669,27 @@ try{
     .nv-rate-notice{padding:13px 14px;}
     .nv-rate-notice .nv-rn-x{width:100%;justify-content:center;}
   }
+  /* New stations (17 Oct 2026): the booking-form strip and the Home
+     announcement. Theme tokens only, so both read in light and dark. */
+  .nv-newst{margin-top:8px;border:1px solid var(--nvu-good-ln);background:var(--nvu-good-bg);border-radius:12px;padding:8px 10px;}
+  .nv-newst-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12px;line-height:1.4;color:var(--nvu-good-fg);}
+  .nv-newst-h b{font-weight:850;letter-spacing:.01em;}
+  .nv-newst-h b::before{content:"\2605";margin-right:5px;}
+  .nv-newst-h span{color:var(--nvu-ink-2);}
+  .nv-newst-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}
+  .nv-newst-chips button{min-height:32px;padding:4px 10px;border-radius:999px;border:1px solid var(--nvu-good-ln);
+    background:var(--nvu-bg);color:var(--nvu-ink);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .nv-newst-chips button:hover{border-color:var(--nvu-good-fg);}
+  .nv-newst-chips button[aria-pressed="true"]{background:var(--nvu-good-fg);border-color:var(--nvu-good-fg);color:var(--nvu-bg);}
+  .nv-rate-notice.nv-stations{border-color:var(--nvu-good-ln);background:var(--nvu-good-bg);}
+  .nv-rate-notice.nv-stations h4{color:var(--nvu-good-fg);}
+  .nv-rate-notice.nv-stations .nv-rn-x:hover{border-color:var(--nvu-good-fg);}
+  .nv-rate-notice .nv-st-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;padding:0;list-style:none;}
+  .nv-rate-notice .nv-st-chips li{padding:4px 10px;border-radius:999px;border:1px solid var(--nvu-good-ln);background:var(--nvu-bg);
+    font-size:12.5px;font-weight:750;color:var(--nvu-ink);line-height:1.5;}
+  .nv-rate-notice .nv-rn-go{border:1px solid var(--nvu-good-fg);background:var(--nvu-good-fg);color:var(--nvu-bg);
+    border-radius:var(--r-pill);padding:8px 14px;font-size:12.5px;font-weight:800;cursor:pointer;min-height:44px;}
+  @media (max-width:640px){ .nv-rate-notice .nv-rn-go{width:100%;} }
   /* Was "No tickets yet", which contradicted the counters sitting right
      above it: Open (0), Resolved (1), All (1) then "no tickets yet". A
      :empty rule cannot know which filter is active, so the JS sets an
@@ -2736,7 +2757,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=2aba77ab" defer></script>
+  <script src="client-app.min.js?v=b6507017" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3062,7 +3083,7 @@ try{
                   <div class="form-grid">
                     <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" maxlength="120" required></div>
                     <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
-                    <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                    <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select><div class="footer-note" id="bookingZoneHint"></div><!-- New stations, 17 Oct 2026: tap a town to pick it. Wired in client-app.js (nvNewStationsWire). --><div class="nv-newst" id="bookingNewStations"><div class="nv-newst-h"><b>New stations</b><span>Just launched &middot; same rate as Lahore</span></div><div class="nv-newst-chips"><button type="button" data-nv-newst="Faisalabad">Faisalabad</button><button type="button" data-nv-newst="Multan">Multan</button><button type="button" data-nv-newst="Sahiwal">Sahiwal</button><button type="button" data-nv-newst="Okara">Okara</button><button type="button" data-nv-newst="Chichawatni">Chichawatni</button><button type="button" data-nv-newst="Harappa">Harappa</button><button type="button" data-nv-newst="Yousuf Wala">Yousuf Wala</button><button type="button" data-nv-newst="Adda Gamber">Adda Gamber</button></div></div></div>
                     <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
@@ -3209,7 +3230,7 @@ try{
                           <div class="nvbk-chips is-opt"><span>reference</span><span>reference_no</span><span>fragile</span></div>
                           <p class="nvbk-k">Accepted values</p>
                           <dl class="nvbk-vals">
-                            <div><dt>city</dt><dd>Karachi, Lahore, Islamabad or Rawalpindi</dd></div>
+                            <div><dt>city</dt><dd>Karachi, Lahore, Islamabad, Rawalpindi, or a new station: Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala, Adda Gamber</dd></div>
                             <div><dt>payment_mode</dt><dd>COD or Prepaid</dd></div>
                             <div><dt>weight</dt><dd>0.1–70 kg, like 1.5 kg or 500 g</dd></div>
                             <div><dt>fragile</dt><dd>yes or no</dd></div>
@@ -3273,7 +3294,7 @@ try{
                   <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('woocommerce')">Save connection</button></div>
                   <div class="field" id="wooWebhookResult" style="display:none;margin-top:10px">
                     <div class="nvpk-step"><i>2</i><b>Add two webhooks in WooCommerce</b></div>
-                    <p class="footer-note">Go to WooCommerce &rarr; Settings &rarr; Advanced &rarr; Webhooks &rarr; Add webhook, twice, with the same two values below: one with Topic <b>Order created</b> and one with Topic <b>Order updated</b>. Status: <b>Active</b>. An order is booked once, when it reaches <b>Processing</b>; orders outside Karachi, Lahore, Islamabad and Rawalpindi are not booked. Weight starts at 0.5 kg; the charge is corrected when we weigh the parcel. Every NovaX update is then written back to the order as a private note with the tracking link, and the order is marked <b>Completed</b> when it is delivered. For that, create the REST API key with <b>Read/Write</b> permission (WooCommerce &rarr; Settings &rarr; Advanced &rarr; REST API).</p>
+                    <p class="footer-note">Go to WooCommerce &rarr; Settings &rarr; Advanced &rarr; Webhooks &rarr; Add webhook, twice, with the same two values below: one with Topic <b>Order created</b> and one with Topic <b>Order updated</b>. Status: <b>Active</b>. An order is booked once, when it reaches <b>Processing</b>; orders to a city NovaX does not serve yet are not booked (Karachi, Lahore, Islamabad, Rawalpindi and the new stations Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala and Adda Gamber are). Weight starts at 0.5 kg; the charge is corrected when we weigh the parcel. Every NovaX update is then written back to the order as a private note with the tracking link, and the order is marked <b>Completed</b> when it is delivered. For that, create the REST API key with <b>Read/Write</b> permission (WooCommerce &rarr; Settings &rarr; Advanced &rarr; REST API).</p>
                     <label class="mt-8">Delivery URL</label>
                     <div class="inline-actions"><input id="wooIntakeUrlOut" readonly style="flex:1" aria-label="WooCommerce webhook delivery URL"><button class="ghost-btn" onclick="copyFieldValue('wooIntakeUrlOut')">Copy</button></div>
                     <label class="mt-8">Secret</label>
@@ -3768,7 +3789,7 @@ try{
         <div class="field"><label for="nvEdName">Consignee Name <span class="required-star">*</span></label><input id="nvEdName" maxlength="120"></div>
         <div class="field"><label for="nvEdPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="nvEdPhone"></div>
         <div class="field"><label for="nvEdCity">Destination City <span class="required-star">*</span></label>
-          <select id="nvEdCity"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+          <select id="nvEdCity"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select></div>
         <div class="field"><label for="nvEdCod">COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
         <div class="field"><label for="nvEdCategory">Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
         <div class="field"><label for="nvEdWeight">Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>

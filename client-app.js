@@ -1450,9 +1450,35 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
     // demo/default placeholder client id. With no confirmed client identity, the
     // correct answer is an empty list, not another client's parcels.
     function clientScopedParcels(){ const id=state.client&&state.client.id; if(!id) return []; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
+    /* Stations NovaX delivers to. The eight in NV_STATIONS_NEW opened on
+       17 Oct 2026 as delivery destinations only: pickup is still the first
+       four (nv_signup_provision). They are Zone B like every non-Karachi
+       city -- novax_quote_fee and nv_book_parcel_core price by "is it
+       Karachi", so no server pricing change was needed. Every city list in
+       this file reads from here; admin.html, index.html, rider-core.js and
+       the api / woo-order-intake / shopify functions carry the same list. */
+    var NV_STATIONS_CORE=["Karachi","Lahore","Islamabad","Rawalpindi"];
+    var NV_STATIONS_NEW=["Faisalabad","Multan","Sahiwal","Okara","Chichawatni","Harappa","Yousuf Wala","Adda Gamber"];
+    var NV_STATIONS_ALL=NV_STATIONS_CORE.concat(NV_STATIONS_NEW);
+    /* Spellings merchants and stores actually type, mapped to the station name
+       the riders' city lists use. Whole-string match only. */
+    var NV_STATION_ALIASES={ "pindi":"Rawalpindi", "rwp":"Rawalpindi", "isb":"Islamabad", "lhr":"Lahore", "khi":"Karachi",
+      "lyallpur":"Faisalabad", "faisal abad":"Faisalabad", "fsd":"Faisalabad",
+      "harrapa":"Harappa", "harapa":"Harappa", "harrappa":"Harappa",
+      "yousufwala":"Yousuf Wala", "yousaf wala":"Yousuf Wala", "yousafwala":"Yousuf Wala", "yusuf wala":"Yousuf Wala", "yusufwala":"Yousuf Wala", "yousuf-wala":"Yousuf Wala", "yousaf-wala":"Yousuf Wala",
+      "adda gambar":"Adda Gamber", "gamber":"Adda Gamber", "gambar":"Adda Gamber", "adda-gamber":"Adda Gamber",
+      "chicha watni":"Chichawatni", "chichawatney":"Chichawatni" };
+    function nvStationName(raw){
+      var k=String(raw==null?"":raw).toLowerCase().replace(/[.,]/g," ").replace(/\s+/g," ").trim();
+      if(!k) return "";
+      for(var i=0;i<NV_STATIONS_ALL.length;i++){ if(NV_STATIONS_ALL[i].toLowerCase()===k) return NV_STATIONS_ALL[i]; }
+      return NV_STATION_ALIASES[k]||"";
+    }
+    function nvIsNewStation(city){ var n=nvStationName(city); return !!n && NV_STATIONS_NEW.indexOf(n)>-1; }
+    try{ window.NV_STATIONS_ALL=NV_STATIONS_ALL; window.NV_STATIONS_NEW=NV_STATIONS_NEW; window.nvStationName=nvStationName; }catch(e){}
     const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
     function zoneForCity(city){ return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B"; }
-    function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (Lahore / Islamabad / Rawalpindi)"; }
+    function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (all other stations)"; }
     /* NovaX Zone A base. This is the LAST-RESORT fallback used only when a
    client row has no rate and no rate card at all. It was 250 while the
    real Zone A rate in the database was 100, so a client with a missing
@@ -9963,8 +9989,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       Lahore:   ["johar town","model town","gulberg lahore","dha lahore","defence lahore","iqbal town",
                  "wapda town","faisal town","garden town","township lahore","cantt lahore","lahore"],
       Islamabad:["islamabad","f-6","f-7","f-8","f-10","f-11","g-9","g-10","g-11","i-8","blue area"],
-      Rawalpindi:["rawalpindi","satellite town","chaklala","westridge","pindi"]
+      Rawalpindi:["rawalpindi","satellite town","chaklala","westridge","pindi"],
+      /* New stations, 17 Oct 2026. Town names only: their areas are not
+         mapped yet, and a bare town name followed by "road" or "bypass" is
+         skipped below ("Multan Road" runs through Lahore). */
+      Faisalabad:["faisalabad","faisal abad","lyallpur"],
+      Multan:["multan"],
+      Sahiwal:["sahiwal"],
+      Okara:["okara"],
+      Chichawatni:["chichawatni","chicha watni"],
+      Harappa:["harappa","harrapa","harapa"],
+      "Yousuf Wala":["yousuf wala","yousufwala","yousaf wala","yousafwala","yusuf wala"],
+      "Adda Gamber":["adda gamber","adda gambar","gamber","gambar"]
     };
+    var NV_CITY_ROAD_SKIP=/^\s*(road|rd\b|bypass)/;
     function nvCityFromAddressC(addr){
       var a=String(addr||"").toLowerCase();
       if(!a.trim()) return null;
@@ -9972,6 +10010,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       Object.keys(NV_CITY_MARKERS_C).forEach(function(city){
         NV_CITY_MARKERS_C[city].forEach(function(m){
           var at=a.indexOf(m);
+          while(at>-1 && m===city.toLowerCase() && NV_CITY_ROAD_SKIP.test(a.slice(at+m.length))) at=a.indexOf(m,at+1);
           if(at===-1) return;
           if(at<bestAt || (at===bestAt && m.length>bestLen)){ best=city; bestAt=at; bestLen=m.length; }
         });
@@ -9994,8 +10033,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
     }
 
+    /* New-station chips under the destination field: a tap picks the town
+       through the select's own onchange, so the rate hint, quote, area and
+       wrong-city checks all run exactly as if it had been chosen there. */
+    function nvNewStationsSync(){
+      var sel=document.getElementById("bookingCity"), host=document.getElementById("bookingNewStations");
+      if(!sel||!host) return;
+      host.querySelectorAll("[data-nv-newst]").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-nv-newst")===sel.value?"true":"false"); });
+    }
+    (function nvNewStationsWire(){
+      function wire(){
+        var sel=document.getElementById("bookingCity"), host=document.getElementById("bookingNewStations");
+        if(!sel||!host||host.__nvWired) return;
+        host.__nvWired=true;
+        host.addEventListener("click", function(ev){
+          var b=ev.target.closest("[data-nv-newst]"); if(!b) return;
+          sel.value=b.getAttribute("data-nv-newst");
+          try{ sel.dispatchEvent(new Event("change",{ bubbles:true })); }catch(e){}
+          nvNewStationsSync();
+        });
+        sel.addEventListener("change", nvNewStationsSync);
+        nvNewStationsSync();
+      }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", wire); else wire();
+    })();
+
     /* Booking */
     function updateZoneRateHint(){
+      try{ nvNewStationsSync(); }catch(e){}
       const el=document.getElementById("bookingCity");
       const hint=document.getElementById("bookingZoneHint");
       if(!el||!hint) return;
@@ -10008,7 +10073,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const zone=zoneForCity(el.value);
       const weightEl=document.getElementById("bookingWeight");
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
-      hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total);
+      hint.textContent=(nvIsNewStation(el.value)?"New station · ":"")+zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total);
       try{ nvRenderBookReview(); }catch(e){}
     }
     /* FINAL REVIEW (21 Sep list, booking-to-print). The delivery charge only
@@ -11151,11 +11216,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     /* ===== Paste Order To Book (item 3) ===== */
-    var NV_CITY_LIST=["lahore","karachi","islamabad","rawalpindi"];
+    /* Every station name plus the longer spellings in NV_STATION_ALIASES
+       (three-letter codes like "khi" are left out: too easy to hit inside
+       other words). The first city named wins, the longer name on a tie, and a
+       name followed by "road"/"bypass" is a street, not the city:
+       "House 5, Multan Road, Lahore" is a Lahore order. Whole words only. */
+    var NV_CITY_LIST=NV_STATIONS_ALL.map(function(c){ return c.toLowerCase(); })
+      .concat(Object.keys(NV_STATION_ALIASES).filter(function(k){ return k.length>=5; }));
     function nvFindCity(text){
-      var low=text.toLowerCase();
-      for(var i=0;i<NV_CITY_LIST.length;i++){ if(low.indexOf(NV_CITY_LIST[i])>-1) return NV_CITY_LIST[i][0].toUpperCase()+NV_CITY_LIST[i].slice(1); }
-      return "";
+      var low=String(text==null?"":text).toLowerCase().replace(/[\u2010-\u2015]/g,"-");
+      var best="",bestAt=Infinity,bestLen=0;
+      for(var i=0;i<NV_CITY_LIST.length;i++){
+        var key=NV_CITY_LIST[i];
+        var re=new RegExp("(^|[^a-z])("+key.replace(/[-]/g,"\\-").replace(/ /g,"[\\s-]?")+")(?![a-z])(?!\\s*(road|rd\\b|bypass))","g"), m;
+        while((m=re.exec(low))){
+          var at=m.index+m[1].length;
+          if(at<bestAt || (at===bestAt && m[2].length>bestLen)){ best=key; bestAt=at; bestLen=m[2].length; }
+          break;
+        }
+      }
+      return best?nvStationName(best):"";
     }
     function prodLabelEarly(text){ return /product\s*[:\-]/i.test(text); }
     /* Words that can only START an address. Localities are the ones merchants
@@ -11550,7 +11630,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(missing.length) return { totalRows:0, missingColumns:missing, results:[] };
       const idx=name=>headers.indexOf(name);
       const get=(row,name)=>{ const j=idx(name); return j>-1?String(row[j]||"").trim():""; };
-      const validCities=["Karachi","Lahore","Islamabad","Rawalpindi"];
       const existingOrderIds=new Set((state.parcels||[]).map(p=>p.orderId).filter(Boolean));
       const existingRefs=new Set((state.parcels||[]).map(p=>p.referenceNo).filter(Boolean));
       const dupeWindowMs=24*60*60*1000;
@@ -11585,10 +11664,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         else if(!phoneValid) addProblem("phone",`Phone "${phoneRaw}" is not a valid Pakistani number.`,"Use format 03xxxxxxxxx (11 digits).");
         // Normalize city capitalization.
         const cityTrim=cityRaw.trim().replace(/\s+/g," ");
-        const cityCap=cityTrim?cityTrim[0].toUpperCase()+cityTrim.slice(1).toLowerCase():"";
-        const cityValid=validCities.includes(cityCap);
-        if(!cityRaw) addProblem("city","City is missing.","Add one of: Karachi, Lahore, Islamabad, Rawalpindi.");
-        else if(!cityValid) addProblem("city",`City "${cityRaw}" is not serviceable yet.`,"Use Karachi, Lahore, Islamabad, or Rawalpindi.");
+        /* Station name as the riders' lists spell it ("yousaf wala" -> "Yousuf Wala"). */
+        const cityCap=nvStationName(cityTrim);
+        const cityValid=!!cityCap;
+        if(!cityRaw) addProblem("city","City is missing.","Add one of: "+NV_STATIONS_ALL.join(", ")+".");
+        else if(!cityValid) addProblem("city",`City "${cityRaw}" is not serviceable yet.`,"Use one of: "+NV_STATIONS_ALL.join(", ")+".");
         if(!address) addProblem("address","Delivery address is missing.","Add the full delivery address where the parcel is going.");
         if(address.length>400) addProblem("address","Delivery address is too long.","Keep the address within 400 characters.");
         if(!product) addProblem("product","Product/item details are missing.","Add a short item description.");
@@ -11758,7 +11838,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             <div class="form-grid" style="margin-top:10px;gap:8px">
               ${f("consignee","Consignee",rec.consignee,"Full name")}
               ${f("phone","Phone",rec.phone,"03001234567")}
-              ${f("city","City",rec.city,"Karachi / Lahore / Islamabad / Rawalpindi")}
+              ${f("city","City",rec.city,"Karachi / Lahore / Multan / any station")}
               ${f("cod","COD",rec.cod,"0 for prepaid")}
               ${f("product","Product",rec.product,"Item details")}
               ${f("weight","Weight",rec.weight,"0.8 kg")}
@@ -13177,34 +13257,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        not a new sign-in. If the count cannot be read or written (private mode,
        blocked storage), the notice simply does not show -- an announcement is
        never worth breaking a portal for. */
-    var NV_RATE_NOTICE_ID = "rate-2026-09-10";   // bump to run a future notice
+    var NV_RATE_NOTICE_ID = "stations-2026-10-17";   // bump to run a future notice (was "rate-2026-09-10")
     function nvRateNoticeKey(){
       var id = "";
       try{ id = String((state && state.client && state.client.id) || ""); }catch(e){ id = ""; }
       return id ? ("novaxNotice:" + NV_RATE_NOTICE_ID + ":" + id) : "";
     }
+    /* 17 Oct 2026: the notice slot announces the eight new stations. The rate
+       quoted is the merchant's OWN Zone B card (a special-rate shop sees its
+       own number), because that is what novax_quote_fee charges them for a
+       parcel to any of these towns. The 10 September rate-rise text this
+       function used to return is in git history (rate-2026-09-10). */
     function nvRateNoticeHtml(){
-      return '<h4>A small rate increase from Thursday 10 September</h4>' +
-        '<p>Petrol has risen twice recently \u2014 Rs 13, then Rs 6. We have absorbed it so far, ' +
-        'but our rates are already among the lowest in the market and we charge no hidden taxes, ' +
-        'so we cannot absorb this one.</p>' +
-        '<p>From <strong>Thursday 10 September</strong>, your delivery charge increases by:</p>' +
-        '<ul>' +
-          '<li><strong>Rs 20</strong> per parcel \u2014 within Karachi</li>' +
-          '<li><strong>Rs 25</strong> per parcel \u2014 Karachi to all other cities</li>' +
-        '</ul>' +
-        '<p>That is added to the rate you are on today, and it is all-inclusive \u2014 no fuel ' +
-        'surcharge, no separate line items. Everything else stays exactly as it is.</p>' +
-        '<p>Thank you for shipping with NovaX.</p>' +
+      var b = null;
+      try{ var c = clientById(state.client && state.client.id); b = normalizeRateCard(c && c.rateCard, c && c.rate).B; }catch(e){}
+      var base = b && Number(b.overnight) > 0 ? Number(b.overnight) : NV_ZONE_B_BASE;
+      var addl = b && Number(b.additionalKg) >= 0 ? Number(b.additionalKg) : 85;
+      return '<h4>\u2605 New stations: NovaX now delivers to 8 more cities</h4>' +
+        '<p>Book COD parcels to these towns today, from the same New booking form:</p>' +
+        '<ul class="nv-st-chips">' + NV_STATIONS_NEW.map(function(c){ return '<li>' + escLabelText(c) + '</li>'; }).join("") + '</ul>' +
+        '<p>Same price as Lahore: <strong>Rs ' + fmt(base) + '</strong> for the first kg, plus <strong>Rs ' + fmt(addl) + '</strong> for each extra kg. ' +
+        'Delivered in 2\u20133 working days, with COD in your wallet the day it lands.</p>' +
         '<div class="nv-rn-foot">' +
+          '<button type="button" class="nv-rn-go" id="nvRateNoticeGo">Book to a new station</button>' +
           '<button type="button" class="nv-rn-x" id="nvRateNoticeDismiss">Got it</button>' +
           '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
         '</div>';
     }
-    /* The 10 September increase is now live in every rate card, so the notice
-       that announced it is retired. The machinery below stays for the next
-       announcement: set NV_RATE_NOTICE_ACTIVE to true and bump the notice id. */
-    var NV_RATE_NOTICE_ACTIVE = false;
+    /* The machinery below runs one announcement at a time: set
+       NV_RATE_NOTICE_ACTIVE and bump the notice id. Now: new stations. */
+    var NV_RATE_NOTICE_ACTIVE = true;
     function nvRateNotice(){
       var host = document.getElementById("nvRateNotice");
       if(!host) return;
@@ -13235,6 +13317,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!host.__nvBuilt){
         host.__nvBuilt = true;
         host.innerHTML = nvRateNoticeHtml();
+        host.classList.add("nv-stations");
+        var go = document.getElementById("nvRateNoticeGo");
+        if(go) go.addEventListener("click", function(){
+          try{ localStorage.setItem(key, "dismissed"); }catch(e){}
+          host.style.display = "none";
+          try{ showClientTab("newBooking"); }catch(e){}
+          setTimeout(function(){ try{ var st=document.getElementById("bookingNewStations"); if(st) st.scrollIntoView({ block:"center" }); }catch(e){} }, 60);
+        });
         var x = document.getElementById("nvRateNoticeDismiss");
         if(x) x.addEventListener("click", function(){
           try{ localStorage.setItem(key, "dismissed"); }catch(e){}
@@ -17531,7 +17621,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p));}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel'+(ex.length===1?'':'s')+' needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return p.status==='Delivered';}).length; var exn=ps.filter(function(p){return p.status!=='Delivered'&&(p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p)));}).length; var tr=Math.max(0,ps.length-del-exn); return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
-          if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
+          if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore, Islamabad, Rawalpindi and the new stations: Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala, Adda Gamber) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
           if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book new parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
           if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>SAMPLE-AWB-1</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words.'};
           if(/track|where|status|location/.test(low)) return {text:'Share the tracking ID (e.g. <b>SAMPLE-AWB-1</b>) and I will give you the exact live status.'};
@@ -20280,7 +20370,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     human:["human","agent","support se","complaint","escalation","manager","urgent","insan se","banda se","talk to someone"],
     account:["login issue","password","reset","sub account","team user","permissions","login nahi","account access"],
     rates:["rate","city rate","zone","cod fee","fuel surcharge","tax on","discount","charges kya","rate kya"],
-    serviceability:["city available","area service","karachi","lahore","islamabad","rawalpindi","out of service area","service hai kya","covered city"],
+    serviceability:["city available","area service","karachi","lahore","islamabad","rawalpindi","faisalabad","multan","sahiwal","okara","chichawatni","harappa","yousuf wala","adda gamber","new station","out of service area","service hai kya","covered city"],
     proof:["proof","pod","delivery proof","photo of delivery","signature","call proof"]
   };
   var NV_NEXT_STEP={
@@ -20436,7 +20526,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"Charges depend on city/zone and COD amount \u2014 New Booking shows the exact rate as you fill the form.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
     }
     if(has(NV_KW.serviceability)){
-      return { reply:"We deliver in Karachi, Lahore, Islamabad and Rawalpindi. Enter the city in New Booking and it shows the exact rate.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
+      return { reply:"We deliver in Karachi, Lahore, Islamabad and Rawalpindi, and to our new stations: Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala and Adda Gamber. Enter the city in New Booking and it shows the exact rate.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
     }
     if(has(NV_KW.proof)){
       return { reply:"Delivery proof is attached once a parcel is delivered \u2014 check the AWB journey to see it." };
@@ -23771,7 +23861,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     else if(/withdraw|payout|wallet|\bcod\b|paisa|paise|paisay|payment|\bfee|\btax|\bgst/.test(t)) s=["Reading your question", kind==="portal"?"Checking your wallet":"Checking how COD payouts work","Putting the numbers together"];
     else if(/rate|price|charge|cost|\bkg\b|\d\s?kg|kitne ka|kitna/.test(t)) s=["Reading your question","Opening the NovaX rate card","Working out the price"];
     else if(/pick ?up|drop/.test(t)) s=["Reading your question","Checking pickup options"];
-    else if(/cit(y|ies)|deliver|\bdin\b|days?\b|how long|how fast|lahore|islamabad|rawalpindi|karachi|\bisb\b|\blhr\b/.test(t)) s=["Reading your question","Checking our delivery network","Looking up delivery times"];
+    else if(/cit(y|ies)|deliver|\bdin\b|days?\b|how long|how fast|lahore|islamabad|rawalpindi|karachi|faisalabad|multan|sahiwal|okara|chichawatni|harappa|yousuf|gamber|\bisb\b|\blhr\b/.test(t)) s=["Reading your question","Checking our delivery network","Looking up delivery times"];
     else if(/account|sign ?up|register|shopify|woo|\bapi\b|integrat|store/.test(t)) s=["Reading your question","Checking how to set you up"];
     else s=["Reading your question","Looking through NovaX's records","Thinking it through"];
     s.push("Writing your answer");

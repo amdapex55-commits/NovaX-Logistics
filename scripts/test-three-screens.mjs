@@ -23,7 +23,7 @@ const section = (id, next) => html.slice(html.indexOf('id="' + id + '"'), html.i
   const chips = (cls) => [...new RegExp('<div class="' + cls + '">(.*?)</div>').exec(s)[1].matchAll(/<span>([^<]+)<\/span>/g)].map((m) => m[1]);
   assert.deepEqual(chips("nvbk-chips"), required, "the guide lists exactly the columns the importer requires, in its order");
   assert.deepEqual(chips("nvbk-chips is-opt"), ["reference", "reference_no", "fragile"]);
-  for (const t of ["Karachi, Lahore, Islamabad or Rawalpindi", "COD or Prepaid", "0.1–70 kg, like 1.5 kg or 500 g", "yes or no", "Checking a file books nothing"]) assert.ok(s.includes(t), t);
+  for (const t of ["Karachi, Lahore, Islamabad, Rawalpindi, or a new station: Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala, Adda Gamber", "COD or Prepaid", "0.1–70 kg, like 1.5 kg or 500 g", "yes or no", "Checking a file books nothing"]) assert.ok(s.includes(t), t);
   assert.ok(app.includes('inp.addEventListener("change",function(){') && app.includes("window.nvBulkFileSync=function(){"), "a chosen file is named and checked");
   assert.ok(app.includes('if(nvIn) nvIn.value=""; if(typeof window.nvBulkFileSync==="function") window.nvBulkFileSync();'), "the tile resets after an import");
   ok("bulk booking: three steps, a file tile, a column guide tied to the importer, every control still there");
