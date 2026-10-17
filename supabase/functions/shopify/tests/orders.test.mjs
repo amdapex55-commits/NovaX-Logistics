@@ -65,9 +65,15 @@ const base = {
     t("book: address joined", b.address === "C836 pehlwan goth Block 9, near Tuba public school", b.address);
     t("book: city", b.city === "Karachi");
     for (const [typed, want] of [["karachi", "Karachi"], ["Karachi Cantt", "Karachi"], ["LAHORE", "Lahore"],
-                                 ["Lahore, Punjab", "Lahore"], ["Pindi", "Rawalpindi"], ["islamabad", "Islamabad"]]) {
+                                 ["Lahore, Punjab", "Lahore"], ["Pindi", "Rawalpindi"], ["islamabad", "Islamabad"],
+                                 ["Multan", "Multan"], ["faisalabad", "Faisalabad"], ["Yousaf Wala", "Yousuf Wala"], ["Harrapa", "Harappa"],
+                                 ["Chichawatni, Sahiwal", "Chichawatni"], ["Adda Gamber, Okara", "Adda Gamber"], ["Okara Cantt", "Okara"]]) {
       const r2 = mapOrderToBooking({ ...base, shipping_address: { ...base.shipping_address, city: typed } });
       t(`book: "${typed}" is stored as ${want}`, r2.action === "book" && r2.booking.city === want);
+    }
+    for (const typed of ["Peshawar", "Sahiwal Lahore"]) {
+      const r3 = mapOrderToBooking({ ...base, shipping_address: { ...base.shipping_address, city: typed } });
+      t(`book: "${typed}" is not booked`, r3.action === "skip");
     }
     t("book: weight", b.weight === "0.8 kg", b.weight);
     t("book: order id is the shopify name", b.orderId === "#1043", b.orderId);
@@ -104,7 +110,7 @@ const skips = [
   ["all digital",           { ...base, line_items: [{ grams: 0, quantity: 1, requires_shipping: false }] }, /requires shipping/i],
   ["no name",               { ...base, shipping_address: { ...base.shipping_address, name: null, first_name: null, last_name: null } }, /no name/i],
   ["no city",               { ...base, shipping_address: { ...base.shipping_address, city: "" } },          /no city/i],
-  ["unserved city",         { ...base, shipping_address: { ...base.shipping_address, city: "Multan" } },    /does not deliver to "Multan"/i],
+  ["unserved city",         { ...base, shipping_address: { ...base.shipping_address, city: "Peshawar" } },  /does not deliver to "Peshawar"/i],
   ["nonsense city",         { ...base, shipping_address: { ...base.shipping_address, city: "Qwerty" } },    /does not deliver/i],
   ["no street",             { ...base, shipping_address: { ...base.shipping_address, address1: "", address2: "" } }, /no street/i],
   ["no usable phone",       { ...base, shipping_address: { ...base.shipping_address, phone: "021 34567890" }, phone: null, customer: null }, /mobile number/i],

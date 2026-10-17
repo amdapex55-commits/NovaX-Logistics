@@ -16,9 +16,10 @@
  * with ok:false and logged to the admin error monitor. Only transient
  * server faults answer 5xx, so WooCommerce retries those.
  */
+import { stationName, STATIONS_SENTENCE } from "../_shared/stations.ts";
+
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SERVED = ["karachi", "lahore", "islamabad", "rawalpindi"];
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -107,9 +108,10 @@ Deno.serve(async (req) => {
   const category = items.map((i: any) => `${i.quantity > 1 ? i.quantity + " x " : ""}${i.name || ""}`.trim())
     .filter(Boolean).join(", ").slice(0, 120);
 
-  const city_ok = SERVED.find((c) => c === city.toLowerCase());
+  /* Stations in _shared/stations.ts, incl. the eight opened 17 Oct 2026. */
+  const city_ok = stationName(city);
   if (!city_ok) {
-    const reason = `NovaX does not deliver to "${city || "(no city)"}" yet (Karachi, Lahore, Islamabad, Rawalpindi).`;
+    const reason = `NovaX does not deliver to "${city || "(no city)"}" yet (${STATIONS_SENTENCE}).`;
     await logRefusal(clientId, orderNo, reason);
     return json({ ok: false, error: "city_not_served", hint: reason });
   }
@@ -124,7 +126,7 @@ Deno.serve(async (req) => {
     p_consignee: consignee || "WooCommerce customer",
     p_phone: phone,
     p_pickup_city: pickupCity,
-    p_city: city_ok.charAt(0).toUpperCase() + city_ok.slice(1),
+    p_city: city_ok,
     p_address: address,
     p_cod: cod,
     p_weight: "0.5 kg",

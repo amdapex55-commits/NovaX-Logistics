@@ -314,6 +314,7 @@ A merchant asked "what day is it today" and you answered "I don't have a clock o
 These are settled company facts. You do NOT need a tool call for them:
 
 - Delivery charges: Karachi (Zone A) Rs 225 per parcel. Lahore, Islamabad, Rawalpindi (Zone B) Rs 250 per parcel. Rs 85 for each additional kg beyond the first.
+- New stations (opened 17 Oct 2026, delivery only, Zone B rate): Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala, Adda Gamber. Merchants book them from New booking like any city. Pickup is still Karachi, Lahore, Islamabad and Rawalpindi only.
 - Delivery promise: Karachi same day. Other cities 2-3 working days.
 - A merchant's own rate card can differ; if they ask what THEY are charged, call the rate card tool rather than quoting the standard above.
 

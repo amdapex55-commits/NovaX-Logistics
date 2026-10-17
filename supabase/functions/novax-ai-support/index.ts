@@ -408,7 +408,10 @@ function explainCod(ctx: ClientContext): string {
 }
 
 const PK_CITIES = [
-  "Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Multan",
+  "Karachi", "Lahore", "Islamabad", "Rawalpindi",
+  // New stations (17 Oct 2026); the small towns sit before their districts so
+  // "Chichawatni, Sahiwal" drafts as Chichawatni.
+  "Chichawatni", "Harappa", "Yousuf Wala", "Adda Gamber", "Okara", "Faisalabad", "Multan",
   "Peshawar", "Quetta", "Sialkot", "Gujranwala", "Hyderabad", "Sukkur",
   "Bahawalpur", "Sargodha", "Sahiwal",
 ];

@@ -41,6 +41,7 @@ async function logCall(keyId: string | null, clientId: string | null,
 
 import { classify as classifyPayment, PREPAID_RE } from "../_shared/payment.ts";
 import { unsafeDestination } from "../_shared/destination.ts";
+import { stationName, STATIONS_SENTENCE } from "../_shared/stations.ts";
 
 /* 2 Oct 2026: the success-path log write was fire-and-forget, and the runtime
    may stop a function once its response is sent, dropping the row. waitUntil
@@ -259,15 +260,17 @@ Deno.serve(async (req) => {
           `Nothing was booked -- send "test": true to dry-run, or omit it to book for real.`);
       }
 
-      /* NovaX delivers to four cities. Accepting an order for anywhere else
-         meant a merchant's customer waited for a parcel that could never be
-         collected, and the merchant found out days later. Better to refuse it
-         at the door and say where we do go. */
-      const SERVED = ["karachi", "lahore", "islamabad", "rawalpindi"];
-      const destCity = String(b.city).trim();
-      if (!SERVED.includes(destCity.toLowerCase())) {
+      /* NovaX delivers to its stations only (_shared/stations.ts: the four
+         pickup cities plus the eight delivery stations opened 17 Oct 2026).
+         Accepting an order for anywhere else meant a merchant's customer
+         waited for a parcel that could never be delivered, and the merchant
+         found out days later. Better to refuse it at the door and say where we
+         do go. The city is booked under the station's own name ("yousaf wala"
+         -> "Yousuf Wala") so the riders' city lists match it. */
+      const destCity = stationName(b.city);
+      if (!destCity) {
         return fail(422, "city_not_served",
-          `We do not deliver to "${destCity}" yet. NovaX currently serves Karachi, Lahore, Islamabad and Rawalpindi.`);
+          `We do not deliver to "${String(b.city).trim()}" yet. NovaX currently serves ${STATIONS_SENTENCE}.`);
       }
 
       const cod = Number(b.cod_amount ?? 0);
@@ -323,7 +326,7 @@ Deno.serve(async (req) => {
       if (b.test === true || b.test === "true") {
         const quoted = await rpc("novax_quote_fee", {
           p_client_id: clientId,
-          p_dest_city: String(b.city).trim(),
+          p_dest_city: destCity,
           p_weight: String(b.weight ?? "0.5 kg"),
         });
         let fee: number | null = null;
@@ -383,7 +386,7 @@ Deno.serve(async (req) => {
         p_consignee: String(b.consignee).trim(),
         p_phone: String(b.phone).trim(),
         p_pickup_city: pickupCity,
-        p_city: String(b.city).trim(),
+        p_city: destCity,
         p_address: String(b.address).trim(),
         p_cod: cod,
         p_weight: String(b.weight ?? "0.5 kg"),
@@ -473,11 +476,11 @@ Deno.serve(async (req) => {
       if (!isFinite(nextCod) || nextCod < 0) {
         return fail(422, "invalid_cod_amount", "cod_amount must be 0 or more.");
       }
-      const nextCity = String(b.city ?? row.city ?? "").trim();
-      const SERVED2 = ["karachi", "lahore", "islamabad", "rawalpindi"];
-      if (!SERVED2.includes(nextCity.toLowerCase())) {
+      const nextRaw = String(b.city ?? row.city ?? "").trim();
+      const nextCity = stationName(nextRaw);
+      if (!nextCity) {
         return fail(422, "city_not_served",
-          `We do not deliver to "${nextCity}" yet. NovaX currently serves Karachi, Lahore, Islamabad and Rawalpindi.`);
+          `We do not deliver to "${nextRaw}" yet. NovaX currently serves ${STATIONS_SENTENCE}.`);
       }
       const rawMode2 = String(b.payment_mode ?? "").trim().toLowerCase();
       if (rawMode2 && PREPAID_RE.test(rawMode2) && nextCod > 0) {

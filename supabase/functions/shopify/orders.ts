@@ -261,9 +261,24 @@ const SERVICE_CITIES: Array<[string, RegExp]> = [
   ["Lahore", /\b(lahore|lhr)\b/i],
   ["Islamabad", /\b(islamabad|isb)\b/i],
   ["Rawalpindi", /\b(rawalpindi|pindi|rwp)\b/i],
+  // New delivery stations, 17 Oct 2026 (same list as _shared/stations.ts).
+  ["Faisalabad", /\b(faisalabad|faisal\s+abad|lyallpur|fsd)\b/i],
+  ["Multan", /\bmultan\b/i],
+  ["Sahiwal", /\bsahiwal\b/i],
+  ["Okara", /\bokara\b/i],
+  ["Chichawatni", /\b(chichawatni|chicha\s*watni|chichawatney)\b/i],
+  ["Harappa", /\b(harappa|harrapa|harapa|harrappa)\b/i],
+  ["Yousuf Wala", /\b(yousuf|yousaf|yusuf)\s*-?\s*wala\b/i],
+  ["Adda Gamber", /\b(adda\s+)?gamb[ae]r\b/i],
 ];
+/* Small stations and the district buyers write after them: "Chichawatni,
+ * Sahiwal" and "Adda Gamber, Okara" are the town, not two cities. */
+const DISTRICT_OF: Record<string, string> = {
+  "Harappa": "Sahiwal", "Chichawatni": "Sahiwal", "Yousuf Wala": "Sahiwal", "Adda Gamber": "Okara",
+};
 export function serviceCity(raw: string): string | null {
-  const hits = SERVICE_CITIES.filter(([, re]) => re.test(raw)).map(([name]) => name);
+  let hits = SERVICE_CITIES.filter(([, re]) => re.test(raw)).map(([name]) => name);
+  if (hits.length > 1) hits = hits.filter((h) => !hits.some((o) => DISTRICT_OF[o] === h));
   return hits.length === 1 ? hits[0] : null;
 }
 
@@ -416,7 +431,7 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
   if (!city) {
     return {
       action: "skip",
-      reason: `NovaX does not deliver to "${rawCity}" yet — only Karachi, Lahore, Islamabad and Rawalpindi.`,
+      reason: `NovaX does not deliver to "${rawCity}" yet — only Karachi, Lahore, Islamabad, Rawalpindi and the new stations Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala and Adda Gamber.`,
     };
   }
 
