@@ -15,7 +15,7 @@ assert.ok(raw[3].includes('var VOICE_RIDERS = ['),'pilot list present');
 const allOn=raw.map((s,i)=>i===3?s.replace('var VOICE_RIDERS = [','var VOICE_RIDERS = ["*", '):s);
 const wait=(ms=40)=>new Promise(r=>setTimeout(r,ms));
 
-async function app({micBlocked=false,pilot=true}={}){
+async function app({micBlocked=false,pilot=true,brokenStore=false}={}){
   const scripts=pilot?allOn:raw;
   const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'}),w=dom.window;
   w.crypto.randomUUID=()=>crypto.randomUUID();
@@ -35,6 +35,10 @@ async function app({micBlocked=false,pilot=true}={}){
     start(){this.state='recording';}
     stop(){this.state='inactive';this.ondataavailable({data:new w.Blob([new Uint8Array(40000)],{type:'audio/webm'})});this.onstop();}};
   w.URL.createObjectURL=()=>'blob:fixture';w.URL.revokeObjectURL=()=>{};
+  // iPhone Safari, 18 Oct 2026: storage opens, then every write aborts with error === null.
+  if(brokenStore)w.indexedDB={open(){const req={};setTimeout(()=>{req.result={transaction(){const tx={error:null};
+    tx.objectStore=()=>({put(){setTimeout(()=>tx.onabort&&tx.onabort(),0);},delete(){setTimeout(()=>tx.oncomplete&&tx.oncomplete(),0);},
+      getAll(){const g={result:[]};setTimeout(()=>tx.oncomplete&&tx.oncomplete(),0);return g;}});return tx;}};req.onsuccess&&req.onsuccess();},0);return req;}};
   scripts.forEach(s=>w.eval(s));await wait();
   const q=id=>w.document.getElementById(id);
   return{w,fixture,q,action:w.document.getElementById('actionDialog'),voice:w.document.getElementById('voiceDialog')};
@@ -51,6 +55,8 @@ async function refuse(a){
   const a=await app();
   await refuse(a);
   assert.equal(a.voice.open,true,'voice recorder opens');
+  await wait(150);
+  assert.ok(a.fixture.requests.some(r=>r.name==='rider_station_action'&&r.args.p_action==='refused'),'the refusal is sent while the recorder is open');
   assert.match(a.q('voiceFor').textContent,/N1000004.*Refused.*Customer refused/);
   const esc=new a.w.Event('cancel',{cancelable:true});a.voice.dispatchEvent(esc);
   assert.equal(esc.defaultPrevented,true,'Escape / back cannot close it');
@@ -96,6 +102,22 @@ async function refuse(a){
   assert.equal(a.fixture.uploads.length,0);
   console.log('ok - blocked microphone: explained, skip recorded as no_mic, nothing uploaded');
 }
+// 4. the phone cannot store the recording (iPhone): no "null", the rider is not stuck, the note still sends
+{
+  const a=await app({brokenStore:true});
+  await refuse(a);
+  const real=a.w.Date.now.bind(a.w.Date);let shift=0;a.w.Date.now=()=>real()+shift;
+  a.q('voiceRec').click();await wait();shift=6000;a.q('voiceRec').click();await wait();
+  a.q('voiceSend').click();await wait(400);
+  assert.notEqual(a.q('voiceError').textContent,'null','never shows a bare null');
+  assert.equal(a.voice.open,false,'rider is not stuck on the recorder');
+  assert.equal(a.fixture.uploads.length,1,'note still uploaded');
+  assert.ok(a.fixture.requests.find(r=>r.name==='rider_voice_attach'),'and attached');
+  const st=a.fixture.requests.findIndex(r=>r.name==='rider_station_action'&&r.args.p_action==='refused');
+  assert.ok(st>=0&&a.fixture.uploads[0].at>st,'refusal first, then the note');
+  console.log('ok - phone storage fails with a null error: note kept in memory and sent, rider not blocked');
+}
+
 // 3. a rider outside the pilot is not asked for a note
 {
   const a=await app({pilot:false});

@@ -703,24 +703,40 @@
   }
   /* Falls back to memory when IndexedDB is unavailable (private window): the
      note still sends, but only while the app stays open. */
+  /* 18 Oct 2026: iPhone Safari refused to store the recording (a Blob) and
+     failed with an empty error, which the recorder showed as "null" and
+     which left the rider stuck on it. The note is now stored as plain bytes,
+     every failure has a readable message, and when the phone cannot store it
+     at all the note is kept in memory and still sends while the app is open:
+     storage trouble never blocks a rider. */
   function voiceTx(mode, fn) {
     return voiceDb().then(function (db) {
       if (!db) return fn(null);
       return new Promise(function (resolve, reject) {
-        var tx = db.transaction("notes", mode), st = tx.objectStore("notes"), out = fn(st);
+        var tx, out;
+        try { tx = db.transaction("notes", mode); out = fn(tx.objectStore("notes")); }
+        catch (e) { reject(e || new Error("This phone could not open its storage.")); return; }
         tx.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
-        tx.onerror = function () { reject(tx.error); };
+        tx.onerror = function () { reject(tx.error || new Error("This phone could not save the voice note.")); };
+        tx.onabort = function () { reject(tx.error || new Error("This phone could not save the voice note.")); };
       });
     });
   }
   function voiceAll() {
-    return voiceTx("readonly", function (st) { return st ? st.getAll() : null; }).then(function (rows) {
-      var list = (rows || Object.keys(VOICE.mem).map(function (k) { return VOICE.mem[k]; }));
-      return list.filter(function (x) { return x && x.user === userId && x.rider === riderId; });
+    var mem = Object.keys(VOICE.mem).map(function (k) { return VOICE.mem[k]; });
+    return voiceTx("readonly", function (st) { return st ? st.getAll() : null; }).catch(function () { return null; }).then(function (rows) {
+      var byKey = {};
+      (rows || []).concat(mem).forEach(function (x) { if (x && x.key) byKey[x.key] = x; });
+      return Object.keys(byKey).map(function (k) { return byKey[k]; }).filter(function (x) { return x.user === userId && x.rider === riderId; });
     });
   }
-  function voicePut(row) { VOICE.mem[row.key] = row; return voiceTx("readwrite", function (st) { if (st) st.put(row); }); }
-  function voiceDel(k) { delete VOICE.mem[k]; return voiceTx("readwrite", function (st) { if (st) st["delete"](k); }); }
+  function voicePut(row) {
+    VOICE.mem[row.key] = row;
+    return voiceTx("readwrite", function (st) { if (st) st.put(row); }).then(function () { if (row.state !== "review") VOICE.memOnly = false; })
+      .catch(function () { VOICE.memOnly = true; });   /* kept in memory; sends while the app is open */
+  }
+  function voiceDel(k) { delete VOICE.mem[k]; return voiceTx("readwrite", function (st) { if (st) st["delete"](k); }).catch(function () {}); }
+  function voiceBlob(r) { return r.blob instanceof Blob ? r.blob : new Blob([r.buf || new ArrayBuffer(0)], { type: r.mime }); }
   function voiceRefresh() {
     return voiceAll().then(function (rows) {
       var m = {}; rows.forEach(function (r) { m[r.awb] = r.state === "review" ? "review" : (m[r.awb] || "pending"); });
@@ -791,18 +807,21 @@
         if (!blob) return;
         var kind = voiceKind(blob.type), cid = p.client_id || p.clientId || "";
         var rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+        var buf; try { buf = await blob.arrayBuffer(); } catch (e) { buf = null; }
         var row = { key: "voice-" + riderId + "-" + crypto.randomUUID(), type: "note", user: userId, rider: riderId, awb: p.awb.toUpperCase(), action: action,
           path: cid + "/" + p.awb.toUpperCase() + "/" + riderId + "-" + Date.now() + "-" + rand + "." + kind[1], mime: kind[0], bytes: blob.size, duration_ms: Math.round(dur),
           reason: reason || "", lat: location && location.lat || null, lng: location && location.lng || null, accuracy: location && location.accuracy || null,
-          recorded_at: recordedAt, blob: blob, state: "pending", at: new Date().toISOString() };
-        try { await voicePut(row); } catch (e) { err.textContent = String(e && e.message || e); return; }
-        ping(t("voiceSaved"), "info", 30); finish(row);
+          recorded_at: recordedAt, buf: buf, blob: buf ? null : blob, state: "pending", at: new Date().toISOString() };
+        q("voiceSend").disabled = true;
+        await voicePut(row);
+        q("voiceSend").disabled = false;
+        ping(VOICE.memOnly ? "Voice note saved. Keep the app open until it sends." : t("voiceSaved"), "info", 30); finish(row); void voiceFlush();
       };
       q("voiceSkip").onclick = async function () {
         var row = { key: "voice-" + riderId + "-" + crypto.randomUUID(), type: "skip", why: blocked.dataset.why === "no_mic" ? "no_mic" : "mic_error",
           user: userId, rider: riderId, awb: p.awb.toUpperCase(), action: action, state: "pending", at: new Date().toISOString() };
-        try { await voicePut(row); } catch (e) { err.textContent = String(e && e.message || e); return; }
-        finish(row);
+        await voicePut(row);
+        finish(row); void voiceFlush();
       };
       dialog.addEventListener("cancel", noCancel);
       reset(); dialog.showModal();
@@ -821,7 +840,7 @@
           try { res = await sb.rpc("rider_voice_skip", { p_awb: r.awb, p_why: r.why }); } catch (e) { res = { error: e }; }
         } else {
           var up;
-          try { up = await sb.storage.from("parcel-voice").upload(r.path, r.blob, { contentType: r.mime, upsert: false, cacheControl: "3600" }); } catch (e) { up = { error: e }; }
+          try { up = await sb.storage.from("parcel-voice").upload(r.path, voiceBlob(r), { contentType: r.mime, upsert: false, cacheControl: "3600" }); } catch (e) { up = { error: e }; }
           /* Already there from an earlier try that lost its answer: attach it. */
           if (up && up.error && !/exist|duplicate|409/i.test(String(up.error.message || up.error.statusCode || up.error))) res = up;
           else {
@@ -968,6 +987,7 @@
   async function outcome(awb, action) {
     if (busy || flushing || !authorized) return;
     busy = true; controls();
+    var voiceNext = null;
     try {
       var p = data.parcels.find(function (x) { return x.awb === awb; }); if (!p) throw new Error("Parcel not found. Refresh.");
       var reason = "", extra = {}, location = null;
@@ -993,11 +1013,16 @@
       await station([awb], action, reason === true ? "" : reason, extra, location);
       /* 18 Oct 2026: a refusal or "not available" is explained to the shipper
          in the rider's own voice. Mandatory; the status is already saved. */
-      if ((action === "refused" || action === "not_available") && voiceOn()) await voiceCapture(p, action, reason === true ? "" : reason, location);
+      /* The recorder opens after this action is released (below), so the
+         refusal itself is sent while the rider records. */
+      if ((action === "refused" || action === "not_available") && voiceOn()) voiceNext = { p: p, action: action, reason: reason === true ? "" : reason, location: location };
       if (location && location.unavailable) msg(location.reason === "denied" ? t("geoOff") : "Saved without GPS. Server confirmation is still pending.", location.reason === "denied" ? "error" : "info");
       else if (location && location.accuracy > 100) msg("Saved. GPS was weak (±" + location.accuracy + " m), so the office sees the location as approximate.", "info");
-    } catch (e) { msg(String(e.message || e), "error"); }
+    } catch (e) { msg(String(e.message || e), "error"); voiceNext = null; }
     finally { busy = false; render(); void flush(); }
+    /* Recorder after release: the saved refusal starts sending now, and the
+       note follows it once NovaX has confirmed that status. */
+    if (voiceNext) { try { await voiceCapture(voiceNext.p, voiceNext.action, voiceNext.reason, voiceNext.location); } catch (e) { msg(String(e && e.message || e || "Voice note could not open."), "error"); } }
   }
   async function swapAction(awb, result) {
     if (busy || flushing || !authorized) return;
