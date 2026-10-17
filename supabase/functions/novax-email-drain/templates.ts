@@ -1,7 +1,7 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
   | 'back_quiet' | 'back_tried' | 'setup_ready'
-  | 'recover_refused' | 'recover_won' | 'recover_launch';
+  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -16,7 +16,9 @@ const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, I
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.
-const NUDGES = ['back_quiet', 'back_tried', 'setup_ready'];
+const NUDGES = ['back_quiet', 'back_tried', 'setup_ready', 'stations_launch'];
+// 17 Oct 2026: the eight delivery-only stations (same list as _shared/stations.ts).
+const NEW_STATIONS = ['Faisalabad', 'Multan', 'Sahiwal', 'Okara', 'Chichawatni', 'Harappa', 'Yousuf Wala', 'Adda Gamber'];
 const HELP = WHATSAPP + '?text=' + encodeURIComponent('Hi NovaX, I got your email and want to talk about my parcels.');
 function count(value: unknown): number {
   const n = Math.floor(Number(value));
@@ -309,6 +311,26 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
   }
   // Sent once, by an admin, to a merchant who has the Nova Recover tab,
   // has parcels that came back, and has not started.
+  if (kind === 'stations_launch') {
+    return {
+      subject: 'NovaX now delivers to 8 more cities',
+      preheader: 'Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala and Adda Gamber.',
+      pill: 'New stations', tone: 'good',
+      title: 'Now delivering to 8 more cities.',
+      intro: `${hi}you can now book COD parcels${forBiz} to eight new NovaX stations, from the same New booking form.`,
+      fact: { label: 'NEW STATIONS', value: NEW_STATIONS.map(c => c.replace(/ /g, '\u00a0')).join(' · '), caption: 'Live now. Pick any of them under Destination City.', size: 20 },
+      rows: [['Delivery', '2–3 working days'], ['Pickup', 'Free, from your door']],
+      cta: 'Book to a new station', destination: BOOK,
+      stepsTitle: 'Good to know',
+      steps: [
+        ['Same booking form.', 'Pick the town under Destination City. Shopify, WooCommerce, bulk upload and the API take the new stations too.'],
+        ['Delivery only, for now.', 'Riders still collect from your door in Karachi, Lahore, Islamabad and Rawalpindi.'],
+        ['Same rules.', 'A refused parcel comes back at the normal delivery charge, with no extra return fee.'],
+      ],
+      note: 'COD in your wallet the day it lands, as with every NovaX parcel. The booking form shows the price before you confirm.',
+      extraLink: ['Questions? WhatsApp us', HELP],
+    };
+  }
   if (kind === 'recover_launch') {
     // 9 Oct 2026: the email shows how many parcels, never their COD value.
     const n = count(data.count), recent = Number(data.recent);
@@ -434,7 +456,7 @@ ${s.signoff ? `<p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:${
 <tr><td class="pad" style="padding:16px 32px 20px;border-top:1px solid ${C.line};${font}"><div style="font-size:14px;font-weight:700;color:${C.ink}">Need a hand?</div>
 <div style="margin-top:3px;font-size:13px;line-height:1.6;color:${C.body}"><a href="${SUPPORT}" style="color:${C.greenInk};text-decoration:underline;font-weight:700">Contact NovaX support</a> from your portal, or WhatsApp <b style="color:${C.ink}">0312&nbsp;3922558</b>.</div></td></tr>
 </table></td></tr>
-<tr><td align="center" style="padding:18px 16px 4px;${font};font-size:12px;line-height:1.7;color:${C.muted}"><b style="color:${C.body}">NovaX Logistics</b> &middot; COD courier for Karachi, Lahore, Islamabad and Rawalpindi &middot; <a href="${WEBSITE}" style="color:${C.muted};text-decoration:underline">novaxlogistics.com</a><br>${footerWhy}</td></tr>
+<tr><td align="center" style="padding:18px 16px 4px;${font};font-size:12px;line-height:1.7;color:${C.muted}"><b style="color:${C.body}">NovaX Logistics</b> &middot; COD courier for Karachi, Lahore, Islamabad, Rawalpindi and 8 more cities &middot; <a href="${WEBSITE}" style="color:${C.muted};text-decoration:underline">novaxlogistics.com</a><br>${footerWhy}</td></tr>
 </table></td></tr></table></body></html>`;
   // Keep "Rs 250" on one line in the reminders' prices.
   const html = (reminder || nudge) ? page.replace(/Rs (\d)/g, 'Rs&nbsp;$1') : page;
