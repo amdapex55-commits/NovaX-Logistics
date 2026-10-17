@@ -4900,6 +4900,14 @@ html,body{ background:var(--bg); color:var(--ink); }
   <script src="nv-payment.js?v=a14f4c65"></script>
   <script src="nv-journey.js?v=77db2b46"></script>
   <script src="nv-cnic.js?v=29eecafb"></script>
+  <script src="nv-voice.js?v=b6f2788f"></script>
+  <script>
+    /* Rider voice notes: start once the admin client exists (it is created later on this page). */
+    (function () { var tries = 0, t = setInterval(function () {
+      if (window.__nvSb && window.NVVoice) { clearInterval(t); window.NVVoice.init(function () { return window.__nvSb; }); }
+      else if (++tries > 120) clearInterval(t);
+    }, 500); })();
+  </script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -8040,6 +8048,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!host) return;
       document.getElementById("npeAwb").textContent = awb;
       document.getElementById("npeAwbHidden").value = awb;
+      try {
+        var vs = document.getElementById("npeVoice");
+        if (vs) { vs.setAttribute("data-nvvn", awb); vs.innerHTML = ""; vs.__nvvn = ""; if (window.NVVoice) window.NVVoice.refill(); }
+      } catch (e) {}
       document.getElementById("npeConsignee").value = p.consignee || "";
       document.getElementById("npePhone").value = p.phone || "";
       document.getElementById("npeAddress").value = p.address || "";
@@ -17321,7 +17333,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       const root = document.getElementById("nvStRoot"); if (!root) return;
       const sb = window.__nvSb; if (!sb) { root.innerHTML = '<p class="footer-note">Not connected.</p>'; return; }
       let ov, rd;
-      try { [ov, rd] = await Promise.all([ sb.rpc("admin_station_overview"), sb.from("riders").select("id,name,branch,cities,access").order("name") ]); }
+      let vm = null;
+      try { [ov, rd, vm] = await Promise.all([ sb.rpc("admin_station_overview"), sb.from("riders").select("id,name,branch,cities,access").order("name"),
+                                               Promise.resolve(sb.rpc("admin_voice_missing", { p_days: 7 })).catch(function(){ return null; }) ]); }
       catch (e) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(e && e.message || e) + '</p>'; return; }
       if (ov.error) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(ov.error.message) + '</p>'; return; }
       const d = ov.data || {}, riders = (rd && !rd.error && rd.data) || [];
@@ -17351,7 +17365,30 @@ html,body{ background:var(--bg); color:var(--ink); }
         <div class="table-wrap"><div class="wide-scroll"><table class="nv-rb-table">${bHead}<tbody>${open.map(bRow).join("") || '<tr><td colspan="6">Nothing on the way.</td></tr>'}</tbody></table></div></div>
         ${done.length ? `<details class="mt-8"><summary class="footer-note">Arrived batches (${done.length}, last 14 days)</summary><div class="table-wrap"><div class="wide-scroll"><table class="nv-rb-table">${bHead}<tbody>${done.map(bRow).join("")}</tbody></table></div></div></details>` : ""}
         <h4 class="mt-14">Riders and their cities</h4><p class="footer-note">A rider sees and works every parcel picked up in, or going to, the cities ticked here.</p>
-        <div class="table-wrap"><table class="nv-rb-table"><thead><tr><th>Rider</th><th>Cities</th><th></th></tr></thead><tbody>${riderRows || '<tr><td colspan="3">No riders.</td></tr>'}</tbody></table></div>`;
+        <div class="table-wrap"><table class="nv-rb-table"><thead><tr><th>Rider</th><th>Cities</th><th></th></tr></thead><tbody>${riderRows || '<tr><td colspan="3">No riders.</td></tr>'}</tbody></table></div>
+        ${nvStVoiceHtml(vm)}`;
+      try { if (window.NVVoice) window.NVVoice.refill(); } catch (e) {}
+    }
+    /* Rider voice notes (18 Oct 2026): every Refused / not available in the
+       last 7 days, with the note to play, "no microphone" when the rider
+       skipped, or "missing". Riders outside the pilot show as missing by
+       design until the recorder is switched on for them. */
+    function nvStVoiceHtml(vm){
+      if (!vm || vm.error) return `<h4 class="mt-14">Voice notes</h4><p class="footer-note">${vm && vm.error ? "Could not load: " + escLabelText(vm.error.message) : "Not loaded."}</p>`;
+      const rows = vm.data || [];
+      const by = {};
+      rows.forEach(r => { const k = r.rider || "No rider"; by[k] = by[k] || { all: 0, note: 0, skip: 0 }; by[k].all++; if (r.has_note) by[k].note++; else if (r.skipped) by[k].skip++; });
+      const sum = Object.keys(by).sort().map(k => `<tr><td><b>${escLabelText(k)}</b></td><td>${by[k].all}</td><td>${by[k].note}</td><td>${by[k].skip}</td><td>${by[k].all - by[k].note - by[k].skip}</td></tr>`).join("");
+      const when = iso => { try { return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Karachi" }); } catch (e) { return ""; } };
+      /* Two rows per mark: the facts, then the note across the full width, so
+         the player is never squeezed into a narrow column on a phone. */
+      const list = rows.slice(0, 60).map(r => `<tr><td><b>${escLabelText(r.awb)}</b><br><span class="footer-note">${escLabelText(r.client || "")}</span></td>
+          <td>${escLabelText(r.status === "Consignee not available" ? "Not available" : r.status)}<br><span class="footer-note">${escLabelText(when(r.marked_at))} · ${escLabelText(r.rider || "")}</span></td>
+          <td>${r.has_note ? '<span class="chip good">Note</span>' : r.skipped ? '<span class="chip warn">No microphone</span>' : '<span class="chip bad">Missing</span>'}</td></tr>` +
+          (r.has_note ? `<tr><td colspan="3" style="padding-top:0"><div class="nvvn" data-nvvn="${escLabelText(r.awb)}"></div></td></tr>` : "")).join("");
+      return `<h4 class="mt-14">Voice notes · last 7 days</h4><p class="footer-note">Each refusal and "not available" with the rider's note. Missing means the rider neither recorded nor reported a blocked microphone.</p>
+        <div class="table-wrap"><table class="nv-rb-table"><thead><tr><th>Rider</th><th>Marked</th><th>With note</th><th>No mic</th><th>Missing</th></tr></thead><tbody>${sum || '<tr><td colspan="5">No refusals in 7 days.</td></tr>'}</tbody></table></div>
+        ${rows.length ? `<details class="mt-8"><summary class="footer-note">Every mark (${rows.length}${rows.length > 60 ? ", newest 60 shown" : ""})</summary><div class="table-wrap"><table class="nv-rb-table"><thead><tr><th>Parcel</th><th>Status</th><th>Voice note</th></tr></thead><tbody>${list}</tbody></table></div></details>` : ""}`;
     }
     async function nvStSaveCities(riderId, btn){
       const cities = Array.from(document.querySelectorAll(`[data-st-rider="${CSS.escape(riderId)}"]:checked`)).map(x => x.value);
@@ -20375,6 +20412,8 @@ html,body{ background:var(--bg); color:var(--ink); }
   <div style="background:var(--panel,#0f1d18);border:1px solid var(--line,#274038);border-radius:14px;max-width:620px;width:100%;max-height:88vh;overflow:auto;padding:20px">
     <div class="section-head"><div><h3>Edit parcel <span id="npeAwb"></span></h3><p id="npeWarn" class="footer-note"></p></div><button class="ghost-btn" onclick="nvCloseParcelEdit()">Close</button></div>
     <input type="hidden" id="npeAwbHidden">
+    <!-- Rider voice note for a refusal / not available (nv-voice.js). -->
+    <div class="nvvn" id="npeVoice"></div>
     <div class="grid two mt-8">
       <div class="field"><label>Consignee name</label><input id="npeConsignee"></div>
       <div class="field"><label>Phone</label><input type="tel" inputmode="numeric" autocomplete="tel" id="npePhone"></div>

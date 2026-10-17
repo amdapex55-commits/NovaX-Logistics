@@ -4426,7 +4426,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Money held by a rider, a late parcel and a parcel on its way back
            offer no Reattempt or Return, so the card must not ask for a decision. */
         var chip=hideDeliveryActions?'<span class="chip">Nothing to decide yet</span>':'<span class="chip warn">Needs your decision</span>';
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>What to do next</h3><p>What went wrong with this parcel, the likely cause and the fastest fix.</p></div>${chip}</div><dl class="nv-exc-list">${say("Problem",cls.problem)}${say("Likely cause",cls.cause)}${say("Recommended action",cls.action)}</dl>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>What to do next</h3><p>What went wrong with this parcel, the likely cause and the fastest fix.</p></div>${chip}</div><div class="nvvn" data-nvvn="${escLabelText(p.awb)}"></div><dl class="nv-exc-list">${say("Problem",cls.problem)}${say("Likely cause",cls.cause)}${say("Recommended action",cls.action)}</dl>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -17953,7 +17953,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":nvMissingDeliveryInfo(p)?"Missing address or phone":/return/i.test(p.status||"")?"Return journey — review":(typeof isRiderCashHolding==="function"&&isRiderCashHolding(p))?"Rider cash — review":p.exception?"Exception — review":p.status==="Out of service area"?"Service area — review":"Delayed — update available";
         const eAwb=escLabelText(p.awb);
         const canDecide=["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1;
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">${canDecide?`${nvReattemptUsed(p)?`<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvReattemptUsed(p)))}">${nvReattemptUsed(p)==="requested"?"Reattempt requested":"Reattempted once"}</span>`:`<button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button>`}<button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button>`:""}<button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p>${canDecide?`<div class="nvvn" data-nvvn="${eAwb}"></div>`:""}<div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">${canDecide?`${nvReattemptUsed(p)?`<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvReattemptUsed(p)))}">${nvReattemptUsed(p)==="requested"?"Reattempt requested":"Reattempted once"}</span>`:`<button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button>`}<button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button>`:""}<button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
       });
       const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
       /* The landing panel caps the visible rows, and says how many remain.
@@ -17976,6 +17976,122 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(typeof requestReturnToOrigin==="function"){ requestReturnToOrigin(awb); return; }
       toast("Could not send this request right now.","error");
     }
+    /* ── Rider voice notes (18 Oct 2026) ─────────────────────────────────
+       When a rider marks a parcel Refused or Consignee not available they
+       record why (rider app). Any login on this account can play it here.
+       Screens only drop an empty <div data-nvvn="AWB">; this module fills
+       every such slot from voice_notes_for(), plays through a signed URL
+       (an hour, never public), records the first play, and listens for new
+       notes on nv_parcel_voice so one appears without a refresh. A note is
+       gone once its parcel is returned or delivered (sql_novax_rider_voice_notes_20261018.sql). */
+    var NV_VN={ cache:{}, asked:{}, audio:null, playing:"", ch:null, fillT:null };
+    function nvVnClock(ms){ var x=Math.max(0,Math.round(Number(ms||0)/1000)); return Math.floor(x/60)+":"+String(x%60).padStart(2,"0"); }
+    function nvVnWhen(iso){
+      try{ return new Date(iso).toLocaleString("en-GB",{ day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" }); }catch(e){ return ""; }
+    }
+    function nvVnHtml(awb, notes){
+      if(!notes || !notes.length) return "";
+      return notes.slice(0,3).map(function(n){
+        var fresh=!n.first_played_at, on=NV_VN.playing===n.id && !!NV_VN.audio && !NV_VN.audio.paused;
+        var st=n.status==="Consignee not available"?"Not available":n.status;
+        return '<div class="nvvn-box'+(fresh?' is-new':'')+'" data-nvvn-id="'+escLabelText(n.id)+'">'+
+          '<button type="button" class="nvvn-play'+(on?' is-on':'')+'" data-nvvn-play="'+escLabelText(n.id)+'" aria-label="'+(on?'Pause':'Play')+' the rider’s voice note for '+escLabelText(awb)+'">'+
+            '<span class="nvvn-ico" aria-hidden="true"></span></button>'+
+          '<div class="nvvn-txt"><div class="nvvn-top"><b>Rider’s voice note</b>'+(fresh?'<span class="nvvn-new">New</span>':'')+'<span class="nvvn-len">'+nvVnClock(n.duration_ms)+'</span></div>'+
+          '<div class="nvvn-meta">'+escLabelText([n.rider, st, nvVnWhen(n.recorded_at)].filter(Boolean).join(" · "))+'</div>'+
+          '<div class="nvvn-bar" aria-hidden="true"><i></i></div></div></div>';
+      }).join("");
+    }
+    function nvVnFill(){
+      var need=[];
+      document.querySelectorAll("[data-nvvn]").forEach(function(el){
+        var awb=el.getAttribute("data-nvvn"); if(!awb) return;
+        if(NV_VN.cache[awb]===undefined){ need.push(awb); return; }
+        var html=nvVnHtml(awb, NV_VN.cache[awb]);
+        if(el.__nvvnHtml!==html){ el.innerHTML=html; el.__nvvnHtml=html; }
+      });
+      if(need.length) nvVnLoad(need);
+    }
+    async function nvVnLoad(awbs){
+      var sb=window.__nvSb, now=Date.now();
+      awbs=Array.from(new Set(awbs)).filter(function(a){ return !NV_VN.asked[a] || now-NV_VN.asked[a]>60000; });
+      if(!sb || !awbs.length) return;
+      awbs.forEach(function(a){ NV_VN.asked[a]=now; });
+      try{
+        var r=await sb.rpc("voice_notes_for",{ p_awbs:awbs.slice(0,200) });
+        if(r.error) throw r.error;
+        awbs.forEach(function(a){ NV_VN.cache[a]=[]; });
+        (r.data||[]).forEach(function(n){ (NV_VN.cache[n.awb]=NV_VN.cache[n.awb]||[]).push(n); });
+      }catch(e){ console.warn("NovaX voice notes", e&&e.message||e); return; }
+      nvVnFill();
+    }
+    function nvVnFind(id){
+      for(var a in NV_VN.cache){ var n=(NV_VN.cache[a]||[]).find(function(x){ return x.id===id; }); if(n) return n; }
+      return null;
+    }
+    function nvVnPaintPlaying(){
+      document.querySelectorAll("[data-nvvn-play]").forEach(function(b){
+        var on=b.getAttribute("data-nvvn-play")===NV_VN.playing && NV_VN.audio && !NV_VN.audio.paused;
+        b.classList.toggle("is-on", !!on); b.setAttribute("aria-label", (on?"Pause":"Play")+" the rider’s voice note");
+      });
+    }
+    async function nvVnPlay(id){
+      var n=nvVnFind(id), sb=window.__nvSb; if(!n || !sb) return;
+      if(!NV_VN.audio){
+        NV_VN.audio=new Audio(); NV_VN.audio.preload="auto";
+        NV_VN.audio.addEventListener("timeupdate", function(){
+          var a=NV_VN.audio, box=document.querySelectorAll('[data-nvvn-id="'+NV_VN.playing+'"] .nvvn-bar i');
+          var total=(isFinite(a.duration)&&a.duration>0)?a.duration:(Number((nvVnFind(NV_VN.playing)||{}).duration_ms||0)/1000);
+          box.forEach(function(i){ i.style.width=total?Math.min(100,a.currentTime/total*100)+"%":"0"; });
+        });
+        ["play","pause","ended"].forEach(function(ev){ NV_VN.audio.addEventListener(ev, nvVnPaintPlaying); });
+      }
+      var a=NV_VN.audio;
+      if(NV_VN.playing===id && !a.paused){ a.pause(); return; }
+      if(NV_VN.playing===id && a.src){ try{ await a.play(); }catch(e){} return; }
+      try{
+        var u=await sb.storage.from("parcel-voice").createSignedUrl(n.storage_path, 3600);
+        if(u.error || !u.data || !u.data.signedUrl) throw (u.error||new Error("no link"));
+        NV_VN.playing=id; a.src=u.data.signedUrl; await a.play();
+      }catch(e){ toast("Could not play this voice note. It may have been removed after the parcel was returned.","error"); return; }
+      if(!n.first_played_at){
+        n.first_played_at=new Date().toISOString();
+        try{ Promise.resolve(sb.rpc("voice_note_played",{ p_id:id })).catch(function(){}); }catch(e){}
+        document.querySelectorAll('[data-nvvn]').forEach(function(el){ el.__nvvnHtml=""; });
+        nvVnFill();
+      }
+      nvVnPaintPlaying();
+    }
+    document.addEventListener("click", function(e){
+      var b=e.target.closest && e.target.closest("[data-nvvn-play]"); if(!b) return;
+      e.preventDefault(); e.stopPropagation(); nvVnPlay(b.getAttribute("data-nvvn-play"));
+    }, true);
+    /* Slots appear whenever a screen redraws; fill them shortly after. */
+    try{
+      new MutationObserver(function(list){
+        for(var i=0;i<list.length;i++){ var nodes=list[i].addedNodes; for(var j=0;j<nodes.length;j++){
+          var nd=nodes[j]; if(nd.nodeType===1 && (nd.hasAttribute("data-nvvn") || (nd.querySelector && nd.querySelector("[data-nvvn]")))){
+            clearTimeout(NV_VN.fillT); NV_VN.fillT=setTimeout(nvVnFill, 60); return; } } }
+      }).observe(document.documentElement, { childList:true, subtree:true });
+    }catch(e){}
+    /* A new note while the merchant is looking: drop that parcel's cache,
+       redraw its slots, and say so once. */
+    function nvVnListen(){
+      var sb=window.__nvSb, me=state && state.client && state.client.id;
+      if(!sb || !sb.channel || !me || NV_VN.ch || /^SAMPLE|^demo/i.test(String(me))) return;
+      try{
+        NV_VN.ch=sb.channel("novax_voice_"+me)
+          .on("postgres_changes",{ event:"INSERT", schema:"public", table:"nv_parcel_voice", filter:"client_id=eq."+me }, function(m){
+            var row=m && m.new; if(!row || !row.awb) return;
+            delete NV_VN.cache[row.awb]; delete NV_VN.asked[row.awb];
+            toast("New voice note from the rider for "+row.awb+".","info");
+            nvVnFill();
+          }).subscribe();
+      }catch(e){ NV_VN.ch=null; }
+    }
+    setInterval(function(){ try{ nvVnListen(); }catch(e){} }, 5000);
+    window.nvVoiceRefill=function(){ NV_VN.cache={}; NV_VN.asked={}; nvVnFill(); };
+
     function clientActionNeededAskAi(awb){
       try{
         if(typeof window.novaxOpenAutopilot==="function") window.novaxOpenAutopilot();
@@ -18416,6 +18532,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return '<div class="nv-c-item"><button type="button" class="nv-c-open" data-nv-cock="journey" data-awb="'+nvEsc(p.awb)+'" title="Open the journey">'
           +'<span class="nv-c-txt"><strong>'+nvEsc(p.awb)+'</strong><span>'+nvEsc(p.status||"")+(p.city?" \u00b7 "+nvEsc(p.city):"")+(p.consignee?" \u00b7 "+nvEsc(p.consignee):"")+'</span></span>'
           +'<i class="nv-c-go" aria-hidden="true"></i></button>'
+          /* Rider's voice note for a refusal / not available (filled by nvVnFill). */
+          +((p.status==="Refused"||p.status==="Consignee not available")?'<div class="nvvn" data-nvvn="'+nvEsc(p.awb)+'"></div>':'')
           +(acts?'<div class="nv-c-acts">'+acts+"</div>":"")+"</div>";
       }
       function nvRenderCockpit(){

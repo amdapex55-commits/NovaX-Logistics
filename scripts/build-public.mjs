@@ -45,6 +45,7 @@ const publicFiles = [
   "client-recover.js",
   "client-reports.js",
   "nv-cnic.js",
+  "nv-voice.js",
   "nv-journey.js",
   "nv-payment.js",
   "rider-app.js",

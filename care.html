@@ -278,6 +278,7 @@ button.item:hover{border-color:var(--line-2)}
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
+<script src="nv-voice.js?v=b6f2788f"></script>
 <script>
 (function(){
 "use strict";
@@ -301,6 +302,8 @@ function timedFetch(input, init){
 }
 var sb = null;
 try { sb = window.supabase.createClient(SB_URL, SB_KEY, { global: { fetch: timedFetch } }); } catch (e) {}
+/* Rider voice notes (18 Oct 2026): heard on the parcel sheet before calling. */
+try { if (window.NVVoice) window.NVVoice.init(function () { return sb; }); } catch (e) {}
 
 function $(id){ return document.getElementById(id); }
 function esc(v){ return String(v == null ? "" : v).replace(/[&<>"'`]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;", "`":"&#96;" }[c]; }); }
@@ -1071,7 +1074,8 @@ function openParcel(id){
   var last = x.last;
   var waitingNotify = x.bucket === "notify" && last;
   var html = '<div class="sheet-head"><h2 id="sheetTitle">' + esc(x.awb) + " " + statusChip(x.status) + '</h2><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>' +
-    '<div class="reason"><b>Rider says</b>' + esc(x.reason || "No reason written") + (x.rider ? " · " + esc(x.rider) : "") + " · " + esc(ago(x.status_since)) + (x.attempts > 1 ? " · attempt " + x.attempts : "") + "</div>";
+    '<div class="reason"><b>Rider says</b>' + esc(x.reason || "No reason written") + (x.rider ? " · " + esc(x.rider) : "") + " · " + esc(ago(x.status_since)) + (x.attempts > 1 ? " · attempt " + x.attempts : "") + "</div>" +
+    '<div class="nvvn" data-nvvn="' + esc(x.awb) + '"></div>';
   /* Waiting on the merchant: that message is the job, so it comes first. */
   if (waitingNotify) {
     html += '<div class="box"><h3>Next step</h3><p class="sub" style="margin-bottom:10px">Send the merchant what the customer said.</p>' +
