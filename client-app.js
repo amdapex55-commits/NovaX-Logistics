@@ -6766,51 +6766,81 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var why=!c.can_use_wallet?'Pay ':(bal>0?'Your wallet has '+nvFlyRs(bal)+', not enough for this order, so pay ':'Your wallet has no balance to use, so pay ');
       return '<div class="nv-fly-pay is-cash"><b>Cash to the rider</b><span>'+escLabelText(why+nvFlyRs(t.total)+' in cash when the rider brings your flyers.')+'</span></div>';
     }
+    /* What each size usually carries, so a merchant can pick without a ruler. */
+    var NV_FLY_FIT={ "7x9":"Jewellery, cosmetics", "8x11":"Watches, wallets, covers", "10x11":"T-shirts, scarves",
+      "10x14":"Shirts, kurtas, one suit", "12x16":"Unstitched suits", "14x19":"Jackets, bedsheets",
+      "16x22":"Hoodies, bundles", "18x24":"Blankets, bulk orders" };
+    var NV_FLY_POPULAR="10x14";
+    function nvFlyBag(code){
+      var m=String(code||"").match(/^(\d+)x(\d+)$/), w=m?+m[1]:10, h=m?+m[2]:14;
+      var bw=Math.round(16+w/18*26), bh=Math.round(20+h/24*30), x=(44-bw)/2, y=(52-bh)/2;
+      return '<svg class="nv-fly-bag" viewBox="0 0 44 52" aria-hidden="true"><rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3"/>'+
+        '<path d="M'+x+' '+(y+6)+'h'+bw+'"/><path class="nv-fly-bag-l" d="M'+(x+5)+' '+(y+13)+'h'+Math.round(bw*.45)+'M'+(x+5)+' '+(y+18)+'h'+Math.round(bw*.3)+'"/></svg>';
+    }
     function nvFlyRender(){
       var root=document.getElementById("nvFlyRoot"); if(!root) return;
       var c=NV_FLY.cat, h='';
       if(NV_FLY.done){
         var d=NV_FLY.done;
-        h+='<div class="panel nv-fly-done"><div class="nv-sw-tick" aria-hidden="true">✓</div><h3>Flyer order '+escLabelText(d.code)+' placed</h3>'+
-           '<p class="nv-sw-sub">'+escLabelText(Number(d.flyers).toLocaleString("en-PK"))+' flyers, '+escLabelText(nvFlyRs(d.total))+'. '+
-           (d.pay_method==="wallet"?'Paid from your wallet. ':'Please keep '+escLabelText(nvFlyRs(d.total))+' cash ready for the rider. ')+
-           'The rider brings them on the next visit to your pickup point.</p>'+
-           '<div class="nv-sw-acts"><button type="button" class="action-btn ghost" data-fly-act="again">Order more flyers</button></div></div>';
+        h+='<div class="panel nv-fly-done"><div class="nv-sw-tick" aria-hidden="true">✓</div><h3>Order '+escLabelText(d.code)+' placed</h3>'+
+           '<p class="nv-sw-sub">'+escLabelText(Number(d.flyers).toLocaleString("en-PK"))+' flyers · '+escLabelText(nvFlyRs(d.total))+'<br>'+
+           (d.pay_method==="wallet"?'Paid from your wallet.':'Keep '+escLabelText(nvFlyRs(d.total))+' cash ready for the rider.')+
+           ' The rider brings them on the next visit to your pickup point.</p>'+
+           '<div class="nv-sw-acts"><button type="button" class="action-btn" data-fly-act="again">Order more flyers</button></div></div>';
       } else {
-        h+='<div class="panel"><div class="section-head"><div><h3>Buy flyers</h3><p>Courier flyers in packs of 100, brought to your pickup point by the rider.</p></div></div>';
+        var t=nvFlyTotals(), dt=(c&&c.deliver_to)||{}, off=!c||!c.can_order, noAddr=!dt.address;
+        var walletOk=c&&c.can_use_wallet;
+        h+='<div class="nv-fly-wrap'+(t.flyers?' has-items':'')+'"><div class="panel nv-fly-main">'+
+           '<div class="nv-fly-head"><div><h3>Buy flyers</h3><p>Strong courier flyers in packs of 100. The rider brings them with your next pickup.</p></div>'+
+           (walletOk?'<div class="nv-fly-wal"><span>Wallet</span><b>'+escLabelText(nvFlyRs(c.wallet||0))+'</b></div>':'')+'</div>'+
+           '<ol class="nv-fly-how"><li><b>1</b>Pick sizes</li><li><b>2</b>'+(walletOk?'Paid from wallet, or cash':'Pay cash on delivery')+'</li><li><b>3</b>Rider brings them</li></ol>';
         if(window.__NOVAX_DEMO) h+='<p class="nv-sw-note">Flyers can be ordered on a real account. This is the demo.</p>';
-        if(NV_FLY.loading && !c) h+='<p class="footer-note">Loading prices…</p>';
+        if(NV_FLY.loading && !c) h+='<div class="nv-fly-grid">'+'<div class="nv-fly-card is-skel"></div>'.repeat(8)+'</div>';
         else if(NV_FLY.err && !c) h+='<p class="footer-note">'+escLabelText(NV_FLY.err)+' <button type="button" class="action-btn ghost" data-fly-act="reload">Retry</button></p>';
         else if(c){
-          var off=!c.can_order;
           if(off) h+='<p class="nv-sw-note">Your team role can see flyer prices but cannot order. Ask the account owner.</p>';
           h+='<div class="nv-fly-grid">'+(c.sizes||[]).map(function(s){
-            var q=NV_FLY.qty[s.code]||0;
-            return '<div class="nv-fly-card'+(q?' on':'')+'"><div class="nv-fly-size">'+escLabelText(s.label)+'</div>'+
-              '<div class="nv-fly-price"><b>'+escLabelText(nvFlyRs2(s.price))+'</b> per flyer</div>'+
-              '<div class="nv-fly-pack">'+escLabelText(nvFlyRs(Math.round(Number(s.price)*100)))+' per 100</div>'+
-              '<div class="nv-fly-step" role="group" aria-label="'+escLabelText(s.label)+' quantity">'+
-                '<button type="button" data-fly-dec="'+escLabelText(s.code)+'" aria-label="100 fewer"'+(q&&!off?'':' disabled')+'>−</button>'+
-                '<input type="text" inputmode="numeric" data-fly-qty="'+escLabelText(s.code)+'" value="'+q+'" aria-label="'+escLabelText(s.label)+' flyers, in hundreds"'+(off?' disabled':'')+'>'+
-                '<button type="button" data-fly-inc="'+escLabelText(s.code)+'" aria-label="100 more"'+(off||q>=10000?' disabled':'')+'>+</button></div></div>';
+            var q=NV_FLY.qty[s.code]||0, code=escLabelText(s.code);
+            return '<div class="nv-fly-card'+(q?' on':'')+'">'+(s.code===NV_FLY_POPULAR?'<span class="nv-fly-pop">Most popular</span>':'')+
+              '<div class="nv-fly-ill">'+nvFlyBag(s.code)+'</div>'+
+              '<div class="nv-fly-info"><div class="nv-fly-size">'+escLabelText(s.label)+'</div>'+
+              '<div class="nv-fly-fit">'+escLabelText(NV_FLY_FIT[s.code]||"")+'</div>'+
+              '<div class="nv-fly-price"><b>'+escLabelText(nvFlyRs2(s.price))+'</b> each<span>'+escLabelText(nvFlyRs(Math.round(Number(s.price)*100)))+' per 100</span></div></div>'+
+              '<div class="nv-fly-ctl">'+(q?
+                '<div class="nv-fly-step" role="group" aria-label="'+escLabelText(s.label)+' quantity">'+
+                '<button type="button" data-fly-dec="'+code+'" aria-label="100 fewer"'+(off?' disabled':'')+'>−</button>'+
+                '<input type="text" inputmode="numeric" data-fly-qty="'+code+'" value="'+q+'" aria-label="'+escLabelText(s.label)+' flyers"'+(off?' disabled':'')+'>'+
+                '<button type="button" data-fly-inc="'+code+'" aria-label="100 more"'+(off||q>=10000?' disabled':'')+'>+</button></div>'
+                :'<button type="button" class="nv-fly-add" data-fly-inc="'+code+'" aria-label="Add 100 '+escLabelText(s.label)+'"'+(off?' disabled':'')+'><span aria-hidden="true">+</span> Add 100</button>')+
+              '</div></div>';
           }).join("")+'</div>';
-          var t=nvFlyTotals(), dt=c.deliver_to||{}, noAddr=!dt.address;
-          if(t.flyers){
-            h+='<div class="nv-sw-price nv-fly-sum">'+t.lines.map(function(l){
-                return '<div><span>'+escLabelText(l.s.label)+' × '+escLabelText(l.q.toLocaleString("en-PK"))+'</span><b>'+escLabelText(nvFlyRs(l.line))+'</b></div>'; }).join("")+
-              '<div class="nv-sw-total"><span>'+escLabelText(t.flyers.toLocaleString("en-PK"))+' flyers</span><b>'+escLabelText(nvFlyRs(t.total))+'</b></div>'+nvFlyPayLine(t)+
-              (dt.address?'<div class="nv-fly-to"><span>Brought to</span><b>'+escLabelText(dt.address+(dt.city&&dt.address.toLowerCase().indexOf(String(dt.city).toLowerCase())<0?", "+dt.city:""))+'</b></div>'
-                :'<div class="nv-fly-pay is-cash"><b>No pickup address yet</b><span>Add your pickup address in Profile so the rider knows where to bring the flyers.</span><button type="button" class="nv-fly-link" data-fly-act="profile">Open Profile</button></div>')+'</div>';
-            h+='<label class="nv-fly-note-l" for="nvFlyNote">Note for NovaX <small>(optional)</small></label><input id="nvFlyNote" class="nv-fly-note" maxlength="300" placeholder="e.g. Send with Tuesday pickup" value="'+escLabelText(NV_FLY.note||"")+'">';
-          }
-          h+='<p class="nv-sw-err" id="nvFlyErr" role="alert"></p>'+
-             '<button type="button" class="action-btn nv-sw-go" id="nvFlyGo"'+(t.flyers&&!off&&!noAddr&&!NV_FLY.busy&&!window.__NOVAX_DEMO?'':' disabled')+'>'+
-             (NV_FLY.busy?'Placing order…':(t.flyers?'Place order · '+escLabelText(nvFlyRs(t.total)):'Choose a size to start'))+'</button>';
         }
         h+='</div>';
+        /* the order card: beside the sizes on a wide screen, under them on a phone */
+        h+='<aside class="panel nv-fly-cart" id="nvFlyCart"><h3>Your order</h3>';
+        if(!t.flyers){
+          h+='<div class="nv-fly-empty">'+nvFlyBag("10x14")+'<p>Add a size to start. Prices include delivery to your pickup point.</p></div>';
+        } else {
+          h+='<div class="nv-fly-lines">'+t.lines.map(function(l){
+              return '<div class="nv-fly-line"><span><b>'+escLabelText(l.s.label)+'</b><small>'+escLabelText(l.q.toLocaleString("en-PK"))+' × '+escLabelText(nvFlyRs2(l.s.price))+'</small></span>'+
+                '<b>'+escLabelText(nvFlyRs(l.line))+'</b><button type="button" class="nv-fly-rm" data-fly-rm="'+escLabelText(l.s.code)+'" aria-label="Remove '+escLabelText(l.s.label)+'">×</button></div>'; }).join("")+'</div>'+
+             '<div class="nv-fly-total"><span>'+escLabelText(t.flyers.toLocaleString("en-PK"))+' flyers</span><b>'+escLabelText(nvFlyRs(t.total))+'</b></div>'+
+             nvFlyPayLine(t)+
+             (dt.address?'<div class="nv-fly-to"><span>Brought to</span><b>'+escLabelText(dt.address+(dt.city&&dt.address.toLowerCase().indexOf(String(dt.city).toLowerCase())<0?", "+dt.city:""))+'</b></div>'
+               :'<div class="nv-fly-pay is-cash"><b>No pickup address yet</b><span>Add your pickup address in Profile so the rider knows where to bring the flyers.</span><button type="button" class="nv-fly-link" data-fly-act="profile">Open Profile</button></div>')+
+             '<details class="nv-fly-notebox"'+(NV_FLY.note?' open':'')+'><summary>Add a note for NovaX</summary><input id="nvFlyNote" class="nv-fly-note" maxlength="300" placeholder="e.g. Send with Tuesday pickup" value="'+escLabelText(NV_FLY.note||"")+'"></details>';
+        }
+        var can=t.flyers&&!off&&!noAddr&&!NV_FLY.busy&&!window.__NOVAX_DEMO;
+        h+='<p class="nv-sw-err" id="nvFlyErr" role="alert"></p>'+
+           '<button type="button" class="action-btn nv-fly-go" id="nvFlyGo"'+(can?'':' disabled')+'>'+
+           (NV_FLY.busy?'Placing order…':(t.flyers?'Place order · '+escLabelText(nvFlyRs(t.total)):'Place order'))+'</button></aside></div>';
+        /* phone: the total and the button stay on screen while scrolling the sizes */
+        if(t.flyers) h+='<div class="nv-fly-bar"><div><b>'+escLabelText(nvFlyRs(t.total))+'</b><span>'+escLabelText(t.flyers.toLocaleString("en-PK"))+' flyers · '+
+          (walletOk&&Number(c.wallet||0)>=t.total?'from wallet':'cash to rider')+'</span></div>'+
+          '<button type="button" class="action-btn" data-fly-act="review">Review order</button></div>';
       }
-      h+='<div class="panel nv-sw-list"><div class="section-head"><div><h3>Your flyer orders</h3></div></div>';
-      if(!NV_FLY.list.length) h+='<p class="footer-note">'+(NV_FLY.loading?'Loading…':'No flyer orders yet.')+'</p>';
+      h+='<div class="panel nv-sw-list nv-fly-orders"><div class="section-head"><div><h3>Your flyer orders</h3></div></div>';
+      if(!NV_FLY.list.length) h+='<p class="footer-note">'+(NV_FLY.loading?'Loading…':'No flyer orders yet. Your first order shows here with its status.')+'</p>';
       else h+=NV_FLY.list.map(function(o){
         var st=NV_FLY_STATUS[o.status]||[o.status,""];
         var items=(o.items||[]).map(function(i){ return i.label+" × "+Number(i.qty).toLocaleString("en-PK"); }).join(", ");
@@ -6824,12 +6854,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).join("");
       h+='</div>';
       root.innerHTML=h;
+      /* the phone bar steps aside while the real Place order button is on screen */
+      try{
+        if(NV_FLY.io) NV_FLY.io.disconnect();
+        var bar=root.querySelector(".nv-fly-bar"), go=document.getElementById("nvFlyGo");
+        if(bar && go && "IntersectionObserver" in window){
+          NV_FLY.io=new IntersectionObserver(function(en){ bar.classList.toggle("is-hidden", !!(en[0]&&en[0].isIntersecting)); });
+          NV_FLY.io.observe(go);
+        }
+      }catch(e){}
     }
     function nvFlySubmit(){
       if(NV_FLY.busy) return;
       var t=nvFlyTotals(); if(!t.flyers) return;
       var sb=window.__nvSb, err=document.getElementById("nvFlyErr");
       if(!sb){ if(err) err.textContent="Not connected. Refresh and try again."; return; }
+      var c=NV_FLY.cat||{}, wal=c.can_use_wallet&&Number(c.wallet||0)>=t.total, dt=c.deliver_to||{};
+      Promise.resolve(window.nvAsk ? window.nvAsk({ title:"Place order for "+t.flyers.toLocaleString("en-PK")+" flyers?",
+        body:t.lines.map(function(l){ return l.s.label+" × "+l.q.toLocaleString("en-PK"); }).join(", ")+". Total "+nvFlyRs(t.total)+". "+
+          (wal?"Paid now from your wallet.":"Pay cash to the rider when the flyers arrive.")+(dt.address?" Brought to "+dt.address+".":""),
+        ok:"Place order", cancel:"Not yet" }) : true).then(function(yes){ if(yes) nvFlySend(t); });
+    }
+    function nvFlySend(t){
+      var sb=window.__nvSb; if(!sb || NV_FLY.busy) return;
       NV_FLY.busy=true; nvFlyRender();
       var items=t.lines.map(function(l){ return { code:l.s.code, qty:l.q }; });
       Promise.resolve(sb.rpc("client_flyer_order",{ p_items:items, p_note:NV_FLY.note||null })).then(function(r){
@@ -6871,10 +6918,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(again && !again.disabled) again.focus(); else { var o=document.querySelector('[data-fly-inc="'+code+'"]'); if(o) o.focus(); }
         return;
       }
+      var rm=t.closest("[data-fly-rm]");
+      if(rm){ NV_FLY.qty[rm.getAttribute("data-fly-rm")]=0; nvFlyRender(); return; }
       if(t.closest("#nvFlyGo")){ nvFlySubmit(); return; }
       var act=t.closest("[data-fly-act]"); if(!act) return;
       var k=act.getAttribute("data-fly-act");
       if(k==="again"){ NV_FLY.done=null; nvFlyRender(); }
+      else if(k==="review"){ var cart=document.getElementById("nvFlyCart"); if(cart) cart.scrollIntoView({ behavior:"smooth", block:"start" }); }
       else if(k==="profile"){ try{ showClientTab("profile"); }catch(e){} }
       else if(k==="reload"){ nvFlyLoad(); }
       else if(k==="cancel"){
