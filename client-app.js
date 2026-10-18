@@ -6849,6 +6849,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '<div class="nv-sw-row-sub">'+escLabelText(items)+'</div>'+
           '<div class="nv-sw-row-sub">'+escLabelText(nvDate(o.created_at))+' · '+escLabelText(pay)+(o.status==="cancelled"&&o.pay_method==="wallet"?' · refunded':'')+'</div></div>'+
           '<div class="nv-sw-row-side"><b>'+escLabelText(nvFlyRs(o.total))+'</b><div class="nv-sw-row-acts">'+
+          (c&&c.can_order&&!NV_FLY.done?'<button type="button" class="action-btn ghost nv-fly-again" data-fly-act="reorder" data-id="'+escLabelText(o.id)+'">Order again</button>':'')+
           (o.status==="placed"&&c&&c.can_order?'<button type="button" class="action-btn ghost nv-sw-cancel" data-fly-act="cancel" data-id="'+escLabelText(o.id)+'" data-code="'+escLabelText(o.code)+'">Cancel</button>':'')+
           '</div></div></div>';
       }).join("");
@@ -6924,6 +6925,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var act=t.closest("[data-fly-act]"); if(!act) return;
       var k=act.getAttribute("data-fly-act");
       if(k==="again"){ NV_FLY.done=null; nvFlyRender(); }
+      else if(k==="reorder"){
+        /* Fill the same sizes again (only sizes still sold), then show the order card. */
+        var src=(NV_FLY.list||[]).find(function(x){ return x.id===act.getAttribute("data-id"); });
+        var sold={}; ((NV_FLY.cat&&NV_FLY.cat.sizes)||[]).forEach(function(z){ sold[z.code]=1; });
+        if(src){ NV_FLY.qty={}; (src.items||[]).forEach(function(i){ if(sold[i.code]) NV_FLY.qty[i.code]=Math.min(10000,Number(i.qty)||0); }); }
+        nvFlyRender();
+        var cart=document.getElementById("nvFlyCart"); if(cart) cart.scrollIntoView({ behavior:"smooth", block:"start" });
+        try{ toast("Same sizes added. Check and place the order.","success"); }catch(e){}
+      }
       else if(k==="review"){ var cart=document.getElementById("nvFlyCart"); if(cart) cart.scrollIntoView({ behavior:"smooth", block:"start" }); }
       else if(k==="profile"){ try{ showClientTab("profile"); }catch(e){} }
       else if(k==="reload"){ nvFlyLoad(); }
