@@ -12,11 +12,13 @@ const html=readFileSync(new URL('../rider.html',import.meta.url),'utf8');
 const raw=['nv-payment.js','nv-journey.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL('../'+f,import.meta.url),'utf8'));
 // The live app pilots the recorder with listed riders; these checks switch it on for the fixture rider.
 assert.ok(raw[3].includes('var VOICE_RIDERS = ['),'pilot list present');
-const allOn=raw.map((s,i)=>i===3?s.replace('var VOICE_RIDERS = [','var VOICE_RIDERS = ["*", '):s);
+// Since 18 Oct 2026 the live list holds "*" (every rider); the pilot check strips it again.
+const allOn=raw.map((s,i)=>i===3&&!s.includes('var VOICE_RIDERS = ["*"')?s.replace('var VOICE_RIDERS = [','var VOICE_RIDERS = ["*", '):s);
+const pilotOnly=raw.map((s,i)=>i===3?s.replace('var VOICE_RIDERS = ["*", ','var VOICE_RIDERS = ['):s);
 const wait=(ms=40)=>new Promise(r=>setTimeout(r,ms));
 
 async function app({micBlocked=false,pilot=true,brokenStore=false}={}){
-  const scripts=pilot?allOn:raw;
+  const scripts=pilot?allOn:pilotOnly;
   const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'}),w=dom.window;
   w.crypto.randomUUID=()=>crypto.randomUUID();
   const fixture=installFixture(w,{});fixture.uploads=[];

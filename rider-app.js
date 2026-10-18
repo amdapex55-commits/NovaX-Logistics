@@ -689,10 +689,10 @@
      The only way past the recorder without a note is a blocked microphone,
      which is recorded (rider_voice_skip) and shows on the office report. */
   var VOICE = { db: null, mem: {}, pending: {}, flushing: false, timer: null, MAX: 60000, MIN: 3000, BYTES: 1048576 };
-  /* Pilot first (18 Oct 2026): the recorder is mandatory only for the riders
-     listed here, and always in the demo. Put "*" in the list to switch it on
-     for every rider. Waiting notes still send for anyone. */
-  var VOICE_RIDERS = ["234b3d41-47ef-46bd-b427-d27f0ea9fd53"];   // Khalid, Lahore
+  /* Piloted with Khalid, then switched on for every rider on 18 Oct 2026
+     ("*"). Remove "*" to go back to only the listed riders. The demo always
+     has it. Waiting notes still send for anyone. */
+  var VOICE_RIDERS = ["*", "234b3d41-47ef-46bd-b427-d27f0ea9fd53"];   // every rider (18 Oct 2026); Khalid, Lahore piloted it
   function voiceOn() { return DEMO || VOICE_RIDERS.indexOf("*") > -1 || VOICE_RIDERS.indexOf(String(riderId || "")) > -1; }
   function voiceDb() {
     if (VOICE.db) return VOICE.db;
