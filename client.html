@@ -2775,7 +2775,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=8f92a6e7" defer></script>
+  <script src="client-app.min.js?v=efcdd44b" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2953,6 +2953,7 @@ try{
               <button class="client-tab" data-client-tab="loadSheet">Load sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk booking</button>
               <button class="client-tab" data-client-tab="swap">Nova Swap</button>
+              <button class="client-tab" data-client-tab="flyers">Buy flyers</button>
               <!-- Nova Recover (8 Oct 2026). Hidden until the server says this
                    merchant has it: see body.nv-rc-on and nvRcApply(). -->
               <button class="client-tab" data-client-tab="recover">Nova Recover</button>
@@ -3511,6 +3512,7 @@ try{
                  shown on this dashboard and on the tracking link only. -->
             <!-- NOVA SWAP (29 Sep 2026). Exchange in one visit; rendered by nvSwRender(). -->
             <section class="client-module" id="client-swap"><div id="nvSwRoot" class="nv-sw"></div></section>
+            <section class="client-module" id="client-flyers"><div id="nvFlyRoot" class="nv-sw nv-fly"></div></section>
             <!-- NOVA RECOVER (8 Oct 2026). Refused and returned parcels the merchant
                  sends to the Support Desk; rendered by client-recover.js. -->
             <section class="client-module" id="client-recover"><div id="nvRcRoot" class="nv-rc"></div></section>
@@ -5962,6 +5964,30 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 .nv-sw-row-side{text-align:right;flex:none}
 .nv-sw-row-acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
 .nv-sw-cancel{color:var(--nvu-bad-fg,#b3261e)}
+.nv-fly-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:4px}
+.nv-fly-card{display:grid;gap:2px;padding:14px;border:1px solid var(--nvu-line);border-radius:14px;background:var(--nvu-bg);transition:border-color .15s,background .15s}
+.nv-fly-card.on{border-color:var(--nvu-accent);background:var(--nvu-bg-2)}
+.nv-fly-size{font-weight:850;font-size:16px;color:var(--nvu-ink)}
+.nv-fly-price{font-size:13px;color:var(--nvu-ink-2)}
+.nv-fly-price b{color:var(--nvu-ink);font-size:15px;font-variant-numeric:tabular-nums}
+.nv-fly-pack{font-size:12px;color:var(--nvu-ink-2);font-variant-numeric:tabular-nums}
+.nv-fly-step{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:10px;border:1px solid var(--nvu-line-2);border-radius:12px;padding:3px}
+.nv-fly-step button{width:40px;height:40px;border:0;border-radius:9px;background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:20px;font-weight:800;cursor:pointer}
+.nv-fly-card.on .nv-fly-step button[data-fly-inc]{background:var(--nvu-accent);color:var(--nvu-accent-ink,#fff)}
+.nv-fly-step button[disabled]{opacity:.35;cursor:not-allowed}
+.nv-fly-step output{flex:1;text-align:center;font-weight:800;font-variant-numeric:tabular-nums;color:var(--nvu-ink)}
+.nv-fly-sum{margin-top:14px}
+.nv-fly-pay{display:grid;gap:2px;margin-top:10px;padding:10px 12px;border-radius:12px;font-size:12.5px;line-height:1.45}
+.nv-fly-pay b{font-size:13.5px}
+.nv-fly-pay.is-wallet{background:var(--nvu-good-bg);color:var(--nvu-good-fg)}
+.nv-fly-pay.is-cash{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg)}
+.nv-fly-pay b,.nv-fly-pay span{color:inherit!important}
+.nv-fly-note-l{display:block;margin-top:12px;font-size:12.5px;font-weight:750;color:var(--nvu-ink-2)}
+.nv-fly-note{width:100%;box-sizing:border-box;min-height:44px;margin-top:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:16px}
+.nv-sw-price>.nv-fly-pay{display:grid;justify-content:stretch;align-content:start;gap:2px;padding:10px 12px}
+.nv-fly .nv-sw-cancel{background:transparent!important;border:1px solid var(--nvu-line-2)!important;color:var(--nvu-bad-fg,#b3261e)!important;min-height:40px;box-shadow:none!important}
+.nv-fly-done{text-align:center;animation:nvSwIn .25s ease-out}
+@media (max-width:420px){.nv-fly-grid{grid-template-columns:1fr 1fr;gap:8px}.nv-fly-card{padding:11px}.nv-fly-step button{width:36px}}
 @keyframes nvSwIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.nv-sw-price,.nv-sw-done{animation:none}}
 @media (max-width:600px){.nv-sw-row{flex-direction:column}.nv-sw-row-side{text-align:left}.nv-sw-row-acts{justify-content:flex-start}.nv-sw-acts .action-btn{flex:1 1 100%}}
@@ -6417,6 +6443,7 @@ html body .nv-mobile-book-bar button[disabled]{opacity:1;background:var(--nvu-bg
 #clientMenu .client-tab[data-client-tab="loadSheet"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%225%22%20y%3D%224%22%20width%3D%2214%22%20height%3D%2217%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M9%204V3h6v1M8.5%2010h7M8.5%2013.5h7M8.5%2017h4%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%225%22%20y%3D%224%22%20width%3D%2214%22%20height%3D%2217%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M9%204V3h6v1M8.5%2010h7M8.5%2013.5h7M8.5%2017h4%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="bulkBooking"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%205-9%205-9-5z%22%2F%3E%3Cpath%20d%3D%22m3%2013%209%205%209-5%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%205-9%205-9-5z%22%2F%3E%3Cpath%20d%3D%22m3%2013%209%205%209-5%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="swap"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%208h13l-3-3M20%2016H7l3%203%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%208h13l-3-3M20%2016H7l3%203%22%2F%3E%3C%2Fsvg%3E")}
+#clientMenu .client-tab[data-client-tab="flyers"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%203h14v18H5z%22%2F%3E%3Cpath%20d%3D%22M5%207h14M9%2011h6%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%203h14v18H5z%22%2F%3E%3Cpath%20d%3D%22M5%207h14M9%2011h6%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="recover"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2012a8%208%200%201%200%202.6-5.9M4%204v4h4M9%2012.5l2.2%202.2L15.5%2010%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2012a8%208%200%201%200%202.6-5.9M4%204v4h4M9%2012.5l2.2%202.2L15.5%2010%22%2F%3E%3C%2Fsvg%3E")}
 /* Nova Recover: an order NovaX recovered, wherever a parcel is listed. */
 .nv-rc-tag{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;border:1px solid var(--nvu-good-ln);background:var(--nvu-good-bg);color:var(--nvu-good-fg);font-size:11.5px;font-weight:800;white-space:nowrap;vertical-align:middle}

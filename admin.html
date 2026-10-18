@@ -5595,6 +5595,8 @@ html,body{ background:var(--bg); color:var(--ink); }
 
               <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
+              <button type="button" class="admin-nav-main" data-admin-tab="flyer-orders">FLYER ORDERS <span class="nv-pickup-badge" id="flyerOpenBadge" hidden>0</span></button>
+
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
               <a class="admin-nav-main" href="sales.html" style="text-decoration:none"><span>SALES TEAM</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
               <a class="admin-nav-main" href="care.html" style="text-decoration:none"><span>SUPPORT DESK</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
@@ -6267,6 +6269,24 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <table class="desktop-table">
                     <thead><tr><th>Merchant</th><th>Rating</th><th>Review</th><th>Shown publicly as</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody id="adminReviewQueue"><tr><td colspan="7" class="footer-note">Loading reviews…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-flyer-orders">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Flyer Orders</h3><p>Flyers merchants bought in the portal. Send them with the next pickup rider. Wallet orders are already paid; for cash orders confirm the rider collected the money when you mark Delivered. Cancelling a wallet order refunds it.</p></div>
+                  <div style="display:flex;gap:8px;flex:0 0 auto;align-items:center">
+                    <select id="nvFlyFilter" onchange="nvFlyAdminLoad()" aria-label="Show"><option value="open">Open</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option><option value="">All</option></select>
+                    <button class="ghost-btn" type="button" onclick="nvFlyAdminLoad()">Refresh</button>
+                  </div>
+                </div>
+                <div class="table-wrap wide-scroll">
+                  <table class="desktop-table">
+                    <thead><tr><th>Order</th><th>Merchant</th><th>Flyers</th><th>Total</th><th>Payment</th><th>Deliver to</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="nvFlyAdminRows"><tr><td colspan="8" class="footer-note">Loading flyer orders…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -12064,7 +12084,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       "dashboard": ["dashboard"],
       "orders-view": ["orders-view-all", "orders-report"],
       "orders-book": ["orders-book"],
-      "orders-processing": ["orders-processing"],
+      "orders-processing": ["orders-processing", "flyer-orders"],
       "manifest": ["orders-manifest", "manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       "demanifest": ["orders-demanifest"],
       "pickups": ["pickup-requests"],
@@ -12126,6 +12146,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
+      if (state.activeAdminTab === "flyer-orders") { try { nvFlyAdminLoad(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
@@ -17714,6 +17735,66 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.nvAicOpenThread = nvAicOpenThread;
     window.decideAiQuota = decideAiQuota;
 
+    /* Flyer orders (18 Oct 2026): merchants buy courier flyers in the
+       portal (client_flyer_order). Here ops send them out, mark them
+       delivered (cash orders need the cash confirmed) or cancel them
+       (wallet orders are refunded by the server). */
+    var NV_FLY_ADMIN = [];
+    function nvFlyAdminLoad(){
+      var sb = window.__nvSb, tb = document.getElementById("nvFlyAdminRows");
+      if(!sb || !tb){ if(tb) tb.innerHTML = '<tr><td colspan="8" class="footer-note">Cloud connection not ready.</td></tr>'; return; }
+      var f = (document.getElementById("nvFlyFilter")||{}).value;
+      sb.rpc("admin_flyer_orders", { p_status: f === "open" ? null : (f || null) }).then(function(r){
+        if(r && r.error){ tb.innerHTML = '<tr><td colspan="8" class="footer-note">Could not load flyer orders: ' + escLabelText(r.error.message) + '</td></tr>'; return; }
+        var rows = r.data || [];
+        var open = rows.filter(function(o){ return o.status === "placed" || o.status === "out_for_delivery"; });
+        if(f === "open") rows = open;
+        var b = document.getElementById("flyerOpenBadge");
+        if(b && f === "open"){ b.textContent = open.length; b.hidden = !open.length; }
+        NV_FLY_ADMIN = rows; nvFlyAdminRender();
+      }).catch(function(e){ tb.innerHTML = '<tr><td colspan="8" class="footer-note">Could not load flyer orders: ' + escLabelText((e && e.message) || e) + '</td></tr>'; });
+    }
+    function nvFlyAdminRender(){
+      var tb = document.getElementById("nvFlyAdminRows"); if(!tb) return;
+      if(!NV_FLY_ADMIN.length){ tb.innerHTML = '<tr><td colspan="8" class="footer-note">No flyer orders here.</td></tr>'; return; }
+      var ST = { placed:["New","info"], out_for_delivery:["With rider","info"], delivered:["Delivered","good"], cancelled:["Cancelled",""] };
+      tb.innerHTML = NV_FLY_ADMIN.map(function(o){
+        var st = ST[o.status] || [o.status, ""];
+        var items = (o.items || []).map(function(i){ return escLabelText(i.label) + " &times; " + Number(i.qty).toLocaleString("en-PK"); }).join("<br>");
+        var pay = o.pay_method === "wallet" ? '<span class="chip good">Wallet, paid</span>' : (o.cash_collected ? '<span class="chip good">Cash collected</span>' : '<span class="chip warn">Cash on delivery</span>');
+        var acts = "";
+        if(o.status === "placed") acts += '<button class="ghost-btn" type="button" onclick="nvFlyAdminSet(\'' + o.id + '\',\'out_for_delivery\')">With rider</button> ';
+        if(o.status === "placed" || o.status === "out_for_delivery"){
+          acts += '<button class="action-btn" type="button" onclick="nvFlyAdminSet(\'' + o.id + '\',\'delivered\')">Delivered</button> ';
+          acts += '<button class="ghost-btn" type="button" style="color:var(--nvu-bad-fg,#b3261e)" onclick="nvFlyAdminSet(\'' + o.id + '\',\'cancelled\')">Cancel</button>';
+        }
+        return '<tr><td><b>' + escLabelText(o.code) + '</b><br><small>' + escLabelText(new Date(o.created_at).toLocaleString("en-PK",{ day:"numeric", month:"short", hour:"numeric", minute:"2-digit" })) + '</small></td>' +
+          '<td>' + escLabelText(o.client || "") + '<br><small>' + escLabelText(o.phone || "") + '</small></td>' +
+          '<td>' + items + '<br><small>' + Number(o.flyers).toLocaleString("en-PK") + ' flyers</small></td>' +
+          '<td><b>Rs ' + Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 }) + '</b></td>' +
+          '<td>' + pay + '</td>' +
+          '<td>' + escLabelText(o.address || "") + '<br><small>' + escLabelText(o.city || "") + '</small>' + (o.note ? '<br><small>Note: ' + escLabelText(o.note) + '</small>' : '') + '</td>' +
+          '<td><span class="chip ' + st[1] + '">' + st[0] + '</span></td><td style="white-space:nowrap">' + acts + '</td></tr>';
+      }).join("");
+    }
+    function nvFlyAdminSet(id, status){
+      var o = NV_FLY_ADMIN.find(function(x){ return x.id === id; }); if(!o) return;
+      var sb = window.__nvSb; if(!sb){ toast("Cloud connection not ready.", "error"); return; }
+      var cash = null, reason = null;
+      if(status === "delivered" && o.pay_method === "cash"){
+        if(!confirm("Did the rider collect Rs " + Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 }) + " cash for " + o.code + "?")) return;
+        cash = true;
+      } else if(status === "cancelled"){
+        reason = prompt("Cancel " + o.code + "? Reason for the merchant" + (o.pay_method === "wallet" ? " (the money goes back to their wallet)" : "") + ":", "");
+        if(reason === null) return;
+      }
+      sb.rpc("admin_flyer_set_status", { p_id: id, p_status: status, p_cash_collected: cash, p_reason: reason }).then(function(r){
+        if(r && r.error){ toast("Could not update: " + r.error.message, "error"); return; }
+        toast(o.code + (status === "delivered" ? " delivered." : status === "cancelled" ? " cancelled." : " is with the rider."));
+        nvFlyAdminLoad();
+      }).catch(function(e){ toast("Could not update: " + ((e && e.message) || e), "error"); });
+    }
+
     function loadAdminReviews(){
       var sb = window.__nvSb;
       var tbody = document.getElementById("adminReviewQueue");
@@ -20867,6 +20948,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-reached","Reached","Arrived manifests"],
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
+      ["flyer-orders","Flyer Orders","Flyers merchants bought, to send with the rider"],
       ["reviews","Reviews","Approve merchant testimonials"],
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
       ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],

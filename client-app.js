@@ -6720,9 +6720,153 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
     });
 
+    /* Buy flyers (18 Oct 2026): courier mailer bags in packs of 100. The
+       rider brings them on the next visit. Owner and Finance seats pay from
+       the wallet when it covers the order; otherwise (or for Warehouse) the
+       rider collects cash on delivery. The server decides the payment --
+       this screen only says in advance which one it will be. */
+    var NV_FLY={ cat:null, list:[], qty:{}, loading:false, loaded:false, busy:false, err:"", done:null };
+    var NV_FLY_STATUS={ placed:["Order placed","info"], out_for_delivery:["Rider on the way","info"], delivered:["Delivered","good"], cancelled:["Cancelled",""] };
+    function nvFlyRs(v){ var n=Number(v||0); return "Rs "+n.toLocaleString("en-PK",{ minimumFractionDigits:n%1?2:0, maximumFractionDigits:2 }); }
+    function nvFlyTotals(){
+      var sizes=(NV_FLY.cat&&NV_FLY.cat.sizes)||[], total=0, flyers=0, lines=[];
+      sizes.forEach(function(s){ var q=NV_FLY.qty[s.code]||0; if(q>0){ var l=Math.round(Number(s.price)*q*100)/100; total+=l; flyers+=q; lines.push({ s:s, q:q, line:l }); } });
+      return { total:Math.round(total*100)/100, flyers:flyers, lines:lines };
+    }
+    function nvFlyLoad(){
+      var sb=window.__nvSb;
+      if(!sb || window.__NOVAX_DEMO){ NV_FLY.loaded=true; NV_FLY.err=sb?"":"Not connected. Refresh and try again."; nvFlyRender(); return; }
+      if(NV_FLY.loading) return;
+      NV_FLY.loading=true; nvFlyRender();
+      Promise.all([sb.rpc("client_flyer_catalog"), sb.rpc("client_flyer_orders")]).then(function(rs){
+        NV_FLY.loading=false; NV_FLY.loaded=true;
+        if(rs[0].error){ NV_FLY.err="Could not load flyer prices just now."; nvFlyRender(); return; }
+        NV_FLY.err=""; NV_FLY.cat=rs[0].data||{ sizes:[] }; NV_FLY.list=(!rs[1].error&&rs[1].data)||[];
+        nvFlyRender();
+      },function(){ NV_FLY.loading=false; NV_FLY.err="Could not load flyer prices just now."; nvFlyRender(); });
+    }
+    function nvFlyOpen(){ nvFlyLoad(); }
+    function nvFlyPayLine(t){
+      var c=NV_FLY.cat||{};
+      if(!t.total) return '';
+      if(c.can_use_wallet && Number(c.wallet||0)>=t.total)
+        return '<div class="nv-fly-pay is-wallet"><b>Paid from your wallet</b><span>'+escLabelText(nvFlyRs(c.wallet))+' now, '+escLabelText(nvFlyRs(Number(c.wallet)-t.total))+' after this order.</span></div>';
+      var why=c.can_use_wallet?('Your wallet has '+nvFlyRs(c.wallet||0)+', so pay '):'Pay ';
+      return '<div class="nv-fly-pay is-cash"><b>Cash to the rider</b><span>'+escLabelText(why+nvFlyRs(t.total)+' in cash when the rider brings your flyers.')+'</span></div>';
+    }
+    function nvFlyRender(){
+      var root=document.getElementById("nvFlyRoot"); if(!root) return;
+      var c=NV_FLY.cat, h='';
+      if(NV_FLY.done){
+        var d=NV_FLY.done;
+        h+='<div class="panel nv-fly-done"><div class="nv-sw-tick" aria-hidden="true">✓</div><h3>Flyer order '+escLabelText(d.code)+' placed</h3>'+
+           '<p class="nv-sw-sub">'+escLabelText(Number(d.flyers).toLocaleString("en-PK"))+' flyers, '+escLabelText(nvFlyRs(d.total))+'. '+
+           (d.pay_method==="wallet"?'Paid from your wallet. ':'Please keep '+escLabelText(nvFlyRs(d.total))+' cash ready for the rider. ')+
+           'The rider brings them on the next visit to your pickup point.</p>'+
+           '<div class="nv-sw-acts"><button type="button" class="action-btn ghost" data-fly-act="again">Order more flyers</button></div></div>';
+      } else {
+        h+='<div class="panel"><div class="section-head"><div><h3>Buy flyers</h3><p>Courier flyers in packs of 100, brought to your pickup point by the rider.</p></div></div>';
+        if(window.__NOVAX_DEMO) h+='<p class="nv-sw-note">Flyers can be ordered on a real account. This is the demo.</p>';
+        if(NV_FLY.loading && !c) h+='<p class="footer-note">Loading prices…</p>';
+        else if(NV_FLY.err && !c) h+='<p class="footer-note">'+escLabelText(NV_FLY.err)+' <button type="button" class="action-btn ghost" data-fly-act="reload">Retry</button></p>';
+        else if(c){
+          var off=!c.can_order;
+          if(off) h+='<p class="nv-sw-note">Your team role can see flyer prices but cannot order. Ask the account owner.</p>';
+          h+='<div class="nv-fly-grid">'+(c.sizes||[]).map(function(s){
+            var q=NV_FLY.qty[s.code]||0;
+            return '<div class="nv-fly-card'+(q?' on':'')+'"><div class="nv-fly-size">'+escLabelText(s.label)+'</div>'+
+              '<div class="nv-fly-price"><b>'+escLabelText(nvFlyRs(s.price))+'</b> per flyer</div>'+
+              '<div class="nv-fly-pack">'+escLabelText(nvFlyRs(Math.round(Number(s.price)*100)))+' per 100</div>'+
+              '<div class="nv-fly-step" role="group" aria-label="'+escLabelText(s.label)+' quantity">'+
+                '<button type="button" data-fly-dec="'+escLabelText(s.code)+'" aria-label="100 fewer"'+(q&&!off?'':' disabled')+'>−</button>'+
+                '<output aria-live="polite">'+(q?escLabelText(q.toLocaleString("en-PK")):'0')+'</output>'+
+                '<button type="button" data-fly-inc="'+escLabelText(s.code)+'" aria-label="100 more"'+(off||q>=10000?' disabled':'')+'>+</button></div></div>';
+          }).join("")+'</div>';
+          var t=nvFlyTotals();
+          if(t.flyers){
+            h+='<div class="nv-sw-price nv-fly-sum">'+t.lines.map(function(l){
+                return '<div><span>'+escLabelText(l.s.label)+' × '+escLabelText(l.q.toLocaleString("en-PK"))+'</span><b>'+escLabelText(nvFlyRs(l.line))+'</b></div>'; }).join("")+
+              '<div class="nv-sw-total"><span>'+escLabelText(t.flyers.toLocaleString("en-PK"))+' flyers</span><b>'+escLabelText(nvFlyRs(t.total))+'</b></div>'+nvFlyPayLine(t)+'</div>';
+            h+='<label class="nv-fly-note-l" for="nvFlyNote">Note for NovaX <small>(optional)</small></label><input id="nvFlyNote" class="nv-fly-note" maxlength="300" placeholder="e.g. Send with Tuesday pickup" value="'+escLabelText(NV_FLY.note||"")+'">';
+          }
+          h+='<p class="nv-sw-err" id="nvFlyErr" role="alert"></p>'+
+             '<button type="button" class="action-btn nv-sw-go" id="nvFlyGo"'+(t.flyers&&!off&&!NV_FLY.busy&&!window.__NOVAX_DEMO?'':' disabled')+'>'+
+             (NV_FLY.busy?'Placing order…':(t.flyers?'Place order · '+escLabelText(nvFlyRs(t.total)):'Choose a size to start'))+'</button>';
+        }
+        h+='</div>';
+      }
+      h+='<div class="panel nv-sw-list"><div class="section-head"><div><h3>Your flyer orders</h3></div></div>';
+      if(!NV_FLY.list.length) h+='<p class="footer-note">'+(NV_FLY.loading?'Loading…':'No flyer orders yet.')+'</p>';
+      else h+=NV_FLY.list.map(function(o){
+        var st=NV_FLY_STATUS[o.status]||[o.status,""];
+        var items=(o.items||[]).map(function(i){ return i.label+" × "+Number(i.qty).toLocaleString("en-PK"); }).join(", ");
+        var pay=o.pay_method==="wallet"?"Paid from wallet":(o.status==="delivered"?"Paid in cash":"Cash to rider");
+        return '<div class="nv-sw-row"><div class="nv-sw-row-main"><b>'+escLabelText(o.code)+'</b> <span class="chip '+st[1]+'">'+escLabelText(st[0])+'</span>'+
+          '<div class="nv-sw-row-sub">'+escLabelText(items)+'</div>'+
+          '<div class="nv-sw-row-sub">'+escLabelText(nvDate(o.created_at))+' · '+escLabelText(pay)+(o.status==="cancelled"&&o.pay_method==="wallet"?' · refunded':'')+'</div></div>'+
+          '<div class="nv-sw-row-side"><b>'+escLabelText(nvFlyRs(o.total))+'</b><div class="nv-sw-row-acts">'+
+          (o.status==="placed"&&c&&c.can_order?'<button type="button" class="action-btn ghost nv-sw-cancel" data-fly-act="cancel" data-id="'+escLabelText(o.id)+'" data-code="'+escLabelText(o.code)+'">Cancel</button>':'')+
+          '</div></div></div>';
+      }).join("");
+      h+='</div>';
+      root.innerHTML=h;
+    }
+    function nvFlySubmit(){
+      if(NV_FLY.busy) return;
+      var t=nvFlyTotals(); if(!t.flyers) return;
+      var sb=window.__nvSb, err=document.getElementById("nvFlyErr");
+      if(!sb){ if(err) err.textContent="Not connected. Refresh and try again."; return; }
+      NV_FLY.busy=true; nvFlyRender();
+      var items=t.lines.map(function(l){ return { code:l.s.code, qty:l.q }; });
+      Promise.resolve(sb.rpc("client_flyer_order",{ p_items:items, p_note:NV_FLY.note||null })).then(function(r){
+        NV_FLY.busy=false;
+        if(r && r.error){ nvFlyRender(); var e=document.getElementById("nvFlyErr"); if(e) e.textContent=String(r.error.message||"Could not place the order."); return; }
+        NV_FLY.done=r.data||{}; NV_FLY.qty={}; NV_FLY.note="";
+        try{ toast("Flyer order "+NV_FLY.done.code+" placed","success"); }catch(e){}
+        nvFlyRender(); nvFlyLoad();
+        try{ if(NV_FLY.done.pay_method==="wallet" && typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
+      },function(){
+        NV_FLY.busy=false; nvFlyRender();
+        var e=document.getElementById("nvFlyErr"); if(e) e.textContent="We could not confirm the order. Check Your flyer orders below before trying again.";
+        nvFlyLoad();
+      });
+    }
+    document.addEventListener("input",function(e){ if(e.target && e.target.id==="nvFlyNote") NV_FLY.note=e.target.value; });
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target:null; if(!t) return;
+      var inc=t.closest("[data-fly-inc]"), dec=t.closest("[data-fly-dec]");
+      if(inc||dec){
+        var code=(inc||dec).getAttribute(inc?"data-fly-inc":"data-fly-dec"), q=NV_FLY.qty[code]||0;
+        NV_FLY.qty[code]=Math.max(0,Math.min(10000,q+(inc?100:-100)));
+        nvFlyRender();
+        var again=document.querySelector('[data-fly-'+(inc?'inc':'dec')+'="'+code+'"]');
+        if(again && !again.disabled) again.focus(); else { var o=document.querySelector('[data-fly-inc="'+code+'"]'); if(o) o.focus(); }
+        return;
+      }
+      if(t.closest("#nvFlyGo")){ nvFlySubmit(); return; }
+      var act=t.closest("[data-fly-act]"); if(!act) return;
+      var k=act.getAttribute("data-fly-act");
+      if(k==="again"){ NV_FLY.done=null; nvFlyRender(); }
+      else if(k==="reload"){ nvFlyLoad(); }
+      else if(k==="cancel"){
+        var id=act.getAttribute("data-id"), c=act.getAttribute("data-code");
+        var o=(NV_FLY.list||[]).find(function(x){ return x.id===id; })||{};
+        Promise.resolve(window.nvAsk ? window.nvAsk({ title:"Cancel "+c+"?", body:o.pay_method==="wallet"?"The "+nvFlyRs(o.total)+" goes back to your wallet straight away.":"Nothing is charged.", ok:"Cancel order", cancel:"Keep it", danger:true }) : true).then(function(yes){
+          if(!yes) return;
+          act.disabled=true;
+          Promise.resolve(window.__nvSb.rpc("client_flyer_cancel",{ p_id:id })).then(function(r){
+            if(r && r.error){ act.disabled=false; toast(r.error.message||"Could not cancel.","error"); return; }
+            toast(c+" cancelled"+(r.data&&r.data.refunded?". Money is back in your wallet.":"."),"success"); nvFlyLoad();
+            try{ if(r.data&&r.data.refunded&&typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
+          },function(){ act.disabled=false; toast("Could not cancel just now.","error"); });
+        });
+      }
+    });
+
     function renderClientReportFull(){
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
       if(state.activeClientTab==="swap"){ try{ nvSwOpen(); }catch(e){} }
+      if(state.activeClientTab==="flyers"){ try{ nvFlyOpen(); }catch(e){} }
       try{ nvRcCheck(); }catch(e){}
       try{ nvCustCheck(); }catch(e){}
       if(state.activeClientTab==="recover"){ try{ nvRcOpen(); }catch(e){} }
@@ -8722,6 +8866,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Nova Recover: Rs 100 for an order NovaX recovered. It is stored as
            an adjustment so every total treats it like one; here it is named. */
         x.kind="charge"; x.icon="charge"; x.title="Nova Recover fee"; x.sub=ref?("Order "+ref+" recovered"):"Order recovered";
+      } else if(t==="admin_adjustment" && String(l.referenceType||"")==="flyer_order"){
+        x.kind="charge"; x.icon="charge"; x.title="Flyers"; x.sub=ref?("Order "+ref):"Flyer order";
+      } else if(t==="admin_adjustment" && String(l.referenceType||"")==="flyer_refund"){
+        x.kind="in"; x.icon="back"; x.title="Flyers refunded"; x.sub=ref?("Order "+ref+" cancelled"):"Flyer order cancelled";
       } else if(t==="admin_adjustment"){
         x.kind=!x.affects?"info":(amt>=0?"in":"charge"); x.icon="adjust";
         x.title=x.affects?"Adjustment by NovaX":"Balance note";
@@ -15455,7 +15603,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        A function declaration is fully hoisted, so keeping the data inside it
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
-      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","recover","integrations",
+      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","flyers","recover","integrations",
                   "reports","money","profile","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
@@ -15928,11 +16076,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","recover","integrations","reports","money","profile","subAccounts","tickets","support"],
+      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","flyers","recover","integrations","reports","money","profile","subAccounts","tickets","support"],
       /* Profile is viewable by every seat (read-only); nv_profile_save
          refuses anyone but the owner. */
-      Finance:   ["dashboard","reports","money","profile","tickets","support"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","swap","recover","awbLabel","loadSheet","profile","support"],
+      Finance:   ["dashboard","reports","money","flyers","profile","tickets","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","swap","flyers","recover","awbLabel","loadSheet","profile","support"],
       Support:   ["dashboard","profile","tickets","support"]
     };
     /* Until the seat lookup has actually answered, act as the most limited
@@ -22422,6 +22570,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["awbLabel","Labels and pickup","Print AWB labels, request a pickup"],
       ["bulkBooking","Bulk booking","Import a CSV of orders"],
       ["swap","Nova Swap","Exchange an item: new one out, old one back"],
+      ["flyers","Buy flyers","Courier flyers in packs of 100, brought by the rider"],
       ["recover","Nova Recover","We call customers who refused and sell the order again"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
