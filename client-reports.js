@@ -622,7 +622,7 @@
     if (!HOST) return;
     var focusId = document.activeElement && HOST.contains(document.activeElement) ? document.activeElement.id : "";
     var caret = focusId === "nvrQ" ? document.activeElement.selectionStart : null;
-    if (!S.rows) { HOST.innerHTML = bar() + '<div class="nvr-body is-loading">' + skeleton() + '</div>'; return; }
+    if (!S.rows) { HOST.innerHTML = bar() + '<div class="nvr-body is-loading">' + skeleton() + '</div>'; keepChip(); return; }
     var R = range(), m = metrics(S.rows), pm = S.prev ? metrics(S.prev) : null, bk = buckets(S.rows, R);
     INS = insights(m, pm);
     var small = m.total < 10;
@@ -636,6 +636,7 @@
           '<div class="nvr-grid">' + moneyFlow(m) + (small ? '<div class="nvr-card nvr-note"><h4 class="nvr-h">Charts</h4><p class="nvr-empty">Charts appear once you have 10 or more parcels in the period. You have ' + m.total + ' so far.</p></div>' : trend(bk)) + '</div>' +
           '<div class="nvr-grid">' + cities() + problems(m) + '</div>' + explorer()) +
       '</div>';
+    keepChip();
     if (!small) drawChart(bk);
     countUp();
     recoverLine(R);
@@ -644,7 +645,15 @@
   /* The bar alone, so a period change shows the new chip at once while the
      old figures stay (dimmed) until the new ones arrive -- never a new date
      label beside old numbers. */
-  function updateBar(){ var b = document.getElementById("nvrBar"); if (!b) return; var tmp = document.createElement("div"); tmp.innerHTML = bar(); b.replaceWith(tmp.firstChild); }
+  function updateBar(){ var b = document.getElementById("nvrBar"); if (!b) return; var tmp = document.createElement("div"); tmp.innerHTML = bar(); b.replaceWith(tmp.firstChild); keepChip(); }
+  /* Audit 17 Oct 2026: on a phone the period chips are a sideways strip, and
+     every redraw rebuilt it at the start, so a chosen "All time" or "Custom"
+     sat off-screen and no visible chip looked selected. Bring it back. */
+  function keepChip(){
+    var box = HOST && HOST.querySelector(".nvr-chips"), on = box && box.querySelector(".nvr-chip.is-on");
+    if (!box || !on || box.scrollWidth <= box.clientWidth) return;
+    box.scrollLeft = Math.max(0, on.offsetLeft - box.offsetLeft - (box.clientWidth - on.offsetWidth) / 2);
+  }
   function markBusy(on){ var b = HOST && HOST.querySelector(".nvr-body"); if (b) b.classList.toggle("is-busy", !!on); }
   function paintExplorer(){
     var ex = document.getElementById("nvrExplorer"); if (!ex) { paint(); return; }

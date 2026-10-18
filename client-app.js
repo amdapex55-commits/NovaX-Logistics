@@ -700,6 +700,7 @@ window.nvCount=function(n,one,many){
         document.body.classList.remove("nvob-lock");
         nvOnboardMarkDone(cid);
         try{ ov.remove(); }catch(e){}
+        try{ if(typeof nvRateNotice === "function") setTimeout(nvRateNotice, 300); }catch(e){}
         document.removeEventListener("keydown", onKey);
         /* In demo the signup invitation waits for the deck, so a visitor is
            never shown two overlays at once. */
@@ -7871,7 +7872,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    var NV_REPORTS_SRC="client-reports.js?v=cffd9e43";
+    var NV_REPORTS_SRC="client-reports.js?v=0df5d956";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },
@@ -11090,7 +11091,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            navigation used elsewhere on this page. */
         if(confirmLine){ confirmLine.innerHTML=mapped.packingNoteWarning
           ? `AWB ${escLabelText(awb)} was created, but its packing note was not saved. Check the note with NovaX before dispatch. <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Open AWB label</button>`
-          : `AWB ${escLabelText(awb)} created and ready to print. <span style="font-weight:600;color:var(--nvu-ink-2)">${escLabelText(nvChargeLine)}.</span> <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Print AWB label</button>`;
+          : `AWB ${escLabelText(awb)} created and ready to print. <span style="font-weight:600;color:var(--nvu-ink-2)">${escLabelText(nvChargeLine)}.</span> <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Print label and request pickup</button>`;
           confirmLine.style.color=mapped.packingNoteWarning?"#a15c00":""; confirmLine.style.display="block"; }
         // NovaX fix (confidence messaging): explicit "synced" + "ready to
         // print" pairing matches the two things the client actually needs to
@@ -13296,6 +13297,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var host = document.getElementById("nvRateNotice");
       if(!host) return;
       if(!NV_RATE_NOTICE_ACTIVE){ host.style.display = "none"; host.innerHTML = ""; return; }
+      /* Audit 17 Oct 2026: a new merchant got the nine-card tour and this
+         card at once. It waits for the tour (without spending a view) and is
+         shown when the tour closes. */
+      if(document.getElementById("nvObDeck")){ host.style.display = "none"; return; }
       var key = nvRateNoticeKey();
       if(!key){ host.style.display = "none"; return; }   // no workspace yet
       var raw;
@@ -13339,6 +13344,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           host.style.display = "none";
         });
       }
+      /* From the second visit on it has been read once: it sits under the
+         day's work on Home (after the parcels needing attention) instead of
+         above every tab. */
+      try{
+        if(seen >= 2){
+          var anchor = document.getElementById("clientActionNeededCard");
+          if(anchor && anchor.parentNode && host.previousElementSibling !== anchor){ anchor.parentNode.insertBefore(host, anchor.nextSibling); host.style.marginTop = "14px"; }
+        }
+      }catch(e){}
       var c = document.getElementById("nvRateNoticeCount");
       if(c) c.textContent = seen >= 3
         ? "This is the last time you will see this."
@@ -13382,7 +13396,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if (subj){ subj.value = r.subject || ""; NV_TK_OWNED_SUBJECT = r.subject || ""; }
         if (pri && r.priority) pri.value = r.priority;
         var focusEl = (r.subject && awb && !awb.value.trim()) ? awb : (subj || null);
-        if (focusEl && focusEl.focus) focusEl.focus();
+        /* Audit 17 Oct 2026: on a phone the focused field landed at the very
+           bottom edge under the chips. Centre it, then focus without a jump. */
+        if (focusEl){
+          try{ focusEl.scrollIntoView({ block:"center", behavior:"smooth" }); }catch(e){}
+          try{ focusEl.focus({ preventScroll:true }); }catch(e){ if (focusEl.focus) focusEl.focus(); }
+        }
       });
       /* The moment they edit the subject themselves, no reason is selected any
          more -- a lit chip that no longer matches the form is a lie. */
@@ -18406,7 +18425,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +"#clientMenu.open #nvMoreBtn{display:none!important}"
           +"#clientMenu.open .nv-more-menu{display:contents!important}"
           +"#clientMenu.open .nv-more-menu .client-tab{width:auto;margin:0}"
+          /* Audit 17 Oct 2026: Store connections and Team sat below the fold
+             in the phone menu, where sellers looking for a Shopify code or a
+             staff login did not find them. Grid order lifts the real buttons
+             into a "Set up" row at the top; nothing is moved or copied, so
+             role filtering still applies. */
+          +"#clientMenu.open .nv-quick-h{display:block;order:-3;grid-column:1/-1;margin:2px 6px 0;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--nvu-ink-2)}"
+          +"#clientMenu.open [data-client-tab=\"integrations\"],#clientMenu.open [data-client-tab=\"subAccounts\"]{order:-2}"
+          +"#clientMenu.open.nv-quick-none .nv-quick-h{display:none}"
           +"}"
+          +".nv-quick-h{display:none}"
           +".nv-more-menu .client-tab{display:block!important;width:100%;text-align:left;margin:2px 0}"
           /* #43. A tile whose label wrapped grew to 146px beside 46px
              neighbours, because nothing constrained the height and the grid
@@ -18742,6 +18770,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         btn.textContent="More \u25be";
         var menu=document.createElement("div"); menu.className="nv-more-menu"; menu.id="nvMoreMenu";
         wrap.appendChild(btn); wrap.appendChild(menu); bar.appendChild(wrap);
+        (function(){
+          var qh=document.createElement("p"); qh.className="nv-quick-h"; qh.textContent="Set up"; bar.appendChild(qh);   /* not .nv-menu-h: syncHeads() in client.html hides a heading with no tab after it in the DOM, and this one sits last */
+          /* No heading over an empty row: hide it when the role sees neither. */
+          function quickCheck(){
+            var vis=["integrations","subAccounts"].some(function(id){ var b=document.querySelector('#clientMenu [data-client-tab="'+id+'"]'); return b && getComputedStyle(b).display!=="none"; });
+            bar.classList.toggle("nv-quick-none", !vis);
+          }
+          try{ new MutationObserver(function(){ if(bar.classList.contains("open")) quickCheck(); }).observe(bar,{ attributes:true, attributeFilter:["class"] }); }catch(e){}
+        })();
         RARE_TABS.forEach(function(id){
           var el=bar.querySelector('[data-client-tab="'+id+'"]');
           if(el && RARE_HEADS[id]){ var hd=document.createElement("p"); hd.className="nv-menu-h"; hd.textContent=RARE_HEADS[id]; menu.appendChild(hd); }
@@ -19745,6 +19782,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        again the next time the page moves. Only real controls count -- a
        tappable card or row does not -- so it is not hidden all the time, and
        NovaX AI is always in the More menu as well. */
+    /* True when a line of visible text inside el overlaps the button's box
+       (shrunk 4 px so a hairline touch does not count). Geometry, not a caret
+       lookup: the nearest-caret test missed text sitting just off the sample
+       points. Empty card space has no text lines, so it never counts. */
+    var nvFabTextOver = function(el, r){
+      try{
+        var w=document.createTreeWalker(el, NodeFilter.SHOW_TEXT), n, k=0;
+        while((n=w.nextNode()) && k++<200){
+          if(!/\S/.test(n.data) || btn.contains(n)) continue;
+          var rg=document.createRange(); rg.selectNodeContents(n);
+          var rs=rg.getClientRects();
+          for(var i=0;i<rs.length;i++){ var q=rs[i];
+            if(q.right>r.left+4 && q.left<r.right-4 && q.bottom>r.top+4 && q.top<r.bottom-4) return true; }
+        }
+      }catch(e){}
+      return false;
+    };
     var covers = function(){
       try{
         if(document.querySelector(".nvauto-panel.open")) return false;
@@ -19761,6 +19815,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           for(var i=0;i<pts.length && !hit;i++){
             var el=document.elementFromPoint(pts[i][0],pts[i][1]);
             if(el && el!==btn && !btn.contains(el) && el.closest && el.closest("button,a[href],input,select,textarea,summary")) hit=true;
+            /* Audit 17 Oct 2026: it also sat on the last line of notices and
+               cards, so a merchant could not read them. Real text under the
+               spot (not empty card space) counts too. */
+            else if(el && el!==btn && !btn.contains(el)){
+              /* Look in the smallest box that holds the whole button, so text
+                 in a neighbour of the element under the point counts too. */
+              var box=el, up=0;
+              while(box && box.parentElement && up++<6){ var bb=box.getBoundingClientRect(); if(bb.left<=r.left && bb.right>=r.right && bb.top<=r.top && bb.bottom>=r.bottom) break; box=box.parentElement; }
+              if(box && box!==document.body && box!==document.documentElement && nvFabTextOver(box, r)) hit=true;
+            }
           }
         }
         btn.style.transform=was.t; btn.style.translate=""; btn.style.opacity=was.o; btn.style.pointerEvents=was.p; btn.style.visibility=was.v;
@@ -19818,6 +19882,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     addEventListener("click", recheck, true);
     addEventListener("resize", recheck);
     setTimeout(recheck, 1500);
+    setTimeout(recheck, 4000);   // data that arrives after the first look
   })();
 
   var panel=document.createElement("div");

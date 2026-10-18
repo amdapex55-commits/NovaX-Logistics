@@ -364,10 +364,15 @@
        rider building today's run does not scroll past a fortnight of
        "Refused". */
     var waitingOn = function (p) { return p.status === "Refused" || p.status === "Consignee not available"; };
-    var ready = st.filter(function (p) { return !waitingOn(p); });
+    /* Audit 17 Oct 2026: "Ready to deliver (7)" over "Select all (6)". A
+       reattempt booked for a later day (or a parcel past 3 attempts) cannot
+       go out now, so it is counted in its own group, not in today's run. */
+    var notReady = st.filter(function (p) { return !waitingOn(p) && outLock(p); });
+    var ready = st.filter(function (p) { return !waitingOn(p) && !outLock(p); });
     var stuck = st.filter(waitingOn).sort(function (x, y) { return R.timestamp(x.statusSince) - R.timestamp(y.statusSince); });
     q("stationList").innerHTML = (st.length ? "" : empty()) +
       (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + selectAllBtn("station", free(ready).map(function (p) { return p.awb; })) + ready.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
+      (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Aaj nahi — baad ki tareekh" : "Not today — scheduled for later") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (stuck.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</h3>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
     q("doneList").innerHTML = deliveredToday.map(function (p) { return card(p); }).join("") || empty();
