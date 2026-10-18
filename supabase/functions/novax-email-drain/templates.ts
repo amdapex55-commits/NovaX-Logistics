@@ -1,7 +1,7 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
   | 'back_quiet' | 'back_tried' | 'setup_ready'
-  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch';
+  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -16,7 +16,7 @@ const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, I
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.
-const NUDGES = ['back_quiet', 'back_tried', 'setup_ready', 'stations_launch'];
+const NUDGES = ['back_quiet', 'back_tried', 'setup_ready', 'stations_launch', 'flyers_launch'];
 // 17 Oct 2026: the eight delivery-only stations (same list as _shared/stations.ts).
 const NEW_STATIONS = ['Faisalabad', 'Multan', 'Sahiwal', 'Okara', 'Chichawatni', 'Harappa', 'Yousuf Wala', 'Adda Gamber'];
 const HELP = WHATSAPP + '?text=' + encodeURIComponent('Hi NovaX, I got your email and want to talk about my parcels.');
@@ -328,6 +328,28 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
         ['Same rules.', 'A refused parcel comes back at the normal delivery charge, with no extra return fee.'],
       ],
       note: 'COD in your wallet the day it lands, as with every NovaX parcel. The booking form shows the price before you confirm.',
+      extraLink: ['Questions? WhatsApp us', HELP],
+    };
+  }
+  // 19 Oct 2026: Buy flyers in the portal. Prices are cost + Rs 10 from
+  // nv_flyer_sizes; if those change, change "from Rs 14.28" here too.
+  if (kind === 'flyers_launch') {
+    return {
+      subject: 'Order courier flyers from NovaX',
+      preheader: 'Packs of 100, 8 sizes. Paid from your wallet or cash to the rider, brought with your next pickup.',
+      pill: 'New: Buy flyers', tone: 'good',
+      title: 'Courier flyers, brought to your door.',
+      intro: `${hi}you can now order courier flyers${forBiz} from your NovaX portal. Our rider brings them with your next pickup, so you never run out.`,
+      fact: { label: 'COURIER FLYERS', value: 'From Rs\u00a014.28 a flyer', caption: 'Packs of 100 · 8 sizes, from 7 × 9 to 18 × 24 inches', size: 26 },
+      rows: [['Pay', 'From your NovaX Wallet, or cash to the rider'], ['Delivery', 'With your next pickup, no extra charge']],
+      cta: 'Order flyers', destination: PORTAL + '?tab=flyers',
+      stepsTitle: 'How it works',
+      steps: [
+        ['Pick your sizes.', 'Open Buy flyers in your portal. Each size shows what it fits, from jewellery to blankets.'],
+        ['Pay the easy way.', 'If your wallet has enough, it is paid from there. If not, pay the rider in cash when the flyers arrive.'],
+        ['The rider brings them.', 'To your pickup address, on the next visit. You can cancel until the rider sets out.'],
+      ],
+      note: 'The portal shows the full price list and your total before you confirm.',
       extraLink: ['Questions? WhatsApp us', HELP],
     };
   }

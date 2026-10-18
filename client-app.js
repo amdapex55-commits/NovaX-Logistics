@@ -1072,7 +1072,7 @@ window.nvCount=function(n,one,many){
           var emailQuery=new URLSearchParams(location.search), emailTab=emailQuery.get("tab");
           /* The Shopify app's Print label sends ?awb= alone; keep it across sign-in. */
           if(!emailTab && emailQuery.get("awb")) emailTab="awbLabel";
-          if(["money","awbLabel","support","profile","newBooking"].indexOf(emailTab)>-1){
+          if(["money","awbLabel","support","profile","newBooking","flyers"].indexOf(emailTab)>-1){
             var emailAwb=(emailQuery.get("awb")||"").trim().toUpperCase();
             sessionStorage.setItem("novaxEmailDestination",JSON.stringify({
               tab:emailTab, awb:/^[A-Z0-9-]{1,80}$/.test(emailAwb)?emailAwb:"", at:Date.now()
@@ -1284,7 +1284,7 @@ window.nvCount=function(n,one,many){
         var qp=new URLSearchParams(location.search);
 
         // Keep only known email destinations across the sign-in redirect.
-        var emailTabs=["money","awbLabel","support","profile","newBooking"], emailKey="novaxEmailDestination";
+        var emailTabs=["money","awbLabel","support","profile","newBooking","flyers"], emailKey="novaxEmailDestination";
         try{
           if(!location.search && !location.hash){
             var emailReturn=JSON.parse(sessionStorage.getItem(emailKey)||"null");
