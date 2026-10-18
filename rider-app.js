@@ -372,7 +372,7 @@
     var stuck = st.filter(waitingOn).sort(function (x, y) { return R.timestamp(x.statusSince) - R.timestamp(y.statusSince); });
     q("stationList").innerHTML = (st.length ? "" : empty()) +
       (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + selectAllBtn("station", free(ready).map(function (p) { return p.awb; })) + ready.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
-      (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Aaj nahi — baad ki tareekh" : "Not today — scheduled for later") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
+      (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (stuck.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</h3>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
     q("doneList").innerHTML = deliveredToday.map(function (p) { return card(p); }).join("") || empty();
