@@ -24,11 +24,37 @@ const ALIASES: Record<string, string> = {
   "chicha watni": "Chichawatni", "chichawatney": "Chichawatni",
 };
 
-/** The station a whole city field names ("multan", "Yousaf Wala"), or null. */
-export function stationName(raw: unknown): string | null {
-  const k = String(raw ?? "").toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
+function exactStation(k: string): string | null {
   if (!k) return null;
   return STATIONS_ALL.find((c) => c.toLowerCase() === k) ?? ALIASES[k] ?? null;
+}
+const norm = (v: string) => v.toLowerCase().replace(/[.]/g, " ").replace(/\s+/g, " ").trim();
+/* Words stores add around the town: province, country, "district", a postcode.
+ * "Sahiwal, Punjab", "Multan Punjab 60000", "Okara District" are the town. */
+const NOISE = /\b(punjab|sindh|kpk|khyber pakhtunkhwa|pakistan|pk|ict|district|distt|dist|city|tehsil|division|cantt|cantonment)\b|\d+/g;
+/* A small station and its district written together ("Chichawatni, Sahiwal",
+ * "Adda Gamber, Okara") is the small town, not two cities. */
+const DISTRICT_OF: Record<string, string> = {
+  "Harappa": "Sahiwal", "Chichawatni": "Sahiwal", "Yousuf Wala": "Sahiwal", "Adda Gamber": "Okara",
+};
+
+/** The station a city field names ("multan", "Yousaf Wala", "Sahiwal, Punjab"),
+ *  or null. Two different stations in one field ("Lahore, Multan") is null:
+ *  never a guess. */
+export function stationName(raw: unknown): string | null {
+  const whole = norm(String(raw ?? "").replace(/,/g, " "));
+  const hit = exactStation(whole);
+  if (hit) return hit;
+  const found = new Set<string>();
+  for (const part of String(raw ?? "").split(/[,/|;]+/)) {
+    const k = norm(part);
+    const s = exactStation(k) ?? exactStation(k.replace(NOISE, " ").replace(/\s+/g, " ").trim());
+    if (s) found.add(s);
+    else if (k.replace(NOISE, "").trim()) return null;   // an unknown place in the field: refuse, do not guess
+  }
+  let hits = [...found];
+  if (hits.length > 1) hits = hits.filter((h) => !hits.some((o) => DISTRICT_OF[o] === h));
+  return hits.length === 1 ? hits[0] : null;
 }
 
 /** "Karachi, Lahore, ... and Adda Gamber" for messages. */
