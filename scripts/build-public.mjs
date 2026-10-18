@@ -40,6 +40,12 @@ const publicFiles = [
   "tracking.html",
   "unsubscribe.html",
   "when-is-cod-paid.html",
+  "best-cod-courier-pakistan.html",
+  "novax-vs-tcs.html",
+  "novax-vs-leopards.html",
+  "novax-vs-postex.html",
+  "novax-vs-trax.html",
+  "novax-vs-mnp.html",
   "client-app.js",
   "client-app.min.js",
   "client-recover.js",
@@ -53,6 +59,7 @@ const publicFiles = [
   "rider.css",
   "sw.js",
   "robots.txt",
+  "531cb461222aa19aa0a9dcd567463352.txt",  // IndexNow key (19 Oct 2026): proves the site is ours when pinging Bing/Yandex
   "sitemap.xml",
 ];
 
