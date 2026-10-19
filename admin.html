@@ -2554,6 +2554,15 @@
       display: none;
       gap: 10px;
     }
+    .nv-fly-card{padding:12px 14px;border:1px solid var(--nvu-line,var(--line));border-radius:14px;background:var(--nvu-bg-2,var(--panel));display:grid;gap:4px}
+    .nv-fly-card-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .nv-fly-card-who{font-weight:700}
+    .nv-fly-card-who a{color:inherit}
+    .nv-fly-card-sub{font-size:13px;color:var(--nvu-ink-2,var(--muted));overflow-wrap:anywhere}
+    .nv-fly-card-money{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px}
+    .nv-fly-card-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .nv-fly-card-acts>*{flex:1 1 auto;min-height:44px}
+    .nv-fly-x{color:var(--nvu-bad-fg,#b3261e)!important}
 
     .parcel-card {
       padding: 12px;
@@ -6280,6 +6289,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div><h3>Flyer Orders</h3><p>Flyers merchants bought in the portal. Send them with the next pickup rider. Wallet orders are already paid; for cash orders confirm the rider collected the money when you mark Delivered. Cancelling a wallet order refunds it.</p></div>
                   <div style="display:flex;gap:8px;flex:0 0 auto;align-items:center">
                     <select id="nvFlyFilter" onchange="nvFlyAdminLoad()" aria-label="Show"><option value="open">Open</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option><option value="">All</option></select>
+                    <button class="ghost-btn" type="button" onclick="nvFlyAdminPrintList()">Morning list</button>
                     <button class="ghost-btn" type="button" onclick="nvFlyAdminLoad()">Refresh</button>
                   </div>
                 </div>
@@ -6289,6 +6299,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <tbody id="nvFlyAdminRows"><tr><td colspan="8" class="footer-note">Loading flyer orders…</td></tr></tbody>
                   </table>
                 </div>
+                <div class="mobile-card-list nv-fly-cards" id="nvFlyAdminCards"></div>
               </div>
             </section>
 
@@ -17756,7 +17767,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
     function nvFlyAdminRender(){
       var tb = document.getElementById("nvFlyAdminRows"); if(!tb) return;
-      if(!NV_FLY_ADMIN.length){ tb.innerHTML = '<tr><td colspan="8" class="footer-note">No flyer orders here.</td></tr>'; return; }
+      var cards = document.getElementById("nvFlyAdminCards");
+      if(!NV_FLY_ADMIN.length){ tb.innerHTML = '<tr><td colspan="8" class="footer-note">No flyer orders here.</td></tr>'; if(cards) cards.innerHTML = '<p class="footer-note">No flyer orders here.</p>'; return; }
       var ST = { placed:["New","info"], out_for_delivery:["With rider","info"], delivered:["Delivered","good"], cancelled:["Cancelled",""] };
       tb.innerHTML = NV_FLY_ADMIN.map(function(o){
         var st = ST[o.status] || [o.status, ""];
@@ -17776,23 +17788,80 @@ html,body{ background:var(--bg); color:var(--ink); }
           '<td>' + escLabelText(o.address || "") + '<br><small>' + escLabelText(o.city || "") + '</small>' + (o.note ? '<br><small>Note: ' + escLabelText(o.note) + '</small>' : '') + '</td>' +
           '<td><span class="chip ' + st[1] + '">' + st[0] + '</span></td><td style="white-space:nowrap">' + acts + '</td></tr>';
       }).join("");
+      /* Phones: the table is hidden below the tablet width, so the same orders as cards. */
+      if(cards) cards.innerHTML = NV_FLY_ADMIN.map(function(o){
+        var st = ST[o.status] || [o.status, ""];
+        var items = (o.items || []).map(function(i){ return escLabelText(i.label) + " &times; " + Number(i.qty).toLocaleString("en-PK"); }).join(" · ");
+        var pay = o.pay_method === "wallet" ? '<span class="chip good">Wallet, paid</span>' : (o.cash_collected ? '<span class="chip good">Cash collected</span>' : '<span class="chip warn">Collect cash</span>');
+        var acts = "";
+        if(o.status === "placed") acts += '<button class="ghost-btn" type="button" onclick="nvFlyAdminSet(\'' + o.id + '\',\'out_for_delivery\')">With rider</button>';
+        if(o.status === "placed" || o.status === "out_for_delivery"){
+          acts += '<button class="action-btn" type="button" onclick="nvFlyAdminSet(\'' + o.id + '\',\'delivered\')">Delivered</button>';
+          acts += '<button class="ghost-btn nv-fly-x" type="button" onclick="nvFlyAdminSet(\'' + o.id + '\',\'cancelled\')">Cancel</button>';
+        }
+        return '<div class="nv-fly-card"><div class="nv-fly-card-top"><b>' + escLabelText(o.code) + '</b><span class="chip ' + st[1] + '">' + st[0] + '</span></div>' +
+          '<div class="nv-fly-card-who">' + escLabelText(o.client || "") + (o.phone ? ' · <a href="tel:' + escLabelText(o.phone) + '">' + escLabelText(o.phone) + '</a>' : '') + '</div>' +
+          '<div class="nv-fly-card-sub">' + items + '</div>' +
+          '<div class="nv-fly-card-sub">' + escLabelText([o.address, o.city].filter(Boolean).join(", ")) + '</div>' +
+          (o.note ? '<div class="nv-fly-card-sub">Note: ' + escLabelText(o.note) + '</div>' : '') +
+          '<div class="nv-fly-card-money"><b>Rs ' + Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 }) + '</b>' + pay + '</div>' +
+          (acts ? '<div class="nv-fly-card-acts">' + acts + '</div>' : '') + '</div>';
+      }).join("");
     }
     function nvFlyAdminSet(id, status){
       var o = NV_FLY_ADMIN.find(function(x){ return x.id === id; }); if(!o) return;
       var sb = window.__nvSb; if(!sb){ toast("Cloud connection not ready.", "error"); return; }
       var cash = null, reason = null;
+      var rs = Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 });
+      var ask = window.nvAsk || function(q){ return Promise.resolve(q.input ? prompt(q.title, "") : confirm(q.title)); };
+      var question = Promise.resolve(true);
       if(status === "delivered" && o.pay_method === "cash"){
-        if(!confirm("Did the rider collect Rs " + Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 }) + " cash for " + o.code + "?")) return;
+        question = ask({ title:"Rider collected Rs " + rs + " cash?", body:o.code + " for " + (o.client || "the merchant") + ". Mark delivered only once the cash is in hand.", ok:"Yes, cash collected", cancel:"Not yet" });
         cash = true;
       } else if(status === "cancelled"){
-        reason = prompt("Cancel " + o.code + "? Reason for the merchant" + (o.pay_method === "wallet" ? " (the money goes back to their wallet)" : "") + ":", "");
-        if(reason === null) return;
+        question = ask({ title:"Cancel " + o.code + "?", body:o.pay_method === "wallet" ? "Rs " + rs + " goes back to the merchant's wallet." : "Nothing was charged.", input:{ label:"Reason for the merchant (optional)", value:"" }, ok:"Cancel order", cancel:"Keep it", danger:true });
       }
+      question.then(function(ans){
+      if(ans === false || ans === null) return;
+      if(status === "cancelled") reason = typeof ans === "string" ? ans : "";
       sb.rpc("admin_flyer_set_status", { p_id: id, p_status: status, p_cash_collected: cash, p_reason: reason }).then(function(r){
         if(r && r.error){ toast("Could not update: " + r.error.message, "error"); return; }
         toast(o.code + (status === "delivered" ? " delivered." : status === "cancelled" ? " cancelled." : " is with the rider."));
         nvFlyAdminLoad();
       }).catch(function(e){ toast("Could not update: " + ((e && e.message) || e), "error"); });
+      });
+    }
+    /* Morning list: open orders grouped by city, to hand to the pickup riders.
+       Opens in a new tab with its own Print button (never print() from here). */
+    function nvFlyAdminPrintList(){
+      var sb = window.__nvSb; if(!sb){ toast("Cloud connection not ready.", "error"); return; }
+      var win = window.open("", "_blank");
+      if(!win){ toast("Allow pop-ups to open the morning list.", "error"); return; }
+      win.document.write("<p style='font:16px system-ui;padding:20px'>Loading…</p>");
+      sb.rpc("admin_flyer_orders", { p_status: null }).then(function(r){
+        if(r && r.error){ win.document.body.innerHTML = "<p>Could not load: " + escLabelText(r.error.message) + "</p>"; return; }
+        var open = (r.data || []).filter(function(o){ return o.status === "placed" || o.status === "out_for_delivery"; });
+        var by = {}; open.forEach(function(o){ var c = o.city || "No city"; (by[c] = by[c] || []).push(o); });
+        var day = new Date().toLocaleDateString("en-GB",{ weekday:"long", day:"numeric", month:"long" });
+        var h = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Flyer orders, " + escLabelText(day) + "</title>" +
+          "<style>body{font:14px/1.45 system-ui,Arial;color:#111;margin:20px}h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:22px 0 6px;border-bottom:2px solid #111;padding-bottom:4px}" +
+          "table{width:100%;border-collapse:collapse}td,th{border:1px solid #bbb;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f2f2f2}.cash{font-weight:700}" +
+          "button{font:inherit;padding:8px 16px;margin:10px 0}@media print{button{display:none}}</style></head><body>" +
+          "<h1>Flyer orders to deliver</h1><div>" + escLabelText(day) + " · " + open.length + (open.length === 1 ? " order" : " orders") + "</div><button onclick='print()'>Print</button>";
+        if(!open.length) h += "<p>No open flyer orders.</p>";
+        Object.keys(by).sort().forEach(function(c){
+          var cash = by[c].filter(function(o){ return o.pay_method === "cash"; }).reduce(function(s,o){ return s + Number(o.total||0); }, 0);
+          h += "<h2>" + escLabelText(c) + " · " + by[c].length + (by[c].length === 1 ? " order" : " orders") + (cash ? " · collect Rs " + cash.toLocaleString("en-PK",{ maximumFractionDigits:2 }) : "") + "</h2>" +
+            "<table><tr><th>Order</th><th>Merchant</th><th>Address</th><th>Flyers</th><th>Payment</th><th>Signed</th></tr>" +
+            by[c].map(function(o){
+              return "<tr><td>" + escLabelText(o.code) + "</td><td>" + escLabelText(o.client||"") + "<br>" + escLabelText(o.phone||"") + "</td><td>" + escLabelText(o.address||"") + (o.note ? "<br><i>" + escLabelText(o.note) + "</i>" : "") + "</td><td>" +
+                (o.items||[]).map(function(i){ return escLabelText(i.label) + " × " + Number(i.qty).toLocaleString("en-PK"); }).join("<br>") + "</td><td class='" + (o.pay_method === "cash" ? "cash" : "") + "'>" +
+                (o.pay_method === "cash" ? "Collect Rs " + Number(o.total).toLocaleString("en-PK",{ maximumFractionDigits:2 }) : "Paid (wallet)") + "</td><td style='width:90px'></td></tr>";
+            }).join("") + "</table>";
+        });
+        h += "</body></html>";
+        win.document.open(); win.document.write(h); win.document.close();
+      }).catch(function(e){ win.document.body.innerHTML = "<p>Could not load.</p>"; });
     }
 
     function loadAdminReviews(){
