@@ -23,9 +23,8 @@
  *   this at all.
  */
 var CACHE = "novax-v271";
-/* The two Nova Instant pages a phone on a weak connection must still be able
-   to open: the customer's booking/tracking page and the Instant rider's page. */
-var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html", "/instant-account.html"];
+/* Nova Instant is paused (19 Oct 2026), so its pages are no longer kept offline. */
+var SHELLS = ["/client.html", "/rider.html"];
 var PRECACHE = SHELLS.concat(["/assets/favicon.svg", "/offline.html"]);
 
 self.addEventListener("install", function (event) {

@@ -4,6 +4,15 @@ Aisha: "shelf nova instant for now from admin client index until our operations 
 
 Nothing was deleted. The Instant pages, their database and the rider app tab are untouched; only the ways in were taken out, and booking is paused (`nvi_config.open = false`).
 
+## Paused completely, 19 Oct 2026
+Aisha: "pause it completely". On top of the shelving above:
+- Every `nvi_*` function lost EXECUTE for public, anon and authenticated (only service_role keeps it): `sql_novax_instant_pause_20261019.sql`.
+- Cron `nvi-expire-unconfirmed` was unscheduled.
+- The five Instant pages moved to `shelved/nova-instant/pages/`. `scripts/build-public.mjs` publishes `instant-paused.html` under all five old addresses.
+- `sw.js` no longer precaches them. The rider app's Instant tab stays hidden, because `nvi_rider_me` is refused.
+
+To undo that first: run `restore-access.sql`, move the pages back to the repo root, put them back on the `publicFiles` list, remove the paused-page loop, and restore `SHELLS` in sw.js. Then follow the steps below.
+
 ## To bring it back
 
 1. `update public.nvi_config set open = true where id;`

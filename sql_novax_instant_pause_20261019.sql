@@ -1,0 +1,67 @@
+-- 19 Oct 2026: Nova Instant paused completely (Aisha: "pause it completely").
+-- It was shelved on 9 Oct with booking closed, but its 60 functions were still
+-- callable by signed-out visitors and signed-in users, and a cron ran every 10
+-- minutes. Only service_role keeps access. Nothing is deleted: the one job,
+-- the wallets and the riders stay. Undo: shelved/nova-instant/restore-access.sql
+revoke execute on function public.nvi_admin_adjust(p_wallet uuid, p_amount integer, p_note text, p_key uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_assign(p_job uuid, p_rider uuid, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_board() from public, anon, authenticated;
+revoke execute on function public.nvi_admin_cancel(p_job uuid, p_reason text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_check_docs(p_rider uuid, p_ok boolean) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_confirm(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_deposit(p_id bigint, p_ok boolean, p_amount integer, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_handover(p_rider uuid, p_key uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_invite_rider(p_name text, p_email text, p_phone text, p_plate text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_job(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_ledger(p_wallet uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_link_route_rider(p_novax_rider uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_mark(p_job uuid, p_status text, p_note text, p_cash integer, p_reason text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_money_check() from public, anon, authenticated;
+revoke execute on function public.nvi_admin_pay(p_job uuid, p_action text, p_amount integer, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_payout(p_id bigint, p_ok boolean, p_ref text, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_relay(p_job uuid, p_rider uuid, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_route_candidates() from public, anon, authenticated;
+revoke execute on function public.nvi_admin_search(p_q text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_set_client(p_client uuid, p_block boolean, p_reason text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_set_open(p_open boolean) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_set_rider(p_rider uuid, p_status text) from public, anon, authenticated;
+revoke execute on function public.nvi_admin_wallets() from public, anon, authenticated;
+revoke execute on function public.nvi_book(p_quote uuid, p_pickup_address text, p_drop_address text, p_sender_name text, p_sender_phone text, p_receiver_name text, p_receiver_phone text, p_item text, p_payer text, p_rider_note text, p_terms boolean, p_device text, p_captcha text, p_source text, p_cod integer) from public, anon, authenticated;
+revoke execute on function public.nvi_cancel(p_token text, p_manage text) from public, anon, authenticated;
+revoke execute on function public.nvi_client_jobs(p_limit integer) from public, anon, authenticated;
+revoke execute on function public.nvi_client_ledger(p_limit integer) from public, anon, authenticated;
+revoke execute on function public.nvi_client_me() from public, anon, authenticated;
+revoke execute on function public.nvi_client_save(p_name text, p_phone text, p_address text) from public, anon, authenticated;
+revoke execute on function public.nvi_client_withdraw(p_amount integer, p_method text, p_title text, p_number text, p_cnic text, p_key uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_doc_spare(p_name text) from public, anon, authenticated;
+revoke execute on function public.nvi_docs_room() from public, anon, authenticated;
+revoke execute on function public.nvi_feedback(p_use text, p_fair text, p_note text, p_source text, p_token text, p_quote uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_find(p_code text, p_phone text) from public, anon, authenticated;
+revoke execute on function public.nvi_is_rider() from public, anon, authenticated;
+revoke execute on function public.nvi_quote(p_plat double precision, p_plng double precision, p_dlat double precision, p_dlng double precision) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_accept(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_delivered(p_job uuid, p_pin text, p_cash integer, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_deposit(p_amount integer, p_method text, p_ref text, p_key uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_docs(p_cnic text, p_bill text, p_em_name text, p_em_phone text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_failed(p_job uuid, p_reason text, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_feed() from public, anon, authenticated;
+revoke execute on function public.nvi_rider_me() from public, anon, authenticated;
+revoke execute on function public.nvi_rider_online(p_on boolean) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_payout(p_amount integer, p_method text, p_title text, p_number text, p_key uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_picked(p_job uuid, p_cash integer) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_problem(p_job uuid, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_push_drop(p_endpoint text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_push_save(p_endpoint text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_relay_code(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_relay_here(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_relay_refuse(p_job uuid, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_relay_take(p_job uuid, p_code text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_release(p_job uuid, p_reason text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_retry(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_return(p_job uuid) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_returned(p_job uuid, p_pin text, p_cash integer, p_note text) from public, anon, authenticated;
+revoke execute on function public.nvi_rider_wallet() from public, anon, authenticated;
+revoke execute on function public.nvi_status() from public, anon, authenticated;
+revoke execute on function public.nvi_track(p_token text) from public, anon, authenticated;
+select cron.unschedule('nvi-expire-unconfirmed');
+update public.nvi_config set open = false where id;

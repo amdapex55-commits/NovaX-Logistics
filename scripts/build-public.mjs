@@ -24,11 +24,6 @@ const publicFiles = [
   "cod-delivery-cost-karachi-to-lahore.html",
   "customer-refused-cod-parcel.html",
   "index.html",
-  "instant-account.html",
-  "instant-ops.html",
-  "instant-rider.html",
-  "instant-terms.html",
-  "instant.html",
   "new-password.html",
   "offline.html",
   "privacy.html",
@@ -78,6 +73,13 @@ await mkdir(output, { recursive: true });
 
 for (const file of publicFiles) await copy(file);
 for (const directory of publicDirectories) await copy(directory);
+
+// Nova Instant is paused (19 Oct 2026): its old addresses (sign-in routing,
+// bookmarks, tracking links) all show one "paused" page. The real pages are in
+// shelved/nova-instant/pages/; see shelved/nova-instant/README.md to restore.
+for (const name of ["instant.html", "instant-rider.html", "instant-account.html", "instant-ops.html", "instant-terms.html"]) {
+  await cp(path.join(root, "instant-paused.html"), path.join(output, name));
+}
 
 // Prevent Jekyll processing from changing files whose names begin with `_`.
 await mkdir(path.join(output, ".nojekyll"));
