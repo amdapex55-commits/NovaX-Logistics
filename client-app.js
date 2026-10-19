@@ -13501,11 +13501,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        not a new sign-in. If the count cannot be read or written (private mode,
        blocked storage), the notice simply does not show -- an announcement is
        never worth breaking a portal for. */
-    var NV_RATE_NOTICE_ID = "stations-2026-10-17";   // bump to run a future notice (was "rate-2026-09-10")
-    function nvRateNoticeKey(){
+    var NV_RATE_NOTICE_ID = "stations-2026-10-17";   // the notice on screen now; set by nvRateNoticePick()
+    function nvRateNoticeKey(nid){
       var id = "";
       try{ id = String((state && state.client && state.client.id) || ""); }catch(e){ id = ""; }
-      return id ? ("novaxNotice:" + NV_RATE_NOTICE_ID + ":" + id) : "";
+      return id ? ("novaxNotice:" + (nid || NV_RATE_NOTICE_ID) + ":" + id) : "";
+    }
+    /* 19 Oct 2026: announcements queue. Each runs its three views (or until
+       "Got it"); the next starts from the following browser session, never in
+       the same session as the last view of the one before. */
+    var NV_NOTICES = [
+      { id:"stations-2026-10-17", html:function(){ return nvRateNoticeHtml(); }, tab:"newBooking", focus:"bookingNewStations" },
+      { id:"flyers-2026-10-19", html:function(){ return nvFlyNoticeHtml(); }, tab:"flyers", focus:"nvFlyRoot" }
+    ];
+    function nvRateNoticePick(){
+      try{
+        for(var i=0;i<NV_NOTICES.length;i++){
+          var n=NV_NOTICES[i], raw=localStorage.getItem(nvRateNoticeKey(n.id))||"0";
+          var shownThisSession=sessionStorage.getItem("novaxNoticeSession:"+n.id)==="1";
+          if(raw!=="dismissed" && (parseInt(raw,10)||0)<3) return n;
+          if(shownThisSession) return null;   // its last view was this session: the next waits
+        }
+      }catch(e){}
+      return null;
+    }
+    function nvFlyNoticeHtml(){
+      return '<h4>\u2605 New: buy courier flyers from NovaX</h4>' +
+        '<p>Packs of 100 in 8 sizes, from 7 \u00d7 9 to 18 \u00d7 24 inches, from <strong>Rs 14.28</strong> a flyer. ' +
+        'Paid from your wallet, or cash to the rider, who brings them with your next pickup.</p>' +
+        '<div class="nv-rn-foot">' +
+          '<button type="button" class="nv-rn-go" id="nvRateNoticeGo">Buy flyers</button>' +
+          '<button type="button" class="nv-rn-x" id="nvRateNoticeDismiss">Got it</button>' +
+          '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
+        '</div>';
     }
     /* 17 Oct 2026: the notice slot announces the eight new stations. The rate
        quoted is the merchant's OWN Zone B card (a special-rate shop sees its
@@ -13539,6 +13567,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          card at once. It waits for the tour (without spending a view) and is
          shown when the tour closes. */
       if(document.getElementById("nvObDeck")){ host.style.display = "none"; return; }
+      var cur = host.__nvNotice || nvRateNoticePick();
+      if(!cur){ host.style.display = "none"; return; }
+      NV_RATE_NOTICE_ID = cur.id;
       var key = nvRateNoticeKey();
       if(!key){ host.style.display = "none"; return; }   // no workspace yet
       var raw;
@@ -13564,17 +13595,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       if(!host.__nvBuilt){
         host.__nvBuilt = true;
-        host.innerHTML = nvRateNoticeHtml();
+        host.__nvNotice = cur;
+        host.innerHTML = cur.html();
         host.classList.add("nv-stations");
         var go = document.getElementById("nvRateNoticeGo");
-        /* Staff whose role cannot book (Finance, Support) get the news without a
+        /* Staff whose role cannot use the screen get the news without a
            button that would only bounce them back to Home. */
-        try{ if(go && typeof nvCanUseTab==="function" && !nvCanUseTab("newBooking")) go.remove(), go=null; }catch(e){}
+        try{ if(go && typeof nvCanUseTab==="function" && !nvCanUseTab(cur.tab)) go.remove(), go=null; }catch(e){}
         if(go) go.addEventListener("click", function(){
           try{ localStorage.setItem(key, "dismissed"); }catch(e){}
           host.style.display = "none";
-          try{ showClientTab("newBooking"); }catch(e){}
-          setTimeout(function(){ try{ var st=document.getElementById("bookingNewStations"); if(st) st.scrollIntoView({ block:"center" }); }catch(e){} }, 60);
+          try{ showClientTab(cur.tab); }catch(e){}
+          setTimeout(function(){ try{ var st=document.getElementById(cur.focus); if(st) st.scrollIntoView({ block:"center" }); }catch(e){} }, 60);
         });
         var x = document.getElementById("nvRateNoticeDismiss");
         if(x) x.addEventListener("click", function(){
