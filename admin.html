@@ -19405,6 +19405,33 @@ html,body{ background:var(--bg); color:var(--ink); }
         if(row.updated_at!==undefined) patch.updated_at=row.updated_at;
         return patch;
       }
+      /* 19 Oct 2026: a parcel's meta is no longer sent whole. Only the keys this
+         screen changed go to admin_parcel_meta_merge, which merges them into
+         the server's CURRENT meta, so a rider's or another admin's write since
+         this screen loaded survives (3 parcels had lost their batch tag).
+         Returns a promise like a Supabase update: { error } or { data:[{id}] }. */
+      function nvParcelWrite(id, before, patch){
+        var rest=Object.assign({}, patch), jobs=[];
+        if(Object.prototype.hasOwnProperty.call(rest,"meta")){
+          var oldM=(before && before.meta && typeof before.meta==="object")?before.meta:{}, newM=rest.meta||{}, set={}, unset=[];
+          Object.keys(newM).forEach(function(k){ if(JSON.stringify(newM[k])!==JSON.stringify(oldM[k])) set[k]=newM[k]; });
+          Object.keys(oldM).forEach(function(k){ if(!Object.prototype.hasOwnProperty.call(newM,k)) unset.push(k); });
+          delete rest.meta;
+          if(Object.keys(set).length || unset.length){
+            jobs.push(Promise.resolve(sb.rpc("admin_parcel_meta_merge",{ p_id:id, p_set:set, p_unset:unset })).then(function(r){
+              if(r && r.error) return r;
+              return (r && Number(r.data)>0) ? { data:[{ id:id }] } : { error:{ message:"the server did not update the parcel" } };
+            }));
+          }
+        }
+        var cols=Object.keys(rest).filter(function(k){ return k!=="updated_at"; });
+        if(cols.length) jobs.push(Promise.resolve(sb.from("parcels").update(rest).eq("id",id).select("id")));
+        if(!jobs.length) return Promise.resolve({ data:[{ id:id }] });
+        return Promise.all(jobs).then(function(rs){
+          for(var i=0;i<rs.length;i++){ if(rs[i] && rs[i].error) return rs[i]; }
+          return rs[rs.length-1];
+        }, function(e){ return { error:{ message:String((e&&e.message)||e) } }; });
+      }
       function syncEntity(arr, build, table){
         if(missingTables[table]) return;
         (arr||[]).forEach(function(o){
@@ -19416,7 +19443,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           var row; try{ row=build(o); }catch(e){ return; }
           if(!row) return;
           var sig=sigOf(row);
-          if(o._uuid){ if(shadow[o._uuid]===sig) return; var patch=nvRowPatch(shadowRow[o._uuid], row); shadow[o._uuid]=sig; shadowRow[o._uuid]=row; if(!patch) return; sb.from(table).update(patch).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
+          if(o._uuid){ if(shadow[o._uuid]===sig) return; var before=shadowRow[o._uuid], patch=nvRowPatch(before, row); shadow[o._uuid]=sig; shadowRow[o._uuid]=row; if(!patch) return; (table==="parcels" ? nvParcelWrite(o._uuid, before, patch) : sb.from(table).update(patch).eq("id",o._uuid)).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
           else if(table==="operations_issues"){
             /* Add-if-not-already-open on the server: returns the existing open
                issue's id instead of failing on the unique index (2 Oct 2026). */
@@ -19511,7 +19538,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             if(!parcel) return resolve({error:{message:"The parcel carrying this rider expense is outside the current admin window."}});
             var meta=Object.assign({},parcel._meta||{});
             meta.riderExpenses=(Array.isArray(meta.riderExpenses)?meta.riderExpenses:[]).filter(function(e){return e&&e.id!==uuid;});
-            return Promise.resolve(sb.from("parcels").update({meta:meta}).eq("id",parcel._uuid).select("id"))
+            return Promise.resolve(nvParcelWrite(parcel._uuid, { meta:parcel._meta||{} }, { meta:meta }))
               .catch(function(e){return{error:{message:String((e&&e.message)||e)}};})
               .then(function(r){
                 if(r&&r.error)return resolve({error:r.error});
@@ -19545,7 +19572,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           var patch=nvRowPatch(prevRow, row);
           shadow[o._uuid]=sigOf(row); shadowRow[o._uuid]=row;
           if(!patch) return resolve({ ok:true, unchanged:true });
-          Promise.resolve(sb.from(set[2]).update(patch).eq("id",o._uuid).select("id"))
+          Promise.resolve(set[2]==="parcels" ? nvParcelWrite(o._uuid, prevRow, patch) : sb.from(set[2]).update(patch).eq("id",o._uuid).select("id"))
             .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
             .then(function(r){
               if(r && !r.error && Array.isArray(r.data) && r.data.length===0) r={ error:{ message:"the server did not update the record" } };
