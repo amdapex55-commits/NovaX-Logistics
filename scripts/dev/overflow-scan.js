@@ -228,6 +228,66 @@
     return window.__fmt(Object.keys(all).map(function(k){ return all[k]; }));
   }
   window.__scanInside = scanInside;
+  /* Contrast (19 Oct 2026): every visible piece of text against the first solid
+     background behind it. WCAG AA: 4.5 for body text, 3 for large/bold text.
+     Placeholders and disabled controls are faint on purpose and skipped. */
+  function rgb(c){ var m=String(c).match(/rgba?\(([^)]+)\)/); if(!m) return null; var p=m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return { r:p[0], g:p[1], b:p[2], a:p.length>3?p[3]:1 }; }
+  function lum(c){ return [c.r,c.g,c.b].map(function(v){ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }).reduce(function(s,v,i){ return s+v*[0.2126,0.7152,0.0722][i]; },0); }
+  function mix(top,bot){ var a=top.a; return { r:top.r*a+bot.r*(1-a), g:top.g*a+bot.g*(1-a), b:top.b*a+bot.b*(1-a), a:1 }; }
+  function bgOf(el){
+    var stack=[];
+    for(var e=el; e; e=e.parentElement){
+      var cs=getComputedStyle(e);
+      if(cs.backgroundImage && cs.backgroundImage!=="none"){
+        if(!/gradient/.test(cs.backgroundImage)) return null; // picture behind: cannot judge
+        // a gradient: judge against its lightest stop (the worst case for light text)
+        // the bottom layer is the card's base; layers above it are glows that fade out
+        var bi=cs.backgroundImage, base=bi.slice(bi.lastIndexOf("gradient("));
+        var stops=(base.match(/rgba?\([^)]+\)/g)||[]).map(rgb).filter(function(x){ return x && x.a>0.5; });
+        if(stops.length){ stops.sort(function(x,y){ return lum(y)-lum(x); }); stack.push(Object.assign({}, stops[0], { a:1 })); break; }
+      }
+      var c=rgb(cs.backgroundColor); if(c && c.a>0){ stack.push(c); if(c.a>=1) break; }
+    }
+    var base={ r:255,g:255,b:255,a:1 }; if(stack.length && stack[stack.length-1].a>=1) base=stack.pop();
+    while(stack.length) base=mix(stack.pop(), base);
+    return base;
+  }
+  window.__contrast = function(rootSel){
+    var root=document.querySelector(rootSel||"body"), out=[], seen=new Set();
+    var walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for(var n=walker.nextNode(); n; n=walker.nextNode()){
+      if(!n.nodeValue.trim()) continue;
+      var el=n.parentElement; if(!el || seen.has(el)) continue; seen.add(el);
+      if(el.closest("[disabled],[aria-disabled=true],option,script,style,noscript,#nvautoLauncher,.nvauto-nudge")) continue;
+      var r=el.getBoundingClientRect(); if(!r.width || !r.height) continue;
+      var cs=getComputedStyle(el); if(cs.visibility==="hidden" || Number(cs.opacity)===0) continue;
+      var op=1; for(var e=el; e; e=e.parentElement){ op*=Number(getComputedStyle(e).opacity); } if(op<0.6) continue; // faded on purpose (e.g. step not reached)
+      var fg=rgb(cs.color), bg=bgOf(el); if(!fg || !bg) continue;
+      if(fg.a<1) fg=mix(fg,bg);
+      var L1=lum(fg), L2=lum(bg), ratio=(Math.max(L1,L2)+0.05)/(Math.min(L1,L2)+0.05);
+      var size=parseFloat(cs.fontSize), bold=Number(cs.fontWeight)>=700, large=size>=24 || (bold && size>=18.66);
+      var need=large?3:4.5;
+      if(ratio<need) out.push({ ratio:Math.round(ratio*100)/100, need:need, text:n.nodeValue.trim().slice(0,50), el:el.tagName.toLowerCase()+(el.id?"#"+el.id:"")+(el.className&&typeof el.className==="string"?"."+el.className.trim().split(/\s+/).slice(0,2).join("."):""), fg:cs.color, bg:"rgb("+[bg.r,bg.g,bg.b].map(Math.round).join(",")+")" });
+    }
+    return out.sort(function(a,b){ return a.ratio-b.ratio; });
+  };
+  /* Buy flyers (19 Oct 2026): the demo has no flyer catalog, so this stubs the
+     three flyer calls with the longest values and fills the order card. */
+  window.__flyStress = async function(){
+    var cat={sizes:[["7x9","7 × 9 in",14.28],["8x11","8 × 11 in",15.45],["10x11","10 × 11 in",17.05],["10x14","10 × 14 in",18],["12x16","12 × 16 in",20],["14x19","14 × 19 in",26],["16x22","16 × 22 in",37],["18x24","18 × 24 in",40]].map(function(a){ return {code:a[0],label:a[1],price:a[2]}; }),
+      pack:100,can_order:true,can_use_wallet:true,wallet:1250000,deliver_to:{address:LONG_ADDR,city:"Muzaffargarh"}};
+    var orders=[{id:"o1",code:"FLY-1001",status:"out_for_delivery",pay_method:"cash",total:398000,items:cat.sizes.map(function(s){ return {code:s.code,label:s.label,qty:10000}; }),created_at:new Date().toISOString()},
+      {id:"o2",code:"FLY-1002",status:"cancelled",pay_method:"wallet",total:1428,items:[{code:"7x9",label:"7 × 9 in",qty:100}],created_at:new Date().toISOString()}];
+    window.__NOVAX_DEMO=false;
+    window.__nvSb={ rpc:function(n){ return Promise.resolve(n==="client_flyer_catalog"?{data:cat}:{data:orders}); } };
+    document.querySelector('[data-client-tab="dashboard"]').click(); await new Promise(function(r){ setTimeout(r,200); });
+    document.querySelector('[data-client-tab="flyers"]').click(); await new Promise(function(r){ setTimeout(r,700); });
+    ["7x9","10x14","18x24"].forEach(function(c){ var b=document.querySelector('[data-fly-inc="'+c+'"]'); if(b) b.click(); });
+    var q=document.querySelector('[data-fly-qty="18x24"]'); if(q){ q.value="10000"; q.dispatchEvent(new Event("change",{bubbles:true})); }
+    await new Promise(function(r){ setTimeout(r,300); });
+    document.getAnimations().forEach(function(a){ try{ a.finish(); }catch(e){} });
+    return window.__fmt(window.__scan());
+  };
   window.__drawers = async function(){
     var res = {}, T = window.__nvDemoData.tables.parcels.filter(function(p){ return /^N91/.test(p.awb); });
     showClientTab("dashboard"); await nap(150);
