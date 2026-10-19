@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v271";
+var CACHE = "novax-v272";
 /* Nova Instant is paused (19 Oct 2026), so its pages are no longer kept offline. */
 var SHELLS = ["/client.html", "/rider.html"];
 var PRECACHE = SHELLS.concat(["/assets/favicon.svg", "/offline.html"]);

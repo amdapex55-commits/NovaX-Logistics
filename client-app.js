@@ -18344,16 +18344,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var sb=window.__nvSb, me=state && state.client && state.client.id;
       if(!sb || !sb.channel || !me || NV_VN.ch || /^SAMPLE|^demo/i.test(String(me))) return;
       try{
-        NV_VN.ch=sb.channel("novax_voice_"+me)
-          .on("postgres_changes",{ event:"INSERT", schema:"public", table:"nv_parcel_voice", filter:"client_id=eq."+me }, function(m){
+        var chan=sb.channel("novax_voice_"+me);
+        NV_VN.ch=chan;
+        chan.on("postgres_changes",{ event:"INSERT", schema:"public", table:"nv_parcel_voice", filter:"client_id=eq."+me }, function(m){
             var row=m && m.new; if(!row || !row.awb) return;
             delete NV_VN.cache[row.awb]; delete NV_VN.asked[row.awb];
             toast("New voice note from the rider for "+row.awb+".","info");
             nvVnFill();
           }).subscribe(function(status){
             /* A channel that errors or closes is dropped, so the 5-second check
-               below opens a new one instead of staying silent for the session. */
-            if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){ try{ sb.removeChannel(NV_VN.ch); }catch(e){} NV_VN.ch=null; }
+               below opens a new one instead of staying silent for the session.
+               19 Oct 2026: removing it from inside this callback fired CLOSED
+               again, which removed it again -- endless recursion ("Maximum call
+               stack size exceeded" on merchants' portals since 17 Oct). Drop it
+               once, after this callback has returned. */
+            if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){
+              if(chan.__nvDropped) return;
+              chan.__nvDropped=true;
+              if(NV_VN.ch===chan) NV_VN.ch=null;
+              setTimeout(function(){ try{ sb.removeChannel(chan); }catch(e){} }, 0);
+            }
           });
       }catch(e){ NV_VN.ch=null; }
     }
