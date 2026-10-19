@@ -47,7 +47,8 @@
     receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
     wrongCity: ["This address looks like {looks}, not {city}. Do not go. Tell the office.", "Yeh address {looks} ka lagta hai, {city} ka nahi. Mat jayein. Office ko batayein."],
     stationTab: ["At station", "Station par"], outTab: ["Out now", "Rastay mein"], doneToday: ["Delivered today", "Aaj deliver hue"],
-    attention: ["Needs attention", "Dhyan dein"], transitHelp: ["Parcels at your station that belong to another city. Send them together as one batch.", "Yeh parcel doosre shehar ke hain. Sab ek batch mein bhejein."],
+    attention: ["Needs attention", "Dhyan dein"], todayList: ["What you marked today", "Aaj aap ne kya lagaya"], noneToday: ["Nothing marked yet today.", "Aaj abhi kuch nahi lagaya."],
+    voiceSent: ["Voice note sent", "Voice note bhej diya"], voiceSkipped: ["Mic blocked", "Mic band tha"], voiceMissing: ["No voice note", "Voice note nahi"], transitHelp: ["Parcels at your station that belong to another city. Send them together as one batch.", "Yeh parcel doosre shehar ke hain. Sab ek batch mein bhejein."],
     sentBatches: ["Batches sent", "Bheje gaye batch"], cash: ["Cash reconciliation", "Cash hisaab"], method: ["How was it sent?", "Kaise bheja?"], txn: ["Transaction ID", "Transaction ID"],
     handover: ["Record today's cash handover", "Aaj ka cash jama karwaya"], cashToHand: ["Cash to hand over", "Jama karwana hai"], awaitingOffice: ["Awaiting office confirmation", "Office ki tasdeeq baqi"],
     confirmedCash: ["Confirmed cash · recent", "Tasdeeq shuda cash"], expenses: ["Route expenses", "Kharchay"], clear: ["Clear", "Hatao"],
@@ -270,7 +271,7 @@
     }
     if (pend) body += '<p class="pending-label">' + esc(t("saved")) + '</p>';
     else if (opts.outcomes) body += '<div class="actions">' + outcomeButtons(p, pay) + '</div>';
-    var search = [p.awb, c.name, c.phone, c.address, p.city, p.origin, p.consignee].join(" ").toLowerCase();
+    var search = [p.awb, c.name, c.phone, c.address, p.city, p.origin, p.consignee, CITY_WORDS[p.city] || ""].join(" ").toLowerCase();
     return '<article class="parcel' + (pend ? ' pending' : '') + (ui.sel.has(p.awb) && !lock ? ' picked' : '') + '" data-awb="' + esc(p.awb) + '" data-search="' + esc(search) + '">' + body + '</article>';
   }
   function outcomeButtons(p, pay) {
@@ -297,6 +298,27 @@
   }
 
   /* ---- render ------------------------------------------------------------ */
+  /* Today (19 Oct 2026): every status this rider set today, newest first, and
+     for Refused / Not available whether the voice note went. Fetched after the
+     station so it can never hold up the main screen. */
+  var TODAY = null;
+  function loadToday() {
+    try {
+      Promise.resolve(sb.rpc("rider_today")).then(function (r) {
+        if (r && !r.error && Array.isArray(r.data)) { TODAY = r.data; renderToday(); }
+      }, function () {});
+    } catch (_) {}
+  }
+  function renderToday() {
+    var el = q("todayList"); if (!el) return;
+    if (!TODAY) { el.innerHTML = ""; return; }
+    if (!TODAY.length) { el.innerHTML = '<p class="empty">' + esc(t("noneToday")) + '</p>'; return; }
+    el.innerHTML = TODAY.map(function (x) {
+      var tm = ""; try { tm = new Date(x.changed_at).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }); } catch (_) {}
+      var v = x.voice === "sent" ? '<span class="tg ok">' + esc(t("voiceSent")) + '</span>' : x.voice === "skipped" ? '<span class="tg warn">' + esc(t("voiceSkipped")) + '</span>' : x.voice === "missing" ? '<span class="tg bad">' + esc(t("voiceMissing")) + '</span>' : "";
+      return '<div class="today-row"><span class="today-t">' + esc(tm) + '</span><span class="today-m"><b>' + esc(x.awb) + '</b> ' + esc(x.to_status) + '<small>' + esc([x.consignee, x.city].filter(Boolean).join(" · ")) + '</small></span>' + v + '</div>';
+    }).join("");
+  }
   function render() {
     if (!data.rider) return;
     paintWords();
@@ -485,13 +507,21 @@
   function shownCards() {
     return Array.from(document.querySelectorAll(".view:not(.hidden) [data-search]")).filter(function (c) { return !c.hidden && !c.closest(".hidden"); });
   }
+  /* Other ways riders type a city (19 Oct 2026): common spellings, joined-up
+     forms and the Urdu names, so "harrapa", "yousufwala" or "ملتان" find it. */
+  var CITY_WORDS = {
+    "Karachi": "khi کراچی", "Lahore": "lhr لاہور", "Islamabad": "isb اسلام آباد", "Rawalpindi": "pindi rwp راولپنڈی",
+    "Faisalabad": "faisal abad lyallpur fsd فیصل آباد", "Multan": "mltn ملتان", "Sahiwal": "sahiwaal ساہیوال", "Okara": "okarra اوکاڑہ",
+    "Chichawatni": "chicha watni chichawatney چیچہ وطنی", "Harappa": "harrapa harapa harrappa ہڑپہ",
+    "Yousuf Wala": "yousufwala yousaf wala yousafwala yusuf wala yusufwala یوسف والا", "Adda Gamber": "gamber gambar adda gambar اڈا گمبر"
+  };
   function applySearch() {
     var raw = q("riderSearch").value.trim().toLowerCase(), digits = raw.replace(/\D/g, "");
     document.querySelectorAll(".view:not(.hidden) .list").forEach(function (el) {
       var cards = el.querySelectorAll("[data-search]"), visible = 0;
       cards.forEach(function (c) {
         var awb = String(c.dataset.awb || "").toLowerCase();
-        var show = !raw || c.dataset.search.includes(raw) || (digits.length >= 3 && awb.replace(/\D/g, "").endsWith(digits));
+        var show = !raw || c.dataset.search.includes(raw) || (raw.indexOf(" ") > -1 || /wala|watni/.test(raw) ? c.dataset.search.replace(/\s+/g, "").includes(raw.replace(/\s+/g, "")) : false) || (digits.length >= 3 && awb.replace(/\D/g, "").endsWith(digits));
         c.hidden = !show; if (show) visible++;
       });
       var prev = el.querySelector(".search-empty"); if (prev) prev.remove();
@@ -525,7 +555,7 @@
       connected = true; lastSync = lastFull = Date.now();
       try { store.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
       catch (_) { msg("This phone cannot save the station for offline use. Do not reload without signal.", "error"); }
-      q("gate").classList.add("hidden"); render();
+      q("gate").classList.add("hidden"); render(); loadToday();
       if (!(data.rider.cities || []).length) msg("No city is set on your rider account. Ask the office to set it.", "error");
       else if (cash.error) msg("Cash services are unavailable. Handover is disabled; contact the office.", "error");
       else if (!silent) msg("Station refreshed.", "ok");
@@ -1453,6 +1483,8 @@
         batches: batches.filter(function (b) { return b.mine || b.status !== "Received"; }), route: route, stamp: "demo-" + rev, server_time: iso(0) };
       else if (name === "rider_station_stamp") d = "demo-" + rev;
       else if (name === "rider_cash_summary") d = cash();
+      else if (name === "rider_today") d = rows.filter(function (p) { return /Delivered|Refused|Consignee not available/.test(p.status); }).slice(0, 6).map(function (p, i) {
+          return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i % 2 ? "sent" : "skipped") }; });
       else if (name === "rider_station_action") d = act(a);
       else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }
       else if (name === "rider_deposit_cash_v2") { var c = cash(), hand = rows.filter(function (p) { return p.status === "Delivered" && p.cod_amount > 0 && !p._hand; });
