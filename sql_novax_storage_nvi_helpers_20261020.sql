@@ -1,0 +1,16 @@
+-- 20 Oct 2026: merchant uploads (logos, CNIC photos) and rider uploads
+-- (delivery proofs, voice notes) failed with "permission denied for function
+-- nvi_is_rider" since the Nova Instant pause (d21c087, 19 Oct).
+--
+-- Why: the pause revoked EXECUTE on every nvi_* function. Two Nova Instant
+-- rules on the SHARED storage.objects table (nvi_rider_docs_insert and
+-- nvi_rider_docs_delete) call nvi_is_rider, nvi_docs_room and nvi_doc_spare.
+-- Postgres checks EXECUTE on every function in a policy expression for every
+-- insert or delete on that table, whatever the bucket, so all signed-in
+-- uploads failed.
+--
+-- Fix: give back EXECUTE on just those three helpers. Each only answers yes
+-- or no about the caller's own Nova Instant rider row; nothing that books,
+-- moves money or opens Instant is re-granted, so Nova Instant stays paused.
+-- These three must stay granted while those storage rules exist.
+grant execute on function public.nvi_is_rider(), public.nvi_docs_room(), public.nvi_doc_spare(text) to authenticated;

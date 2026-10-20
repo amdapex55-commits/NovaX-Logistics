@@ -88,6 +88,35 @@ window.nvCount=function(n,one,many){
        Everything below is inert unless ?demo= is in the URL, so a real
        merchant session never touches a line of it.
        ═══════════════════════════════════════════════════════════════════ */
+    /* 20 Oct 2026. A "permission denied" is only an ended sign-in when the
+       browser holds no live session. That day every upload failed with
+       "permission denied for function nvi_is_rider" -- a database fault --
+       and merchants were told to sign in again, which could never help.
+       A fault with a live session now says it is NovaX's problem and is
+       written to portal_error_logs so it is seen the same day. */
+    window.nvLooksSignedOut = function(msg, status){
+      var s=String(msg||"");
+      if(Number(status)===401 || /jwt expired|invalid jwt|auth session missing|not authenticated/i.test(s)) return true;
+      if(!/permission denied/i.test(s)) return false;
+      try{
+        for(var i=0;i<localStorage.length;i++){
+          var k=localStorage.key(i)||"";
+          if(!/^sb-.*-auth-token$/.test(k) || /visitor/.test(k)) continue;
+          var t=JSON.parse(localStorage.getItem(k)||"null");
+          var exp=t && (t.expires_at || (t.currentSession && t.currentSession.expires_at));
+          if(exp && exp*1000 > Date.now()+15000) return false;
+        }
+      }catch(e){}
+      return true;
+    };
+    window.nvFaultText = function(what, where, raw){
+      try{ if(window.__nvSb && window.__nvSb.rpc) Promise.resolve(window.__nvSb.rpc("log_portal_error",{ p_source:"client", p_rpc_name:String(where||"").slice(0,80),
+        p_page:"portal", p_message:String(raw||"").slice(0,300), p_severity:"error" })).catch(function(){}); }catch(e){}
+      return what+" didn't go through because of a problem on NovaX's side, not your account. Please try again in a few minutes. If it keeps happening, message NovaX support.";
+    };
+    window.nvPermText = function(what, where, raw, status){
+      return window.nvLooksSignedOut(raw, status) ? "Your sign-in has ended. Refresh the page and sign in again." : window.nvFaultText(what, where, raw);
+    };
     var NV_DEMO = (function(){
       try{ return new URLSearchParams(location.search).has("demo"); }
       catch(e){ return location.search.indexOf("demo=") > -1; }
@@ -14516,7 +14545,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(NV_BRAND.logoBlob){
         if(!/^[0-9a-f-]{36}$/i.test(String(cid||""))){ btn.disabled=false; btn.textContent=was; nvBrandMsg("Your account is still loading. Try again in a moment.","err"); return; }
         step=Promise.resolve(sb.storage.from("merchant-logos").upload(cid+"/logo", NV_BRAND.logoBlob, { upsert:true, contentType:NV_BRAND.logoType, cacheControl:"300" }))
-          .then(function(r){ if(r&&r.error) throw new Error("Logo upload failed: "+r.error.message); });
+          .then(function(r){ if(r&&r.error){ var le=new Error(r.error.message||"upload failed"); le.nvLogo=true; le.nvStatus=r.error.statusCode||r.error.status; throw le; } });
       } else if(NV_BRAND.removeLogo && hadLogo){
         step=Promise.resolve(sb.storage.from("merchant-logos").remove([cid+"/logo"])).then(function(){});
       }
@@ -14525,7 +14554,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return sb.rpc("nv_brand_save",{ p_display_name:name, p_accent:accent, p_whatsapp:wa||null, p_enabled:enabled, p_has_logo:hasLogo });
       }).then(function(r){
         btn.disabled=false; btn.textContent=was;
-        if(r&&r.error){ nvBrandMsg(/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":r.error.message,"err"); return; }
+        if(r&&r.error){ nvBrandMsg(/permission denied/i.test(r.error.message||"")?window.nvPermText("Saving your branding","nv_brand_save",r.error.message,r.status):r.error.message,"err"); return; }
         if(!r||!r.data){ nvBrandMsg("Not saved. Try again.","err"); return; }
         NV_BRAND.row=Array.isArray(r.data)?r.data[0]:r.data;
         NV_BRAND.logoBlob=null; NV_BRAND.removeLogo=false;
@@ -14533,7 +14562,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var f=nvBrandEl("nvBrandLogo"); if(f) f.value="";
         nvBrandFill();
         nvBrandMsg(NV_BRAND.row.enabled?"Saved. Your buyers now see your brand on their tracking link.":"Saved. Tick “Show my brand” when you want buyers to see it.","ok");
-      }).catch(function(e){ btn.disabled=false; btn.textContent=was; nvBrandMsg(String((e&&e.message)||e),"err"); });
+      }).catch(function(e){ btn.disabled=false; btn.textContent=was; nvBrandMsg((function(e){ var t=String((e&&e.message)||e||""); if(e&&e.nvLogo){ if(/permission denied|jwt/i.test(t)) return window.nvPermText("Uploading your logo","logo_upload",t,e.nvStatus); if(/exceed|too large|payload/i.test(t)) return "Logo upload failed: the picture is over 200 KB. Use a smaller picture."; return window.nvFaultText("Uploading your logo","logo_upload",t); } return t; })(e),"err"); });
     }
     window.nvBrandSave=nvBrandSave;
 
@@ -14728,7 +14757,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ]).then(function(res){
         NV_PF.loading=false;
         var r=res[0], h=res[1];
-        if(r&&r.error){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent=/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your profile: "+r.error.message; } return; }
+        if(r&&r.error){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent=/permission denied/i.test(r.error.message||"")?window.nvPermText("Loading your profile","profile_load",r.error.message,r.status):"Could not load your profile: "+r.error.message; } return; }
         if(!r||!r.data){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent="Could not load your profile. Refresh the page."; } return; }
         if(err) err.hidden=true;
         NV_PF.data=Array.isArray(r.data)?r.data[0]:r.data;
@@ -14827,14 +14856,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var hadLogo=!!(NV_PF.data&&NV_PF.data.logo_url), step=Promise.resolve();
       if(NV_PF.logoBlob){
         step=Promise.resolve(sb.storage.from("merchant-logos").upload(cid+"/logo", NV_PF.logoBlob, { upsert:true, contentType:NV_PF.logoType, cacheControl:"300" }))
-          .then(function(r){ if(r&&r.error) throw new Error("Logo upload failed: "+r.error.message); });
+          .then(function(r){ if(r&&r.error){ var le=new Error(r.error.message||"upload failed"); le.nvLogo=true; le.nvStatus=r.error.statusCode||r.error.status; throw le; } });
       } else if(NV_PF.removeLogo && hadLogo){
         step=Promise.resolve(sb.storage.from("merchant-logos").remove([cid+"/logo"])).then(function(){});
       }
       var done=function(){ NV_PF.saving=false; if(btn){ btn.disabled=false; btn.textContent=was; } };
       step.then(function(){ return sb.rpc("nv_profile_save", { p:v }); }).then(function(r){
         done();
-        if(r&&r.error){ nvPfMsg(/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":r.error.message, true); return; }
+        if(r&&r.error){ nvPfMsg(/permission denied/i.test(r.error.message||"")?window.nvPermText("Saving your profile","profile_save",r.error.message,r.status):r.error.message, true); return; }
         if(!r||!r.data){ nvPfMsg("Not saved. Try again.", true); return; }
         NV_PF.data=Array.isArray(r.data)?r.data[0]:r.data;
         nvPfResetLogo();
@@ -14847,7 +14876,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         nvPfLoad(true);
         try{ NV_BRAND.loaded=false; }catch(e){}
         try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
-      }).catch(function(e){ done(); nvPfMsg(String((e&&e.message)||e), true); });
+      }).catch(function(e){ done(); nvPfMsg((function(e){ var t=String((e&&e.message)||e||""); if(e&&e.nvLogo){ if(/permission denied|jwt/i.test(t)) return window.nvPermText("Uploading your logo","logo_upload",t,e.nvStatus); if(/exceed|too large|payload/i.test(t)) return "Logo upload failed: the picture is over 200 KB. Use a smaller picture."; return window.nvFaultText("Uploading your logo","logo_upload",t); } return t; })(e), true); });
     }
     function nvPfDiscard(){ nvPfResetLogo(); nvPfFill(); var bar=nvPfEl("nvPfSaveBar"); if(bar) bar.hidden=true; }
     document.addEventListener("input",function(e){ if(e.target&&e.target.closest&&e.target.closest("#client-profile .nv-pf-main")) nvPfSync(); });
@@ -14906,7 +14935,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).catch(function(e){
         NV_KYC.loading=false;
         var m=nvKycEl("nvKycMsg");
-        if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=/permission denied/i.test((e&&e.message)||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your CNIC. Refresh the page."; }
+        if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=/permission denied/i.test((e&&e.message)||"")?window.nvPermText("Loading your CNIC","cnic_status",e&&e.message):"Could not load your CNIC. Refresh the page."; }
       });
     }
     function nvKycEnsure(){
@@ -14954,7 +14983,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           ban.hidden=true; toast("Thanks. Your acceptance is recorded.","success");
         }).catch(function(e){
           go.disabled=false; go.textContent="I accept";
-          toast(/permission denied|JWT/i.test((e&&e.message)||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not save that. Please try again.","error");
+          toast(/permission denied|JWT/i.test((e&&e.message)||"")?window.nvPermText("Saving that","nv_accept_terms",e&&e.message):"Could not save that. Please try again.","error");
         }).then(function(){ NV_TERMS.busy=false; });
       }); }
     }
@@ -15039,7 +15068,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_KYC.sending=false; if(btn) btn.textContent=was;
         nvKycSendState();
         var t=String((e&&e.message)||e), m=nvKycEl("nvKycMsg");
-        if(/permission denied|JWT expired/i.test(t)) t="Your sign-in has ended. Refresh the page and sign in again.";
+        if(/permission denied|JWT expired/i.test(t)) t=window.nvPermText("Sending your CNIC","cnic_send",t);
         if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=t; }
       });
     }
@@ -15237,7 +15266,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvPaErr(r,e){
       var m=(r&&r.error&&r.error.message)||(e&&e.message)||String(e||"");
       /* An ended sign-in reaches the database as anon, which has no access. */
-      if((r&&r.status===401) || /permission denied/i.test(m)) return "Your sign-in has ended. Refresh the page and sign in again, then try once more.";
+      if((r&&r.status===401) || /permission denied/i.test(m)) return window.nvPermText("Saving the address","pickup_address",m,r&&r.status);
       return m.replace(/^.*?ERROR:\s*/,"")||"Something went wrong. Try again.";
     }
     function nvPaEnsureLoaded(force){
