@@ -47,7 +47,10 @@
     receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
     wrongCity: ["This address looks like {looks}, not {city}. Do not go. Tell the office.", "Yeh address {looks} ka lagta hai, {city} ka nahi. Mat jayein. Office ko batayein."],
     stationTab: ["At station", "Station par"], outTab: ["Out now", "Rastay mein"], doneToday: ["Delivered today", "Aaj deliver hue"],
-    attention: ["Needs attention", "Dhyan dein"], todayList: ["What you marked today", "Aaj aap ne kya lagaya"], noneToday: ["Nothing marked yet today.", "Aaj abhi kuch nahi lagaya."],
+    attention: ["Needs attention", "Dhyan dein"], waitShipper: ["{n} refused / not available are waiting for the shipper’s decision. Nothing to do now.", "{n} mana / nahi mila parcel shipper ke faislay ke intezar mein hain. Abhi kuch nahi karna."],
+    seeThem: ["See them", "Dekhein"], notTaken: ["Not accepted by NovaX", "NovaX ne qabool nahi kiya"], tryAgain: ["Try again", "Dobara bhejein"], removeIt: ["Remove", "Hata dein"],
+    cashWaitSend: ["Waiting for your saved deliveries to reach NovaX. The handover opens after they send.", "Aap ki saved deliveries NovaX ko ja rahi hain. Us ke baad cash jama kar sakte hain."],
+    cashOffline: ["No internet. Connect to record the handover.", "Internet nahi hai. Cash jama karne ke liye internet on karein."], todayList: ["What you marked today", "Aaj aap ne kya lagaya"], noneToday: ["Nothing marked yet today.", "Aaj abhi kuch nahi lagaya."],
     voiceSent: ["Voice note sent", "Voice note bhej diya"], voiceSkipped: ["Mic blocked", "Mic band tha"], voiceMissing: ["No voice note", "Voice note nahi"], transitHelp: ["Parcels at your station that belong to another city. Send them together as one batch.", "Yeh parcel doosre shehar ke hain. Sab ek batch mein bhejein."],
     sentBatches: ["Batches sent", "Bheje gaye batch"], cash: ["Cash reconciliation", "Cash hisaab"], method: ["How was it sent?", "Kaise bheja?"], txn: ["Transaction ID", "Transaction ID"],
     handover: ["Record today's cash handover", "Aaj ka cash jama karwaya"], cashToHand: ["Cash to hand over", "Jama karwana hai"], awaitingOffice: ["Awaiting office confirmation", "Office ki tasdeeq baqi"],
@@ -144,22 +147,33 @@
   function paintQueue() {
     var list = jobs(), review = list.filter(function (j) { return j.state === "review"; });
     q("queueNote").className = "notice";
-    if (list.length) msg(list.length + " saved action(s): " + review.length + " need office review. Keep this phone's data until all actions are confirmed.", review.length ? "error" : "info", "queueNote");
+    var waiting = list.length - review.length;
+    if (waiting) msg(waiting === 1 ? "1 action saved on this phone, sending to NovaX…" : waiting + " actions saved on this phone, sending to NovaX…", "info", "queueNote");
+    /* 21 Oct 2026 audit: these cards showed a reference code and "office
+       review", but the office never saw them. Now they say in plain words
+       what NovaX refused and why, and the refusal is logged for the office. */
     q("queueReview").innerHTML = review.map(function (j) {
-      return '<article class="parcel"><b>Not confirmed: ' + esc(j.action || j.to || j.kind) + '</b><p>' + esc((j.list || [j.awb]).join(", ")) + ' ' + esc(j.error || "Office review required") + '</p><small>Reference ' + esc(j.key) + '</small><div class="actions"><button class="btn secondary" data-write data-retry="' + esc(j.key) + '">Retry saved action</button><button class="btn danger" data-write data-discard="' + esc(j.key) + '">Remove from phone</button></div></article>';
+      var what = DONE_VERB[j.action || j.to] || (j.kind === "expense" ? "Expense" : j.kind === "deposit" ? "Cash handover" : j.kind === "swap" ? "Nova Swap" : "Action");
+      var awbs = (j.list || (j.awb ? [j.awb] : [])), why = String(j.error || "").replace(/^[A-Z]\d{6,}:\s*/, "");
+      return '<article class="parcel reject"><b>' + esc(t("notTaken")) + '</b><p><b>' + esc(what) + (awbs.length ? ' · ' + esc(awbs.slice(0, 6).join(", ")) + (awbs.length > 6 ? " +" + (awbs.length - 6) : "") : "") + '</b></p><p>' + esc(why || "Ask the office.") + '</p>' +
+        '<div class="actions"><button class="btn secondary" data-write data-retry="' + esc(j.key) + '">' + esc(t("tryAgain")) + '</button><button class="btn danger" data-write data-discard="' + esc(j.key) + '">' + esc(t("removeIt")) + '</button></div></article>';
     }).join("");
   }
   /* Saved actions that change what cash the rider holds. Anything else --
      a disputed pickup, a transit batch -- must not freeze the handover. */
   function cashJobs() {
+    /* A refused action is not counted by NovaX, so it must not hold the
+       handover shut (21 Oct 2026 audit): only actions still sending do. */
     return jobs().filter(function (j) {
-      return j.kind === "deposit" || j.kind === "expense" || (j.kind === "swap" && j.outcome === "exchanged") ||
-        (j.kind === "station" && j.action === "delivered") || (j.kind === "status" && j.to === "Delivered");
+      return j.state !== "review" && (j.kind === "deposit" || j.kind === "expense" || (j.kind === "swap" && j.outcome === "exchanged") ||
+        (j.kind === "station" && j.action === "delivered") || (j.kind === "status" && j.to === "Delivered"));
     });
   }
   function controls() {
     document.querySelectorAll("[data-write]").forEach(function (b) { b.disabled = busy || flushing || !authorized || b.hasAttribute("data-blocked"); });
     q("depositCashBtn").disabled = busy || flushing || !authorized || !connected || !navigator.onLine || !data.cash || !data.cash.count || cashJobs().length > 0 || data.cash.review;
+    var cw = q("cashWhy");
+    if (cw) { var why = !data.cash || !data.cash.count ? "" : !navigator.onLine || !connected ? t("cashOffline") : cashJobs().length ? t("cashWaitSend") : ""; cw.textContent = why; cw.classList.toggle("hidden", !why); }
     q("refreshBtn").disabled = loading || busy || flushing; paintNetwork();
   }
   function payment(p) { return P.classify({ cod: p.cod, paymentMode: p.meta.paymentMode || p.meta.payment_mode }); }
@@ -351,8 +365,13 @@
     q("stats").innerHTML = stat("Delivered today", deliveredToday.length) + stat("Out now", out.length) + stat("Cash to hand over", data.cash ? money(data.cash.net) : "Unavailable", true) +
       (data.route ? stat(t("distToday"), kmText(data.route.km)) : "") + stat("City", cities);
     renderRoute();
-    var attn = st.filter(function (p) { return Number(p.attempts || 0) >= 2 || p.status === "Refused"; }).concat(out.filter(function (p) { return payment(p).conflict; }));
-    q("attentionList").innerHTML = attn.map(function (p) { return card(p); }).join("") || '<p class="empty">All clear.</p>';
+    /* 21 Oct 2026 audit: 17 refusals the rider cannot act on filled Home and
+       pushed "What you marked today" 5,000 px down. They are one line now;
+       only parcels the rider can do something about are listed. */
+    var onShipper = st.filter(function (p) { return p.status === "Refused" || p.status === "Consignee not available"; });
+    var attn = st.filter(function (p) { return Number(p.attempts || 0) >= 2 && onShipper.indexOf(p) < 0; }).concat(out.filter(function (p) { return payment(p).conflict; }));
+    var waitLine = onShipper.length ? '<p class="attn-line">' + esc(t("waitShipper", { n: onShipper.length })) + ' <button type="button" class="linkish" data-goto="delivery:station">' + esc(t("seeThem")) + ' ›</button></p>' : "";
+    q("attentionList").innerHTML = (waitLine + attn.map(function (p) { return card(p); }).join("")) || '<p class="empty">All clear.</p>';
 
     // Pickup: grouped by shipper. A shipper whose address is in another city
     // goes last, with a warning instead of "Select all".
@@ -406,7 +425,7 @@
       (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + selectAllBtn("station", free(ready).map(function (p) { return p.awb; })) + ready.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
-      (stuck.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</h3>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "");
+      (stuck.length ? '<details class="grp-fold" data-fold="stuck"' + (ui.openStuck ? " open" : "") + '><summary class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</summary>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") + '</details>' : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
     q("doneList").innerHTML = deliveredToday.map(function (p) { return card(p); }).join("") || empty();
 
@@ -600,7 +619,15 @@
      tell whether the action had gone through. */
   var SAVED_MSG = "Saved on this phone. Awaiting server confirmation.";
   function clearSaved() { ["notice", "expenseResult", "cashResult"].forEach(function (id) { var el = q(id); if (el && el.textContent === SAVED_MSG) { el.className = "notice"; el.textContent = ""; } }); }
+  var DONE_VERB = { collect: "Collect", receive: "Receive", out: "Take out", delivered: "Delivered", reattempt: "Reattempt", refused: "Refused", not_available: "Not available", transit: "Send batch", Delivered: "Delivered" };
   var DONE_WORDS = { collect: "collected", receive: "received", out: "out for delivery", delivered: "delivered", reattempt: "set for reattempt", refused: "marked refused", not_available: "marked not available", transit: "sent" };
+  /* 21 Oct 2026: a rider action NovaX refuses is written to the office's
+     error log (portal_error_logs, source "rider") with the rider's email, so
+     "I could not take it out" can be looked up instead of guessed. */
+  function logReject(rpc, text) {
+    if (DEMO || !sb) return;
+    try { Promise.resolve(sb.rpc("log_portal_error", { p_source: "rider", p_rpc_name: rpc, p_page: "rider.html · " + (data.rider && data.rider.name || ""), p_message: String(text).slice(0, 480), p_severity: "warning" })).catch(function () {}); } catch (_) {}
+  }
   async function flush() {
     if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) { void voiceFlush(); return; }
     flushing = true; controls(); var changed = false, rejected = false;
@@ -636,6 +663,7 @@
                leaves this screen now, not at the next minute's refresh. */
             rejected = true;
             queue.change(j.key, { state: "review", error: String(response.error.message || response.error) });
+            logReject(name, (j.action || j.to || j.kind) + " " + (j.list || (j.awb ? [j.awb] : [])).slice(0, 20).join(",") + ": " + String(response.error.message || response.error));
             msg("Action rejected. Its reference is kept for office review: " + String(response.error.message || response.error), "error");
             ping("Not accepted: " + String(response.error.message || response.error).slice(0, 140), "error", [120]); break;
           }
@@ -918,6 +946,7 @@
             clearTimeout(VOICE.timer); VOICE.timer = setTimeout(function () { void voiceFlush(); }, 30000); break;
           }
           await voicePut(Object.assign({}, r, { state: "review", error: String(res.error.message || res.error) }));
+          logReject(r.type === "skip" ? "rider_voice_skip" : "rider_voice_attach", r.awb + ": " + String(res.error.message || res.error));
           continue;
         }
         await voiceDel(r.key);
@@ -1287,6 +1316,7 @@
   document.addEventListener("toggle", function (e) {
     var d = e.target; if (d && d.matches && d.matches("details[data-batch]")) ui.openBatch[d.dataset.batch] = d.open;
     if (d && d.matches && d.matches("details[data-route]")) ui.routeOpen = d.open;
+    if (d && d.matches && d.matches("details[data-fold=stuck]")) ui.openStuck = d.open;
   }, true);
   document.addEventListener("change", function (e) {
     var cb = e.target.closest && e.target.closest("[data-pick]"); if (!cb) return;
@@ -1349,6 +1379,8 @@
       finally { busy = false; render(); void flush(); }
       return;
     }
+    var go = e.target.closest("[data-goto]");
+    if (go) { var g = go.dataset.goto.split(":"); ui.view = g[0]; if (g[1]) ui.tab[g[0]] = g[1]; if (g[1] === "station") ui.openStuck = true; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); window.scrollTo(0, 0); return; }
     var tab = e.target.closest("[data-tab]");
     if (tab) { var p = tab.dataset.tab.split(":"); ui.tab[p[0]] = p[1]; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); return; }
     var view = e.target.closest("[data-view]");
