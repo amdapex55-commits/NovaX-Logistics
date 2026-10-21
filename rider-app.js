@@ -214,10 +214,18 @@
     if (p.bucket !== "station") return "";
     var retry = /^(Refused|Consignee not available|Reattempt|Reassigned|Parcel received at destination)$/.test(p.status);
     if (retry && Number(p.attempts || 0) >= 3) return LANG === "ur" ? "3 dafa ja chuke — office wapsi karega" : "3 attempts done — the office sends it back";
-    var nx = String(p.meta.nextAttempt || "");
-    if (p.status === "Reattempt" && /^\d{4}-\d{2}-\d{2}$/.test(nx) && nx > today()) return (LANG === "ur" ? "Agli dafa: " : "Next try: ") + nx;
     return "";
   }
+  /* 21 Oct 2026: a Reattempt booked for a later day used to be locked for
+     every rider until that day (Khalid marked one, Arsalan could not take it
+     out). Now it is a warning: any rider of the city can take it out after
+     confirming. Returns the day the customer asked for, or "". */
+  function laterDay(p) {
+    if (p.bucket !== "station" || p.status !== "Reattempt") return "";
+    var nx = String(p.meta.nextAttempt || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(nx) && nx > today() ? nx : "";
+  }
+  function dayLabel(d) { try { return new Date(d + "T12:00:00+05:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Karachi" }); } catch (_) { return d; } }
   function card(p, opts) {
     opts = opts || {};
     var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p), lock = opts.select ? outLock(p) : "";
@@ -261,6 +269,7 @@
       (p.heldBy && p.bucket === "out" ? '<p class="meta-line">Was with ' + esc(p.heldBy) + ' — now yours</p>' : '') +
       (p.outside ? '<p class="meta-line error-text">Outside your cities — call the office before delivering.</p>' : '') +
       (lock ? '<p class="meta-line error-text">' + esc(lock) + '</p>' : '') +
+      (opts.select && !lock && laterDay(p) ? '<p class="meta-line">' + esc(LANG === "ur" ? "Customer ne " + dayLabel(laterDay(p)) + " ka kaha — pehle bhi le ja sakte hain" : "Customer asked for " + dayLabel(laterDay(p)) + " — you can still take it out") + '</p>' : '') +
       '<div class="moneyline">' + money2 + '</div>';
     if (opts.contacts && (validPhone || c.address)) {
       var wa = call.replace(/^\+/, "");
@@ -390,10 +399,12 @@
        reattempt booked for a later day (or a parcel past 3 attempts) cannot
        go out now, so it is counted in its own group, not in today's run. */
     var notReady = st.filter(function (p) { return !waitingOn(p) && outLock(p); });
-    var ready = st.filter(function (p) { return !waitingOn(p) && !outLock(p); });
+    var later = st.filter(function (p) { return !waitingOn(p) && !outLock(p) && laterDay(p); });
+    var ready = st.filter(function (p) { return !waitingOn(p) && !outLock(p) && !laterDay(p); });
     var stuck = st.filter(waitingOn).sort(function (x, y) { return R.timestamp(x.statusSince) - R.timestamp(y.statusSince); });
     q("stationList").innerHTML = (st.length ? "" : empty()) +
       (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + selectAllBtn("station", free(ready).map(function (p) { return p.awb; })) + ready.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
+      (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
       (stuck.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</h3>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
@@ -1016,8 +1027,17 @@
         list = keep;   /* what was unticked did not arrive: it is left out, and the selection clears below */
       }
       if (action) {
+        var extra = null;
+        if (action === "out") {
+          var early = data.parcels.filter(function (p) { return list.indexOf(p.awb) > -1 && laterDay(p); });
+          if (early.length) {
+            var names = early.slice(0, 5).map(function (p) { return p.awb + " (" + dayLabel(laterDay(p)) + ")"; }).join(", ") + (early.length > 5 ? " +" + (early.length - 5) : "");
+            if (!await confirm(LANG === "ur" ? "Pehle le ja rahe hain?" : "Take out early?", (LANG === "ur" ? "Customer ne baad ka din kaha tha: " : "The customer asked for a later day: ") + names + ". " + (LANG === "ur" ? "Customer se baat ho gayi hai to aaj le jayein." : "Take it out today only if the customer is ready."))) return;
+            extra = { early: true };
+          }
+        }
         var here = BAR_GPS[action] ? await gps(BAR_GPS[action]) : null;
-        for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action, "", null, here);
+        for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action, "", extra, here);
       }
       else if (scope === "transit") {
         if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
