@@ -63,7 +63,7 @@
     voiceAsk: ["Tell the shipper what happened at the door. Up to 60 seconds.", "Shipper ko batayein darwaze par kya hua. 60 second tak."],
     voiceTapStart: ["Tap to record", "Record karein"], voiceTapStop: ["Tap to stop", "Rokein"],
     voiceAgain: ["Record again", "Dobara record"], voiceSend: ["Send voice note", "Paigham bhejein"],
-    voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Mic blocked, skip", "Mic band, chhorein"],
+    voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Mic blocked, skip", "Mic band, skip"],
     voiceShort: ["Too short. Speak for at least 3 seconds.", "Bohat chhota. Kam az kam 3 second bolein."],
     voiceBig: ["This recording is too large. Record a shorter note.", "Recording bohat bari hai. Chhota paigham record karein."],
     voiceBlocked: ["Your phone blocked the microphone. Allow it for this app (tap the lock icon next to the address, then Microphone), then tap Try again.", "Phone ne mic band kar diya hai. Is app ke liye mic allow karein (address ke saath lock icon, phir Microphone), phir Dobara koshish dabayein."],
