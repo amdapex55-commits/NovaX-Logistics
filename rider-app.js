@@ -63,7 +63,7 @@
     voiceAsk: ["Tell the shipper what happened at the door. Up to 60 seconds.", "Shipper ko batayein darwaze par kya hua. 60 second tak."],
     voiceTapStart: ["Tap to record", "Record karein"], voiceTapStop: ["Tap to stop", "Rokein"],
     voiceAgain: ["Record again", "Dobara record"], voiceSend: ["Send voice note", "Paigham bhejein"],
-    voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Can’t record: microphone blocked", "Record nahi ho raha: mic band hai"],
+    voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Mic blocked, skip", "Mic band, chhorein"],
     voiceShort: ["Too short. Speak for at least 3 seconds.", "Bohat chhota. Kam az kam 3 second bolein."],
     voiceBig: ["This recording is too large. Record a shorter note.", "Recording bohat bari hai. Chhota paigham record karein."],
     voiceBlocked: ["Your phone blocked the microphone. Allow it for this app (tap the lock icon next to the address, then Microphone), then tap Try again.", "Phone ne mic band kar diya hai. Is app ke liye mic allow karein (address ke saath lock icon, phir Microphone), phir Dobara koshish dabayein."],
@@ -732,6 +732,10 @@
         req.onupgradeneeded = function () { req.result.createObjectStore("notes", { keyPath: "key" }); };
         req.onsuccess = function () { resolve(req.result); };
         req.onerror = function () { resolve(null); };
+        req.onblocked = function () { resolve(null); };
+        /* 21 Oct 2026: on some riders' phones storage never answered, and the
+           "microphone blocked" button waited on it forever. Memory instead. */
+        setTimeout(function () { resolve(null); }, 2500);
       } catch (_) { resolve(null); }
     });
     return VOICE.db;
@@ -754,6 +758,7 @@
         tx.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
         tx.onerror = function () { reject(tx.error || new Error("This phone could not save the voice note.")); };
         tx.onabort = function () { reject(tx.error || new Error("This phone could not save the voice note.")); };
+        setTimeout(function () { reject(new Error("This phone's storage did not answer.")); }, 4000);
       });
     });
   }
@@ -812,7 +817,10 @@
         err.textContent = "";
         mime = voiceMime();
         if (mime === null || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fail("mic_error", t("voiceNoMic")); return; }
-        try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } }); }
+        /* Some phones and in-app browsers never answer the microphone request:
+           after 10 s the rider gets the "microphone blocked" exit. */
+        try { stream = await Promise.race([navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } }),
+          new Promise(function (_, no) { setTimeout(function () { no(Object.assign(new Error("No answer"), { name: "TimeoutError" })); }, 10000); })]); }
         catch (e) { fail(e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "no_mic" : "mic_error", e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? t("voiceBlocked") : t("voiceNoMic")); return; }
         try { mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 24000 }, mime ? { mimeType: mime } : {})); }
         catch (_) { try { mr = new MediaRecorder(stream); } catch (e2) { fail("mic_error", t("voiceNoMic")); return; } }
@@ -851,20 +859,25 @@
           path: cid + "/" + p.awb.toUpperCase() + "/" + riderId + "-" + Date.now() + "-" + rand + "." + kind[1], mime: kind[0], bytes: blob.size, duration_ms: Math.round(dur),
           reason: reason || "", lat: location && location.lat || null, lng: location && location.lng || null, accuracy: location && location.accuracy || null,
           recorded_at: recordedAt, buf: buf, blob: buf ? null : blob, state: "pending", at: new Date().toISOString() };
-        q("voiceSend").disabled = true;
-        await voicePut(row);
-        q("voiceSend").disabled = false;
-        ping(VOICE.memOnly ? "Voice note saved. Keep the app open until it sends." : t("voiceSaved"), "info", 30); finish(row); void voiceFlush();
+        /* 21 Oct 2026: the dialog closes now; saving to the phone and sending
+           follow behind it, so storage can never hold a rider here. */
+        VOICE.mem[row.key] = row; finish(row);
+        voicePut(row).then(function () { ping(VOICE.memOnly ? "Voice note saved. Keep the app open until it sends." : t("voiceSaved"), "info", 30); void voiceFlush(); });
       };
       q("voiceSkip").onclick = async function () {
         var row = { key: "voice-" + riderId + "-" + crypto.randomUUID(), type: "skip", why: blocked.dataset.why === "no_mic" ? "no_mic" : "mic_error",
           user: userId, rider: riderId, awb: p.awb.toUpperCase(), action: action, state: "pending", at: new Date().toISOString() };
-        await voicePut(row);
-        finish(row); void voiceFlush();
+        VOICE.mem[row.key] = row; finish(row);
+        voicePut(row).then(function () { void voiceFlush(); });
       };
       dialog.addEventListener("cancel", noCancel);
       reset(); dialog.showModal();
     }).then(function (row) { return voiceRefresh().then(function () { render(); return row; }); });
+  }
+  /* A send that never answers would keep every later note waiting: after
+     45 s it counts as a network failure and is tried again. */
+  function voiceLimit(pr) {
+    return Promise.race([Promise.resolve(pr), new Promise(function (ok) { setTimeout(function () { ok({ error: { message: "network timeout" } }); }, 45000); })]);
   }
   /* Sends waiting notes once their parcel's status has reached NovaX. */
   async function voiceFlush() {
@@ -876,16 +889,16 @@
         if (waiting.has(r.awb)) continue;   /* its Refused / not available is still on the phone */
         var res;
         if (r.type === "skip") {
-          try { res = await sb.rpc("rider_voice_skip", { p_awb: r.awb, p_why: r.why }); } catch (e) { res = { error: e }; }
+          try { res = await voiceLimit(sb.rpc("rider_voice_skip", { p_awb: r.awb, p_why: r.why })); } catch (e) { res = { error: e }; }
         } else {
           var up;
-          try { up = await sb.storage.from("parcel-voice").upload(r.path, voiceBlob(r), { contentType: r.mime, upsert: false, cacheControl: "3600" }); } catch (e) { up = { error: e }; }
+          try { up = await voiceLimit(sb.storage.from("parcel-voice").upload(r.path, voiceBlob(r), { contentType: r.mime, upsert: false, cacheControl: "3600" })); } catch (e) { up = { error: e }; }
           /* Already there from an earlier try that lost its answer: attach it. */
           if (up && up.error && !/exist|duplicate|409/i.test(String(up.error.message || up.error.statusCode || up.error))) res = up;
           else {
             try {
-              res = await sb.rpc("rider_voice_attach", { p_awb: r.awb, p_path: r.path, p_duration_ms: r.duration_ms, p_mime: r.mime, p_bytes: r.bytes,
-                p_reason: r.reason || null, p_lat: r.lat, p_lng: r.lng, p_accuracy: r.accuracy, p_recorded_at: r.recorded_at });
+              res = await voiceLimit(sb.rpc("rider_voice_attach", { p_awb: r.awb, p_path: r.path, p_duration_ms: r.duration_ms, p_mime: r.mime, p_bytes: r.bytes,
+                p_reason: r.reason || null, p_lat: r.lat, p_lng: r.lng, p_accuracy: r.accuracy, p_recorded_at: r.recorded_at }));
             } catch (e) { res = { error: e }; }
           }
         }
