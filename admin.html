@@ -2064,6 +2064,14 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    /* 22 Oct 2026: folded by default; the summary line carries the counts. */
+    .nv-calls-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:28px}
+    .nv-calls-fold>summary::-webkit-details-marker{display:none}
+    .nv-calls-fold>summary b{font-size:16px;margin-right:4px}
+    .nv-calls-fold>summary::after{content:"\25BE";margin-left:auto;opacity:.7;transition:transform .15s}
+    .nv-calls-fold[open]>summary::after{transform:rotate(180deg)}
+    .nv-calls-fold .nv-calls-tap{font-size:12px;opacity:.6}
+    .nv-calls-fold[open] .nv-calls-tap{display:none}
     .nv-calls h4.nv-calls-h{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px}
     .nv-calls .ops-card .inline-actions a{text-decoration:none}
     .grid.two {
@@ -5718,16 +5726,17 @@ html,body{ background:var(--bg); color:var(--ink); }
               <!-- 22 Oct 2026: who to phone today. Rider actions NovaX refused in
                    the last 24 hours (portal_error_logs, source rider) and merchants
                    with 3+ parcels who have not booked for 14 days. -->
-              <div class="panel mt-14" id="nvCallsPanel">
-                <div class="section-head">
-                  <div><h3>Calls to make today</h3><p>Riders who got stuck on an action in the last 24 hours, and merchants who have stopped booking.</p></div>
+              <details class="panel mt-14 nv-calls-fold" id="nvCallsPanel">
+                <summary class="nv-calls-sum"><b>Calls to make today</b><span class="chip" id="nvRiderProbCountS">0 rider problems</span><span class="chip warn" id="nvQuietCountS">0 gone quiet</span><span class="nv-calls-tap">Tap to open</span></summary>
+                <div class="section-head" style="margin-top:12px">
+                  <div><p>Riders who got stuck on an action in the last 24 hours, and merchants who have stopped booking.</p></div>
                   <button class="action-btn ghost" type="button" onclick="nvCallsLoad(true)">Refresh</button>
                 </div>
                 <div class="grid two nv-calls">
                   <div><h4 class="nv-calls-h">Rider problems today <span class="chip" id="nvRiderProbCount">0</span></h4><div class="ops-list" id="nvRiderProblems"><p class="footer-note">Loading…</p></div></div>
                   <div><h4 class="nv-calls-h">Merchants gone quiet <span class="chip warn" id="nvQuietCount">0</span></h4><div class="ops-list" id="nvGoneQuiet"><p class="footer-note">Loading…</p></div><button class="ghost-btn mt-6" type="button" id="nvQuietMore" hidden onclick="nvCallsAll=!nvCallsAll;nvCallsPaint()">Show all</button></div>
                 </div>
-              </div>
+              </details>
 
               <div class="panel mt-14" id="adminPeriodPanel">
                 <div class="section-head"><div><h3>Revenue by Collection Date</h3><p>Delivery fees from parcels that reached the warehouse in the selected dates. COD belongs to merchants and is excluded.</p></div></div>
@@ -12996,6 +13005,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       var rows=nvCallsData.riders||[], quiet=nvCallsData.quiet||[];
       document.getElementById("nvRiderProbCount").textContent=String(rows.length);
       document.getElementById("nvQuietCount").textContent=String(quiet.length);
+      var rs=document.getElementById("nvRiderProbCountS"), qs=document.getElementById("nvQuietCountS");
+      if(rs){ rs.textContent=rows.length+(rows.length===1?" rider problem":" rider problems"); rs.className="chip"+(rows.length?" bad":""); }
+      if(qs) qs.textContent=quiet.length+" gone quiet";
       rh.innerHTML=rows.length?rows.map(function(r){
         var t=""; try{ t=new Date(r.at).toLocaleTimeString("en-PK",{ hour:"numeric", minute:"2-digit", timeZone:"Asia/Karachi" }); }catch(e){}
         var tel=nvTel(r.phone);
