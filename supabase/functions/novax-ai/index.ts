@@ -468,7 +468,29 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: lookup } = await sb.rpc("ai_public_parcel", { p_token: token });
+    let { data: lookup } = await sb.rpc("ai_public_parcel", { p_token: token });
+    /* 22 Oct 2026: links shared by riders and merchants carry the AWB
+       (tracking.html?awb=N1820003), not the secret token, so the assistant
+       answered "could not find a parcel" on most tracking pages. An AWB is
+       guessable, so it gets only what the public AWB page already shows --
+       status, cities, dates and the journey -- never the customer's name,
+       the COD amount or the shop. */
+    let awbOnly = false;
+    if ((!lookup || (lookup as Record<string, unknown>).found !== true) && /^[A-Za-z]{0,3}\s*\d{5,10}$/.test(token)) {
+      const { data: rows } = await sb.rpc("public_track_awb", { p_awb: token });
+      const row = Array.isArray(rows) ? rows[0] as Record<string, unknown> | undefined : undefined;
+      if (row && row.awb) {
+        const last = row.updated_at ? new Date(String(row.updated_at)).getTime() : NaN;
+        lookup = { found: true, parcel: {
+          awb: row.awb, status: row.status, status_note: row.status_note ?? null,
+          from_city: row.origin_city ?? null, city: row.destination_city ?? null,
+          booked_at: row.booked_at ?? null, last_update: row.updated_at ?? null, delivered_at: row.delivered_at ?? null,
+          hours_since_update: Number.isFinite(last) ? Math.round((Date.now() - last) / 36e5 * 10) / 10 : null,
+          journey: row.journey ?? [],
+        } };
+        awbOnly = true;
+      }
+    }
     if (!lookup || (lookup as Record<string, unknown>).found !== true) {
       return json({
         answer: "I could not find a parcel for that tracking link. Double-check the link, or ask the shop you ordered from.",
@@ -488,7 +510,9 @@ Never predict a delivery date. Riders carry these parcels and a guess from you b
 
 Answer in the language they write in — Roman Urdu in, Roman Urdu out.
 
-Be brief and warm. Two or three sentences. End by calling present exactly once.`;
+Be brief and warm. Two or three sentences. End by calling present exactly once.${awbOnly ? `
+
+This link carries only the AWB, so you do NOT know the amount to pay, the shop or the customer's name. If asked how much to pay, say the rider will tell them at the door and the shop's order message has the amount. Do not invent one.` : ""}`;
 
     try {
       const r = await fetch(ANTHROPIC_URL, {
