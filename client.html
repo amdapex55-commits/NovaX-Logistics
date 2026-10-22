@@ -76,7 +76,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=9e12c88f">
+  <link rel="preload" as="script" href="client-app.min.js?v=2085185b">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2694,6 +2694,26 @@ try{
   @media (prefers-reduced-motion:reduce){.nvvn-bar i{transition:none}}
   /* New stations (17 Oct 2026): the booking-form strip and the Home
      announcement. Theme tokens only, so both read in light and dark. */
+  /* Destination city tiles (21 Oct 2026). The native select stays in the
+     form, visually hidden but focusable, so required-field checks still work. */
+  .nv-city-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none;margin:0!important;padding:0!important;border:0!important;}
+  .nv-cityp{margin-top:2px;}
+  .nv-cityp-main{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+  .nv-cityp-main button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:58px;padding:9px 12px;border-radius:12px;border:1px solid var(--nvu-line);background:var(--nvu-panel);color:var(--nvu-ink);text-align:left;cursor:pointer;font:inherit;transition:border-color .15s,background .15s;}
+  .nv-cityp-main button b{font-size:15px;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .nv-cityp-main button small{font-size:12px;color:var(--nvu-ink-2);line-height:1.2;white-space:nowrap;}
+  .nv-cityp-main button:hover{border-color:var(--nvu-good-fg);}
+  .nv-cityp-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:12px 2px 7px;font-size:12px;line-height:1.4;color:var(--nvu-good-fg);}
+  .nv-cityp-h b{font-weight:850;}
+  .nv-cityp-h b::before{content:"\2605";margin-right:5px;}
+  .nv-cityp-h span{color:var(--nvu-ink-2);}
+  .nv-cityp-new{display:flex;flex-wrap:wrap;gap:6px;}
+  .nv-cityp-new button{min-height:36px;padding:6px 12px;border-radius:999px;border:1px solid var(--nvu-good-ln);background:var(--nvu-good-bg);color:var(--nvu-good-fg);font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .nv-cityp-new button:hover{border-color:var(--nvu-good-fg);}
+  .nv-cityp button[aria-pressed="true"]{background:var(--nvu-good-fg);border-color:var(--nvu-good-fg);color:var(--nvu-bg);}
+  .nv-cityp-main button[aria-pressed="true"] small{color:var(--nvu-bg);opacity:.85;}
+  .nv-cityp button:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px;}
+  @media (max-width:560px){.nv-cityp-main{grid-template-columns:repeat(2,minmax(0,1fr));}}
   .nv-newst{margin-top:8px;border:1px solid var(--nvu-good-ln);background:var(--nvu-good-bg);border-radius:12px;padding:8px 10px;}
   .nv-newst-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12px;line-height:1.4;color:var(--nvu-good-fg);}
   .nv-newst-h b{font-weight:850;letter-spacing:.01em;}
@@ -2780,7 +2800,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=9e12c88f" defer></script>
+  <script src="client-app.min.js?v=2085185b" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3107,7 +3127,7 @@ try{
                   <div class="form-grid">
                     <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" maxlength="120" required></div>
                     <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
-                    <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select><div class="footer-note" id="bookingZoneHint"></div><!-- New stations, 17 Oct 2026: tap a town to pick it. Wired in client-app.js (nvNewStationsWire). --><div class="nv-newst" id="bookingNewStations"><div class="nv-newst-h"><b>New stations</b><span>Just launched &middot; same rate as Lahore</span></div><div class="nv-newst-chips"><button type="button" data-nv-newst="Faisalabad">Faisalabad</button><button type="button" data-nv-newst="Multan">Multan</button><button type="button" data-nv-newst="Sahiwal">Sahiwal</button><button type="button" data-nv-newst="Okara">Okara</button><button type="button" data-nv-newst="Chichawatni">Chichawatni</button><button type="button" data-nv-newst="Harappa">Harappa</button><button type="button" data-nv-newst="Yousuf Wala">Yousuf Wala</button><button type="button" data-nv-newst="Adda Gamber">Adda Gamber</button></div></div></div>
+                    <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" class="nv-city-native" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select><div class="footer-note" id="bookingZoneHint"></div><!-- New stations, 17 Oct 2026: tap a town to pick it. Wired in client-app.js (nvNewStationsWire). --><!-- 21 Oct 2026: tiles instead of the long dropdown. They drive the select above (kept for the form and every script that reads it); wired in client-app.js (nvNewStationsWire). --><div class="nv-cityp" id="bookingNewStations" role="group" aria-label="Destination city"><div class="nv-cityp-main"><button type="button" data-nv-newst="Lahore"><b>Lahore</b><small>2–3 days</small></button><button type="button" data-nv-newst="Karachi"><b>Karachi</b><small>Same day</small></button><button type="button" data-nv-newst="Islamabad"><b>Islamabad</b><small>2–3 days</small></button><button type="button" data-nv-newst="Rawalpindi"><b>Rawalpindi</b><small>2–3 days</small></button></div><div class="nv-cityp-h"><b>New stations</b><span>Just launched &middot; same rate as Lahore &middot; 2–3 days</span></div><div class="nv-cityp-new"><button type="button" data-nv-newst="Faisalabad">Faisalabad</button><button type="button" data-nv-newst="Multan">Multan</button><button type="button" data-nv-newst="Sahiwal">Sahiwal</button><button type="button" data-nv-newst="Okara">Okara</button><button type="button" data-nv-newst="Chichawatni">Chichawatni</button><button type="button" data-nv-newst="Harappa">Harappa</button><button type="button" data-nv-newst="Yousuf Wala">Yousuf Wala</button><button type="button" data-nv-newst="Adda Gamber">Adda Gamber</button></div></div></div>
                     <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->

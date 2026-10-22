@@ -10326,6 +10326,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           nvNewStationsSync();
         });
         sel.addEventListener("change", nvNewStationsSync);
+        /* Drafts, the AI fill and form reset set the select directly, without
+           a change event: hook its own setters so the tiles always show the
+           city that will actually be booked. */
+        try{
+          ["value","selectedIndex"].forEach(function(k){
+            var d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,k); if(!d||!d.set) return;
+            Object.defineProperty(sel,k,{ configurable:true, get:function(){ return d.get.call(this); },
+              set:function(v){ d.set.call(this,v); try{ nvNewStationsSync(); }catch(e){} } });
+          });
+        }catch(e){}
         nvNewStationsSync();
       }
       if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", wire); else wire();
