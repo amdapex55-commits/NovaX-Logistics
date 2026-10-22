@@ -246,7 +246,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   <!-- Connect --------------------------------------------------------- -->
   <div class="card hide" id="connect">
     <h2>Connect your NovaX account</h2>
-    <p class="sub">Open the NovaX portal, go to <b>Integrations</b>, and copy the connect code shown there. The code proves you own the account — we never match stores to accounts by email address.</p>
+    <p class="sub">Click <b>Get my code</b>. The NovaX portal opens with your code: copy it, paste it here and press <b>Connect this store</b>. The code proves you own the account — we never match stores to accounts by email address.</p>
     <div class="fields" style="margin-top:var(--s4)">
       <div>
         <label for="code">Connect code</label>

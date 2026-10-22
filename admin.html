@@ -2064,6 +2064,8 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .nv-calls h4.nv-calls-h{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px}
+    .nv-calls .ops-card .inline-actions a{text-decoration:none}
     .grid.two {
       grid-template-columns: minmax(0, 1.16fr) minmax(340px, .84fr);
       align-items: start;
@@ -5712,6 +5714,20 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="admin-content">
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
+
+              <!-- 22 Oct 2026: who to phone today. Rider actions NovaX refused in
+                   the last 24 hours (portal_error_logs, source rider) and merchants
+                   with 3+ parcels who have not booked for 14 days. -->
+              <div class="panel mt-14" id="nvCallsPanel">
+                <div class="section-head">
+                  <div><h3>Calls to make today</h3><p>Riders who got stuck on an action in the last 24 hours, and merchants who have stopped booking.</p></div>
+                  <button class="action-btn ghost" type="button" onclick="nvCallsLoad(true)">Refresh</button>
+                </div>
+                <div class="grid two nv-calls">
+                  <div><h4 class="nv-calls-h">Rider problems today <span class="chip" id="nvRiderProbCount">0</span></h4><div class="ops-list" id="nvRiderProblems"><p class="footer-note">Loading…</p></div></div>
+                  <div><h4 class="nv-calls-h">Merchants gone quiet <span class="chip warn" id="nvQuietCount">0</span></h4><div class="ops-list" id="nvGoneQuiet"><p class="footer-note">Loading…</p></div><button class="ghost-btn mt-6" type="button" id="nvQuietMore" hidden onclick="nvCallsAll=!nvCallsAll;nvCallsPaint()">Show all</button></div>
+                </div>
+              </div>
 
               <div class="panel mt-14" id="adminPeriodPanel">
                 <div class="section-head"><div><h3>Revenue by Collection Date</h3><p>Delivery fees from parcels that reached the warehouse in the selected dates. COD belongs to merchants and is excluded.</p></div></div>
@@ -12156,6 +12172,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-health") { try { renderSystemHealth(); } catch(e){} }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
+      if (state.activeAdminTab === "dashboard") { try { nvCallsLoad(false); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
       if (state.activeAdminTab === "flyer-orders") { try { nvFlyAdminLoad(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
@@ -12960,6 +12977,57 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(subBadge){ subBadge.style.display=openCount?"inline-block":"none"; subBadge.textContent=String(openCount); }
     }
 
+    /* 22 Oct 2026: "Calls to make today" on the dashboard. */
+    var nvCallsData={ riders:null, quiet:null, at:0 }, nvCallsAll=false;
+    function nvTel(p){ var d=String(p||"").replace(/\D/g,""); return d; }
+    function nvWa(p){ var d=nvTel(p); if(d.length===11&&d.charAt(0)==="0") d="92"+d.slice(1); return d.length>=11?"https://wa.me/"+d:""; }
+    async function nvCallsLoad(force){
+      var sb=window.__nvSb; if(!sb||!sb.rpc) return false;
+      if(!force && Date.now()-nvCallsData.at<120000) { nvCallsPaint(); return true; }
+      try{
+        var r=await Promise.all([sb.rpc("admin_rider_problems_today"), sb.rpc("admin_gone_quiet",{ p_days:14 })]);
+        if(r[0].error||r[1].error) throw new Error((r[0].error||r[1].error).message);
+        nvCallsData={ riders:r[0].data||[], quiet:r[1].data||[], at:Date.now() };
+      }catch(e){ var h=document.getElementById("nvRiderProblems"); if(h) h.innerHTML='<p class="footer-note">Could not load: '+nvEscAdmin(e.message||e)+'</p>'; return false; }
+      nvCallsPaint(); return true;
+    }
+    function nvCallsPaint(){
+      var rh=document.getElementById("nvRiderProblems"), qh=document.getElementById("nvGoneQuiet"); if(!rh||!qh) return;
+      var rows=nvCallsData.riders||[], quiet=nvCallsData.quiet||[];
+      document.getElementById("nvRiderProbCount").textContent=String(rows.length);
+      document.getElementById("nvQuietCount").textContent=String(quiet.length);
+      rh.innerHTML=rows.length?rows.map(function(r){
+        var t=""; try{ t=new Date(r.at).toLocaleTimeString("en-PK",{ hour:"numeric", minute:"2-digit", timeZone:"Asia/Karachi" }); }catch(e){}
+        var tel=nvTel(r.phone);
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(r.rider)+'</strong><span class="footer-note">'+nvEscAdmin(t)+'</span></div>'+
+          '<p class="footer-note">'+nvEscAdmin(r.message)+'</p><div class="inline-actions" style="margin-top:6px">'+
+          (tel?'<a class="action-btn" href="tel:'+tel+'">Call '+nvEscAdmin(r.phone)+'</a>':'')+
+          '<button class="action-btn ghost" type="button" onclick="nvCallsResolve(\''+nvEscAttrJs(String(r.id))+'\')">Done</button></div></div>';
+      }).join(""):'<p class="footer-note">No rider problems in the last 24 hours.</p>';
+      var list=nvCallsAll?quiet:quiet.slice(0,8);
+      qh.innerHTML=list.length?list.map(function(c){
+        var tel=nvTel(c.phone), wa=nvWa(c.phone);
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(c.name)+'</strong><span class="chip warn">'+nvEscAdmin(String(c.days))+' days quiet</span></div>'+
+          '<p class="footer-note">'+nvEscAdmin(c.owner||"")+(c.city?' · '+nvEscAdmin(c.city):'')+' · '+nvEscAdmin(String(c.parcels))+' parcels, '+nvEscAdmin(String(c.returned))+' returned</p>'+
+          '<div class="inline-actions" style="margin-top:6px">'+(tel?'<a class="action-btn" href="tel:'+tel+'">Call '+nvEscAdmin(c.phone)+'</a>':'')+
+          (wa?'<a class="action-btn ghost" href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</div></div>';
+      }).join(""):'<p class="footer-note">Nobody has gone quiet.</p>';
+      var more=document.getElementById("nvQuietMore");
+      if(more){ more.hidden=quiet.length<=8; more.textContent=nvCallsAll?"Show fewer":"Show all "+quiet.length; }
+    }
+    async function nvCallsResolve(id){
+      try{ var r=await window.__nvSb.rpc("admin_resolve_error_log",{ p_id:id }); if(r.error) throw new Error(r.error.message); }
+      catch(e){ toast("Could not update: "+(e.message||e),"error"); return; }
+      nvCallsData.riders=(nvCallsData.riders||[]).filter(function(x){ return String(x.id)!==String(id); }); nvCallsPaint();
+    }
+    (function nvCallsBoot(){
+      var tries=0, t=setInterval(function(){
+        tries++;
+        if(tries>60){ clearInterval(t); return; }
+        if(!window.__nvSb||!document.getElementById("nvCallsPanel")) return;
+        nvCallsLoad(true).then(function(ok){ if(ok) clearInterval(t); });
+      }, 3000);
+    })();
     async function resolveErrorLog(id){
       try{ const r=await window.__nvSb.rpc("admin_resolve_error_log",{ p_id:id }); if(r.error) throw new Error(r.error.message); toast("Error marked resolved"); loadErrorMonitor(); }
       catch(e){ toast("Could not resolve: "+(e.message||e), "error"); }

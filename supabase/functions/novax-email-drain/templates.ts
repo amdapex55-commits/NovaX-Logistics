@@ -1,7 +1,8 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
   | 'back_quiet' | 'back_tried' | 'setup_ready'
-  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch';
+  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch'
+  | 'reattempt_digest';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -407,6 +408,38 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       note: Number(data.fee) > 0
         ? 'The fee comes from your NovaX Wallet. If the wallet is empty, it comes out of your next COD before you withdraw.'
         : 'There is no fee for this one.',
+    };
+  }
+  // 22 Oct 2026: once a day (20:00 PKT), every parcel that could not be
+  // delivered today and will go out again, so the merchant can call the
+  // customer before the next try.
+  if (kind === 'reattempt_digest') {
+    const list = Array.isArray(data.parcels) ? data.parcels as Array<Record<string, unknown>> : [];
+    if (!list.length) throw new Error('missing_parcels');
+    const n = list.length;
+    const nextDay = (v: unknown) => { const s = String(v ?? ''); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? day(s + 'T12:00:00+05:00') : ''; };
+    const rows: Array<[string, string]> = list.slice(0, 10).map((p) => {
+      const who = [label(p.customer), label(p.city)].filter(Boolean).join(', ');
+      const why = label(p.reason) || 'Reason not recorded';
+      const next = nextDay(p.next);
+      return [label(p.awb) + (who ? ' · ' + who : ''), why + (next ? ' · next try ' + next : '')] as [string, string];
+    });
+    if (n > 10) rows.push(['And ' + (n - 10) + ' more', 'All are listed in your portal.']);
+    return {
+      subject: n === 1 ? `1 parcel will go out again: ${label(list[0].awb)}` : `${n} parcels will go out again`,
+      preheader: `Our rider could not deliver ${n === 1 ? 'this parcel' : 'these parcels'} today${forBiz}. A quick call to the customer helps the next try.`,
+      pill: 'Delivery tomorrow or later', tone: 'info',
+      title: n === 1 ? 'One parcel goes out again.' : `${n} parcels go out again.`,
+      intro: `Our rider could not deliver ${n === 1 ? 'this parcel' : 'these parcels'} today${forBiz}. Here is who, where and why, and when we try again.`,
+      rows,
+      cta: 'Open my parcels', destination: PORTAL,
+      stepsTitle: 'What helps',
+      steps: [
+        ['Call the customer.', 'A short call before the next try is the best way to get it delivered.'],
+        ['Wrong address or phone?', 'Fix it in your portal before the rider goes out again.'],
+        ['Want it back instead?', 'Tell NovaX support and we bring it back to you.'],
+      ],
+      note: 'You get this email at most once a day, and only on days a parcel could not be delivered.',
     };
   }
   throw new Error('unknown_email_kind');

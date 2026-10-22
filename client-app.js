@@ -3154,7 +3154,11 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
       return "Assalam o Alaikum"+(name?(" "+name):"")+", aapka parcel NovaX se bhaija gaya hai.\n"+
              "AWB: "+(p.awb||"")+
              ((p&&Number(p.cod)>0)?("\nCOD: Rs "+Number(p.cod).toLocaleString("en-PK")+" (cash tayyar rakhein)"):"")+
-             "\n\nLive tracking: "+url;
+             "\n\nLive tracking: "+url+
+             /* 22 Oct 2026: the link lets the customer answer (home today,
+                tomorrow, call first, wrong address). Asking up front means the
+                rider goes when they are in, instead of coming back refused. */
+             "\n\nRider ke aane se pehle is link par ek button daba kar batayein: aaj ghar par hain, kal, ya pehle call karein. Shukriya!";
     }
     function shareTrackingLink(awb){
       var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
@@ -6434,7 +6438,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!p||!p.trackingToken){ host.innerHTML=""; return; }
       var a=escLabelText(p.awb||"");
       host.innerHTML='<button type="button" class="ghost-btn" style="padding:6px 11px;font-size:12px" onclick="shareTrackingLink(\''+a+'\')">Copy tracking link</button>'+
-                     '<button type="button" class="ghost-btn" style="padding:6px 11px;font-size:12px" onclick="whatsappTrackingLink(\''+a+'\')">Send to customer on WhatsApp</button>';
+                     '<button type="button" class="ghost-btn" style="padding:6px 11px;font-size:12px" onclick="whatsappTrackingLink(\''+a+'\')">Ask customer to confirm on WhatsApp</button>';
     }
     function closeAwbModal(){ document.getElementById("awbModal").classList.remove("show"); }
 
@@ -10314,6 +10318,40 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!sel||!host) return;
       host.querySelectorAll("[data-nv-newst]").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-nv-newst")===sel.value?"true":"false"); });
     }
+    /* 22 Oct 2026: the same tiles for the edit-booking popup. Built from one
+       list so the two pickers can never disagree. */
+    var NV_TILE_MAIN=[["Lahore","2\u20133 days"],["Karachi","Same day"],["Islamabad","2\u20133 days"],["Rawalpindi","2\u20133 days"]];
+    function nvCityTilesHtml(){
+      var news=(window.NV_STATIONS_NEW||["Faisalabad","Multan","Sahiwal","Okara","Chichawatni","Harappa","Yousuf Wala","Adda Gamber"]);
+      return '<div class="nv-cityp-main">'+NV_TILE_MAIN.map(function(m){ return '<button type="button" data-nv-newst="'+m[0]+'"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>'; }).join("")+'</div>'+
+        '<div class="nv-cityp-h"><b>New stations</b><span>Same rate as Lahore \u00b7 2\u20133 days</span></div>'+
+        '<div class="nv-cityp-new">'+news.map(function(n){ return '<button type="button" data-nv-newst="'+n+'">'+n+'</button>'; }).join("")+'</div>';
+    }
+    function nvCityTilesBind(sel, host){
+      if(!sel||!host||host.__nvWired) return;
+      host.__nvWired=true;
+      if(!host.children.length) host.innerHTML=nvCityTilesHtml();
+      var sync=function(){ host.querySelectorAll("[data-nv-newst]").forEach(function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-nv-newst")===sel.value?"true":"false"); }); };
+      host.addEventListener("click", function(ev){
+        var b=ev.target.closest("[data-nv-newst]"); if(!b) return;
+        sel.value=b.getAttribute("data-nv-newst");
+        try{ sel.dispatchEvent(new Event("change",{ bubbles:true })); }catch(e){}
+        sync();
+      });
+      sel.addEventListener("change", sync);
+      try{
+        ["value","selectedIndex"].forEach(function(k){
+          var d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,k); if(!d||!d.set) return;
+          Object.defineProperty(sel,k,{ configurable:true, get:function(){ return d.get.call(this); },
+            set:function(v){ d.set.call(this,v); try{ sync(); }catch(e){} } });
+        });
+      }catch(e){}
+      sync();
+    }
+    (function nvEdCityWire(){
+      function wire(){ nvCityTilesBind(document.getElementById("nvEdCity"), document.getElementById("nvEdCityTiles")); }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", wire); else wire();
+    })();
     (function nvNewStationsWire(){
       function wire(){
         var sel=document.getElementById("bookingCity"), host=document.getElementById("bookingNewStations");
@@ -10356,7 +10394,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const zone=zoneForCity(el.value);
       const weightEl=document.getElementById("bookingWeight");
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
-      hint.textContent=(nvIsNewStation(el.value)?"New station · ":"")+zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total);
+      /* 22 Oct 2026: said "Zone A (Karachi) · base Rs 225 + additional Rs 0
+         (0 extra kg) = estimated total Rs 225". Now the money first, then the
+         city and how long it takes; the extra-kg part only when there is one. */
+      var nvCityNm=nvStationName(el.value)||el.value, nvDays=String(el.value).toLowerCase()==="karachi"?"same day":"2\u20133 days";
+      hint.textContent="Rs "+fmt(breakdown.total)+" \u00b7 "+nvCityNm+", "+nvDays+(nvIsNewStation(el.value)?" \u00b7 new station":"")+
+        (Number(breakdown.extraKg)>0?" (Rs "+fmt(breakdown.base)+" + Rs "+fmt(breakdown.additional)+" for "+breakdown.extraKg+" extra kg)":"");
       try{ nvRenderBookReview(); }catch(e){}
     }
     /* FINAL REVIEW (21 Sep list, booking-to-print). The delivery charge only
@@ -14971,6 +15014,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            (typeof nvCanUseTab!=="function" || nvCanUseTab(r.tab))) showClientTab(r.tab);
       }catch(e){}
     }
+    /* 22 Oct 2026: the setup banners (Merchant Agreement, owner's CNIC)
+       sit inside one "Finish setting up" card. Each banner still shows and
+       hides itself exactly as before; this only counts them. */
+    function nvSetupPaint(){
+      var card=document.getElementById("nvSetupCard"); if(!card) return;
+      var n=Array.prototype.filter.call(card.querySelectorAll(".nv-kyc-banner"), function(b){ return !b.hidden; }).length;
+      card.hidden=n===0;
+      var c=document.getElementById("nvSetupCount"); if(c) c.textContent=n===1?"1 step left":n+" steps left";
+    }
+    (function nvSetupWatch(){
+      function go(){
+        var card=document.getElementById("nvSetupCard"); if(!card||card.__nvWatch) return; card.__nvWatch=true;
+        try{ var mo=new MutationObserver(nvSetupPaint); card.querySelectorAll(".nv-kyc-banner").forEach(function(b){ mo.observe(b,{ attributes:true, attributeFilter:["hidden"] }); }); }catch(e){}
+        nvSetupPaint();
+      }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", go); else go();
+    })();
+    /* 22 Oct 2026: a merchant who used to ship (2+ parcels) and has not
+       booked for 14 days sees one friendly card on Home. Read from the
+       server once per visit: the portal only loads recent parcels. "Not now"
+       hides it for a week on this device. */
+    var NV_QUIET={ tried:false };
+    function nvQuietCard(){
+      if(NV_QUIET.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
+      var sb=window.__nvSb, card=document.getElementById("nvQuietCard"), cid=state.client&&state.client.id;
+      if(!sb||!sb.from||!card||!cid) return;
+      try{ if(Number(localStorage.getItem("nvQuietHideUntil")||0)>Date.now()) return; }catch(e){}
+      NV_QUIET.tried=true;
+      Promise.resolve(sb.from("parcels").select("booked_at",{ count:"exact" }).eq("client_id",cid).order("booked_at",{ ascending:false }).limit(1)).then(function(r){
+        if(!r||r.error||!r.data||!r.data.length||(r.count||0)<2) return;
+        var last=Date.parse(r.data[0].booked_at||""); if(!isFinite(last)) return;
+        var days=Math.floor((Date.now()-last)/864e5); if(days<14) return;
+        document.getElementById("nvQuietT").textContent="It\u2019s been "+days+" days since your last parcel";
+        document.getElementById("nvQuietB").textContent="Book today and a rider collects it from your door. Pickup is free, with COD in your wallet the day it lands.";
+        card.hidden=false;
+        var x=document.getElementById("nvQuietHide");
+        if(x&&!x._nvWired){ x._nvWired=true; x.addEventListener("click",function(){ card.hidden=true; try{ localStorage.setItem("nvQuietHideUntil", String(Date.now()+7*864e5)); }catch(e){} }); }
+      }).catch(function(){ NV_QUIET.tried=false; });
+    }
     var NV_TERMS={ tried:false, busy:false };
     function nvTermsEnsure(){
       if(NV_TERMS.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
@@ -15722,6 +15804,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ nvPfEnsureHeader(); }catch(e){}
       try{ nvKycEnsure(); }catch(e){}
       try{ nvTermsEnsure(); }catch(e){}
+      try{ nvQuietCard(); }catch(e){}
       try{ nvResumeEnsure(); }catch(e){}
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}

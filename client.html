@@ -76,7 +76,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=2085185b">
+  <link rel="preload" as="script" href="client-app.min.js?v=4201c6b3">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2694,6 +2694,23 @@ try{
   @media (prefers-reduced-motion:reduce){.nvvn-bar i{transition:none}}
   /* New stations (17 Oct 2026): the booking-form strip and the Home
      announcement. Theme tokens only, so both read in light and dark. */
+  /* 22 Oct 2026: one setup card instead of stacked banners */
+  .nv-setup{margin:0 0 14px;padding:12px 14px 4px;border-radius:16px;background:var(--nvu-warn-bg);box-shadow:inset 0 0 0 1px var(--nvu-warn-ln);color:var(--nvu-warn-fg)}
+  .nv-setup-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 2px 8px}
+  .nv-setup-h b{font-size:15px;font-weight:850}
+  .nv-setup-h span{font-size:12.5px;font-weight:700;opacity:.85}
+  .nv-setup .nv-kyc-banner{margin:0 0 8px;padding:10px 12px;border-radius:12px;background:var(--nvu-bg);box-shadow:inset 0 0 0 1px var(--nvu-warn-ln);color:var(--nvu-ink)}
+  .nv-setup .nv-kyc-banner.is-bad{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);box-shadow:inset 0 0 0 1px var(--nvu-bad-ln)}
+  .nv-setup .nv-kyc-banner b{font-size:14px}
+  .nv-setup .nv-kyc-banner span{color:var(--nvu-ink-2)}
+  .nv-setup .nv-kyc-banner.is-bad span{color:inherit}
+  /* 22 Oct 2026: merchants who have gone quiet */
+  .nv-quiet{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:14px 16px;border-radius:16px;background:var(--nvu-good-bg);box-shadow:inset 0 0 0 1px var(--nvu-good-ln);color:var(--nvu-ink)}
+  .nv-quiet>div:first-child{flex:1 1 240px;min-width:0}
+  .nv-quiet b{display:block;font-size:15px;color:var(--nvu-good-fg)}
+  .nv-quiet span{display:block;font-size:13px;margin-top:3px;color:var(--nvu-ink-2);line-height:1.45}
+  .nv-quiet-acts{display:flex;gap:8px;flex-wrap:wrap}
+  .nv-quiet-acts button{min-height:40px;white-space:nowrap}
   /* Destination city tiles (21 Oct 2026). The native select stays in the
      form, visually hidden but focusable, so required-field checks still work. */
   .nv-city-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none;margin:0!important;padding:0!important;border:0!important;}
@@ -2800,7 +2817,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=2085185b" defer></script>
+  <script src="client-app.min.js?v=4201c6b3" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3026,6 +3043,8 @@ try{
                 <span class="nv-instant-body"><b>Nova Recover</b><span>A customer refused, or an order came back? Our agent phones them and sells it again. You pay only for each order we recover.</span></span>
                 <span class="nv-instant-go">Open Nova Recover</span>
               </button>
+              <!-- 22 Oct 2026: one "finish setting up" card around the setup banners; the banners keep their own show/hide logic and nvSetupPaint() counts them. -->
+              <div class="nv-setup" id="nvSetupCard" hidden><div class="nv-setup-h"><b>Finish setting up</b><span id="nvSetupCount"></span></div>
               <div class="nv-kyc-banner nv-terms-banner" id="nvTermsBanner" role="status" hidden>
                 <div><b>Please accept the NovaX Merchant Agreement</b><span>Version <span id="nvTermsVer" style="display:inline;margin:0">1.0</span> covers COD payouts, holds, lost-parcel claims and returns. <a href="/terms.html" target="_blank" rel="noopener">Read it</a></span></div>
                 <button type="button" class="action-btn" id="nvTermsAccept">I accept</button>
@@ -3034,6 +3053,9 @@ try{
                 <div><b id="nvKycBannerT">Add the owner's CNIC</b><span id="nvKycBannerB">A photo of the front and the back. Only NovaX staff can see it.</span></div>
                 <button type="button" class="action-btn" id="nvKycBannerGo">Add CNIC</button>
               </div>
+              </div>
+              <!-- 22 Oct 2026: shown when a merchant who used to ship has gone quiet (nvQuietCard). -->
+              <div class="nv-quiet" id="nvQuietCard" hidden><div><b id="nvQuietT"></b><span id="nvQuietB"></span></div><div class="nv-quiet-acts"><button type="button" class="action-btn" onclick="if(window.showClientTab)showClientTab('newBooking')">Book a parcel</button><button type="button" class="ghost-btn nv-quiet-x" id="nvQuietHide" aria-label="Hide for a week">Not now</button></div></div>
               <div class="nv-command-strip" id="nvCommandStrip">
                 <!-- reorder anchor: nv-command-strip is order:2 on mobile, see mobile overhaul CSS -->
                 <div class="nv-cs-text">
@@ -3834,7 +3856,7 @@ try{
         <div class="field"><label for="nvEdName">Consignee Name <span class="required-star">*</span></label><input id="nvEdName" maxlength="120"></div>
         <div class="field"><label for="nvEdPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="nvEdPhone"></div>
         <div class="field"><label for="nvEdCity">Destination City <span class="required-star">*</span></label>
-          <select id="nvEdCity"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select></div>
+          <select id="nvEdCity" class="nv-city-native"><option value="">Select destination city…</option><optgroup label="Main cities"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></optgroup><optgroup label="★ New stations · just launched"><option>Faisalabad</option><option>Multan</option><option>Sahiwal</option><option>Okara</option><option>Chichawatni</option><option>Harappa</option><option>Yousuf Wala</option><option>Adda Gamber</option></optgroup></select><div class="nv-cityp" id="nvEdCityTiles" role="group" aria-label="Destination city"></div></div>
         <div class="field"><label for="nvEdCod">COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
         <div class="field"><label for="nvEdCategory">Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
         <div class="field"><label for="nvEdWeight">Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>
