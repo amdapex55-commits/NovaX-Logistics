@@ -2072,6 +2072,13 @@
     .nv-calls-fold[open]>summary::after{transform:rotate(180deg)}
     .nv-calls-fold .nv-calls-tap{font-size:12px;opacity:.6}
     .nv-calls-fold[open] .nv-calls-tap{display:none}
+    /* 25 Oct 2026: parcel line inside support tickets */
+    .nv-atk-pl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:4px 0 6px;padding:7px 10px;border-radius:10px;background:rgba(20,199,123,.06);border:1px solid rgba(20,199,123,.18);font-size:12.5px;line-height:1.5}
+    .nv-atk-pl i{font-style:normal;opacity:.45}
+    .nv-atk-pl .chip{font-size:11.5px;padding:1px 8px}
+    .nv-atk-pl-links{margin-left:auto;display:inline-flex;gap:10px}
+    .nv-atk-pl-links a{font-weight:700;color:#14c77b;text-decoration:none;white-space:nowrap}
+    .nv-atk-pl-links a:hover{text-decoration:underline}
     .nv-calls h4.nv-calls-h{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px}
     .nv-calls .ops-card .inline-actions a{text-decoration:none}
     .grid.two {
@@ -20061,6 +20068,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         NV_ATK.list = (r && r.data) || [];
         NV_ATK.openCount = NV_ATK.list.filter(function(t){ return t.status !== "resolved"; }).length;
         nvAtkRender();
+        try { nvAtkLoadParcels(); } catch(e){}
         try { if (typeof nvRenderTabBadges === "function") nvRenderTabBadges(); } catch(e){}
       });
     }
@@ -20109,6 +20117,64 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
+    /* 25 Oct 2026: one compact line per ticket about the parcel it names --
+       status and since when, where it is now, attempts, the rider's last
+       note, the customer's answer, COD -- so a ticket can be answered without
+       opening Orders. Read in one call for every ticket on screen. */
+    function nvAtkAwbOf(t){
+      if (t.awb) return String(t.awb).toUpperCase().trim();
+      var m = String((t.subject || "") + " " + (t.body || "")).match(/\bN\d{6,9}\b/i);
+      return m ? m[0].toUpperCase() : "";
+    }
+    function nvAtkLoadParcels(){
+      var sb = window.__nvSb; if (!sb || !sb.rpc) return;
+      var awbs = []; (NV_ATK.list || []).forEach(function(t){ var a = nvAtkAwbOf(t); if (a && awbs.indexOf(a) < 0) awbs.push(a); });
+      if (!awbs.length) return;
+      Promise.resolve(sb.rpc("admin_ticket_parcels", { p_awbs: awbs.slice(0, 200) })).then(function(r){
+        if (!r || r.error) return;
+        NV_ATK.parcels = r.data || {}; nvAtkRender();
+      }).catch(function(){});
+    }
+    function nvAtkAgo(iso){
+      var t = Date.parse(iso || ""); if (!isFinite(t)) return "";
+      var m = Math.max(0, Math.round((Date.now() - t) / 60000));
+      return m < 60 ? m + "m ago" : m < 1440 ? Math.round(m / 60) + "h ago" : Math.round(m / 1440) + "d ago";
+    }
+    function nvAtkParcelLine(t){
+      var awb = nvAtkAwbOf(t), p = awb && NV_ATK.parcels ? NV_ATK.parcels[awb] : null;
+      if (!awb) return "";
+      if (!p) return NV_ATK.parcels ? '<div class="nv-atk-pl"><span class="footer-note">' + nvAtkEsc(awb) + ': no parcel found with this number.</span></div>' : "";
+      var st = String(p.status || ""), o = p.origin || "", d = p.dest || "";
+      var where =
+        /out for delivery/i.test(st) ? "With rider " + (p.rider || "") :
+        st === "New booked" ? "Waiting for pickup · " + o :
+        /^(Collected by rider|Arrived at warehouse|Return received at origin|Ready for return)$/.test(st) ? o + " station" :
+        st === "Parcel now in transit" ? "On the way " + o + " → " + d :
+        st === "Return in transit" ? "Returning " + d + " → " + o :
+        st === "Delivered" ? "Delivered" + (p.delivered_at ? " " + String(p.delivered_at).slice(0, 10) : "") :
+        st === "Return to shipper" ? "Back with the shipper" :
+        st === "Cancelled by client" ? "Cancelled" : d + " station";
+      var tone = st === "Delivered" ? "good" : /Refused|Return|not available|Out of service/i.test(st) ? "bad" : /Reattempt/.test(st) ? "warn" : "info";
+      var bits = [];
+      bits.push('<span class="chip ' + tone + '">' + nvAtkEsc(st) + '</span>');
+      bits.push('<span>' + nvAtkEsc(nvAtkAgo(p.since)) + '</span>');
+      bits.push('<b>' + nvAtkEsc(where) + '</b>');
+      if (!/On the way|Returning/.test(where) && o && d && o !== d) bits.push('<span>' + nvAtkEsc(o + " → " + d) + '</span>');
+      if (p.rider && !/out for delivery/i.test(st) && !/Delivered|Back with/.test(where)) bits.push('<span>last rider ' + nvAtkEsc(p.rider) + '</span>');
+      if (Number(p.attempts) > 0) bits.push('<span>try ' + nvAtkEsc(String(p.attempts)) + '</span>');
+      if (p.note) bits.push('<span>“' + nvAtkEsc(String(p.note).slice(0, 70)) + '”</span>');
+      if (p.next) bits.push('<span>next ' + nvAtkEsc(p.next) + '</span>');
+      if (p.reply && p.reply.choice){
+        var said = { home_today: "home today", tomorrow: "tomorrow", call_first: "call first", wrong_address: "wrong address" }[p.reply.choice] || p.reply.choice;
+        bits.push('<span class="chip warn">customer: ' + nvAtkEsc(said) + (p.reply.note ? " · " + nvAtkEsc(String(p.reply.note).slice(0, 60)) : "") + '</span>');
+      }
+      if (Number(p.cod) > 0) bits.push('<span>COD Rs ' + nvAtkEsc(Number(p.cod).toLocaleString("en-PK")) + '</span>');
+      var tel = String(p.phone || "").replace(/\D/g, ""), rtel = String(p.rider_phone || "").replace(/\D/g, "");
+      var links = '<a href="tracking.html?awb=' + encodeURIComponent(awb) + '" target="_blank" rel="noopener">Track</a>' +
+        (tel ? '<a href="tel:' + tel + '">Call ' + nvAtkEsc(String(p.consignee || "customer").split(" ")[0]) + '</a>' : "") +
+        (rtel && /out for delivery|Reattempt/i.test(st) ? '<a href="tel:' + rtel + '">Call rider</a>' : "");
+      return '<div class="nv-atk-pl">' + bits.join('<i>·</i>') + '<span class="nv-atk-pl-links">' + links + '</span></div>';
+    }
     function nvAtkCard(t){
       var sla = nvAtkSla(t);
       var open = NV_ATK.openId === t.id;
@@ -20160,6 +20226,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           (sla.text ? '<span class="chip ' + slaChip + '">' + nvAtkEsc(sla.text) + '</span>' : "") +
           '<span class="chip info">Opened ' + nvAtkEsc(String(t.created_at || "").replace("T", " ").slice(0, 16)) + '</span>' +
         '</div>' +
+        nvAtkParcelLine(t) +
         (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvAtkEsc(t.body) + '</p>' : "") +
         thread + replyRow + '</div>';
     }
