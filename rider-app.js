@@ -1274,10 +1274,14 @@
   function procSetFromInput(typing) {
     var el = q("procInput"); if (!el) return;
     var r = procParse(el.value, typing);
+    /* Redraw only when the numbers change: tapping a button first blurs the
+       box, and redrawing then replaced the button under the finger, so the
+       tap was lost (found 27 Oct with a real tap). */
+    var changed = r.awbs.join() !== PROC.list.join();
     PROC.list = r.awbs;
     var formatted = r.awbs.join(", ") + (r.tail ? (r.awbs.length ? ", " : "") + r.tail : (typing && r.awbs.length && /[0-9]$/.test(el.value) ? ", " : ""));
-    if (el.value !== formatted) { el.value = formatted; try { el.setSelectionRange(formatted.length, formatted.length); } catch (_) {} }
-    procPaint();
+    if (el.value !== formatted && (typing || changed)) { el.value = formatted; try { el.setSelectionRange(formatted.length, formatted.length); } catch (_) {} }
+    if (changed) procPaint();
   }
   function procAdd(awb) { var a = String(awb || "").toUpperCase().replace(/^N?/, "N"); if (!/^N\d{7}$/.test(a) || PROC.list.indexOf(a) > -1) return false;
     PROC.list.push(a); var el = q("procInput"); if (el) el.value = PROC.list.join(", ") + ", "; procPaint(); return true; }
