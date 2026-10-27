@@ -37,12 +37,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="NovaX Rider">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="stylesheet" href="rider.css?v=eb7e158b">
+  <link rel="stylesheet" href="rider.css?v=8635509f">
   <script defer src="assets/vendor/supabase-2.117.2.js"></script>
   <script defer src="nv-payment.js"></script>
   <script defer src="nv-journey.js?v=bd803110"></script>
   <script defer src="rider-core.js?v=67225093"></script>
-  <script defer src="rider-app.js?v=a833d995"></script>
+  <script defer src="rider-app.js?v=f78b7f29"></script>
 </head>
 <body>
   <div class="gate" id="gate"><div class="gatebox">
@@ -83,6 +83,16 @@
 
     <!-- Pickup is this rider's own city and nothing else. Parcels coming in
          from another city are a delivery job: they sit under Delivery. -->
+    <!-- 27 Oct 2026: Process. Type, paste or scan many tracking numbers and act on them in one tap. -->
+    <section class="view hidden" id="view-process">
+      <h2 data-t="procTitle">Process parcels</h2>
+      <p class="sub" data-t="procHelp">Type, paste or scan tracking numbers. The N is optional and the commas go in by themselves.</p>
+      <label class="sr-only" for="procInput">Tracking numbers</label>
+      <textarea id="procInput" class="proc-input" rows="3" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="7810390 7810391 7810392"></textarea>
+      <div class="proc-tools"><span id="procCount"></span><button class="btn secondary" type="button" id="procScan">Scan</button><button class="btn secondary" type="button" id="procClear" data-t="clear">Clear</button></div>
+      <div class="proc-plan" id="procPlan"></div>
+      <div class="proc-list" id="procList"></div>
+    </section>
     <section class="view hidden" id="view-pickup">
       <p class="sub" id="pickupHelp"></p>
       <div class="list" id="collectList"></div>
@@ -128,6 +138,7 @@
   <div class="actionbar hidden" id="actionBar"><span id="actionInfo"></span><button class="btn" id="actionGo" data-write></button><button class="btn secondary" id="actionClear" type="button" data-t="clear">Clear</button></div>
   <nav aria-label="Rider navigation">
     <button class="navbtn active" data-view="home" aria-current="page"><b aria-hidden="true">&#8962;</b><span data-t="home">Home</span></button>
+    <button class="navbtn" data-view="process"><b aria-hidden="true">&#9776;</b><span data-t="navProcess">Process</span></button>
     <button class="navbtn" data-view="pickup"><b aria-hidden="true">&#8593;</b><span data-t="navPickup">Pickup</span></button>
     <button class="navbtn" data-view="delivery"><b aria-hidden="true">&#8594;</b><span data-t="navDelivery">Delivery</span></button>
     <button class="navbtn" data-view="transit"><b aria-hidden="true">&#8646;</b><span data-t="navTransit">Transit</span></button>

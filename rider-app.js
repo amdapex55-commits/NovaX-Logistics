@@ -41,7 +41,7 @@
   try { LANG = localStorage.getItem("novaxRiderLang") === "ur" ? "ur" : "en"; } catch (_) {}
   var TXT = {
     pickup: ["Parcel Pickup", "Parcel Uthana"], delivery: ["Parcel Delivery", "Parcel Delivery"], transit: ["Parcel Transit", "Doosre Shehar Bhejna"],
-    home: ["Home", "Home"], navPickup: ["Pickup", "Uthana"], navDelivery: ["Delivery", "Delivery"], navTransit: ["Transit", "Bhejna"], navCash: ["Cash", "Cash"],
+    home: ["Home", "Home"], navProcess: ["Process", "Kaam"], procTitle: ["Process parcels", "Parcel process karein"], procHelp: ["Type, paste or scan tracking numbers. The N is optional and the commas go in by themselves.", "Tracking number likhein, paste ya scan karein. N zaroori nahi, comma khud lag jata hai."], navPickup: ["Pickup", "Uthana"], navDelivery: ["Delivery", "Delivery"], navTransit: ["Transit", "Bhejna"], navCash: ["Cash", "Cash"],
     receiveTab: ["Arriving", "Aane wale"],
     pickupHelp: ["Parcels to collect from shippers in {city}.", "{city} ke shippers se uthane wale parcel."],
     receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
@@ -433,7 +433,8 @@
     var tg = {};
     /* RIDER-012: a batch leaves ONE station. A two-city rider (Islamabad +
        Rawalpindi) gets one group per station and destination. */
-    tr.forEach(function (p) { var ret = p.status === "Ready for return", from = ret ? p.city : p.origin, to = ret ? p.origin : p.city;
+    /* 27 Oct 2026: a parcel waiting at the Lahore hub leaves from the hub, not from its pickup city. */
+    tr.forEach(function (p) { var ret = p.status === "Ready for return", from = ret ? p.city : ((p.meta && p.meta.atHub) || p.origin), to = ret ? p.origin : p.city;
       var k = (ret ? "R" : "F") + "|" + from + "|" + to; (tg[k] = tg[k] || []).push(p); });
     var multi = (data.rider.cities || []).length > 1;
     q("transitGroups").innerHTML = Object.keys(tg).sort().map(function (k) {
@@ -501,6 +502,7 @@
     document.querySelectorAll(".view").forEach(function (el) { el.classList.toggle("hidden", el.id !== "view-" + ui.view); });
     document.querySelectorAll(".navbtn").forEach(function (b) { var on = b.dataset.view === ui.view; b.classList.toggle("active", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     q("searchRow").classList.toggle("hidden", ["pickup", "delivery", "transit"].indexOf(ui.view) < 0);
+    if (ui.view === "process") { try { procPaint(); } catch (_) {} }
     q("deliveryReceive").classList.toggle("hidden", ui.tab.delivery !== "receive");
     q("deliveryStation").classList.toggle("hidden", ui.tab.delivery !== "station"); q("deliveryOut").classList.toggle("hidden", ui.tab.delivery !== "out");
     document.querySelectorAll("[data-tab]").forEach(function (b) { var p = b.dataset.tab.split(":"), on = ui.tab[p[0]] === p[1]; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
@@ -530,7 +532,7 @@
   function transitTarget(awbs) {
     var tos = new Set(), froms = new Set(), kinds = new Set();
     awbs.forEach(function (a) { var p = data.parcels.find(function (x) { return x.awb === a; }); if (p) { var ret = p.status === "Ready for return";
-      tos.add(ret ? p.origin : p.city); froms.add(ret ? p.city : p.origin); kinds.add(ret); } });
+      tos.add(ret ? p.origin : p.city); froms.add(ret ? p.city : ((p.meta && p.meta.atHub) || p.origin)); kinds.add(ret); } });
     return tos.size === 1 && froms.size === 1 && kinds.size === 1 ? Array.from(tos)[0] : "";
   }
   /* Cards on the screen the rider is looking at: not the other tab's panel. */
@@ -1215,6 +1217,106 @@
   });
   paintInstall();
 
+  /* ---- Process (27 Oct 2026) ---------------------------------------------
+     One place to work a pile of parcels: type, paste or scan tracking
+     numbers in any shape -- N7810390, n7810390, 7810390, with or without
+     commas, even run together -- and each 7-digit run becomes one AWB with
+     the commas put in for you. The app then says what can happen to them
+     here and does it in one tap: receive the sack, take everything out for
+     delivery, collect. It uses the same saved actions as the other tabs, so
+     offline saving, retries and the office log all still apply. */
+  var PROC = { list: [] };
+  function procParse(raw, typing) {
+    var out = [], tail = "";
+    String(raw || "").split(/[^0-9]+/).forEach(function (run, i, all) {
+      if (!run) return;
+      while (run.length >= 7) { out.push("N" + run.slice(0, 7)); run = run.slice(7); }
+      if (run) { if (typing && i === all.length - 1) tail = run; }
+    });
+    var seen = {}; out = out.filter(function (a) { if (seen[a]) return false; seen[a] = true; return true; });
+    return { awbs: out, tail: tail };
+  }
+  function procKind(p, mine) {
+    if (!p) return { k: "missing", why: LANG === "ur" ? "Aap ke station par nahi" : "Not at your station" };
+    if (pendingAwbs().has(p.awb.toUpperCase())) return { k: "saved", why: LANG === "ur" ? "Pehle se save" : "Already saved, sending" };
+    if (p.bucket === "incoming") {
+      var hub = p.meta && p.meta.hub && mine.indexOf(String(p.city).toLowerCase()) < 0;
+      return { k: "receive", hub: !!hub, why: hub ? (LANG === "ur" ? "Hub par lein, phir " + p.city + " bhejein" : "Receive at the hub, then send to " + p.city) : (LANG === "ur" ? "Aa raha hai" : "Arriving") };
+    }
+    if (p.bucket === "station") { var lk = outLock(p); return lk ? { k: "locked", why: lk } : { k: "out", later: !!laterDay(p), why: laterDay(p) ? (LANG === "ur" ? "Customer ne " + dayLabel(laterDay(p)) + " kaha" : "Customer asked for " + dayLabel(laterDay(p))) : (LANG === "ur" ? "Station par" : "At station") }; }
+    if (p.bucket === "pickup") return { k: "collect", why: LANG === "ur" ? "Uthana hai" : "To collect" };
+    if (p.bucket === "transit") return { k: "transit", why: (LANG === "ur" ? "Bhejna hai: " : "To send to ") + (p.status === "Ready for return" ? p.origin : p.city) };
+    if (p.bucket === "out") return { k: "isout", why: p.heldBy ? (LANG === "ur" ? p.heldBy + " ke paas" : "Out with " + p.heldBy) : (LANG === "ur" ? "Pehle se bahar" : "Already out for delivery") };
+    if (p.bucket === "done") return { k: "done", why: LANG === "ur" ? "Deliver ho chuka" : "Delivered" };
+    return { k: "other", why: p.status };
+  }
+  function procPaint() {
+    var host = q("procList"), plan = q("procPlan"); if (!host || !plan) return;
+    var mine = (data.rider && data.rider.cities || []).map(function (c) { return String(c).toLowerCase(); });
+    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine) }; });
+    var tone = { receive: "warn", out: "ok", collect: "warn", transit: "warn", locked: "bad", missing: "bad", isout: "", done: "", saved: "", other: "" };
+    host.innerHTML = rows.map(function (r) {
+      return '<div class="proc-row"><b class="awbx">' + esc(r.awb) + '</b><span class="proc-who">' + esc(r.p ? (r.p.consignee || "") + (r.p.city ? " · " + r.p.city : "") : "") + '</span>' +
+        '<span class="tg ' + (tone[r.s.k] || "") + '">' + esc(r.s.why) + '</span><button type="button" class="proc-x" data-proc-del="' + esc(r.awb) + '" aria-label="Remove ' + esc(r.awb) + '">\u00d7</button></div>';
+    }).join("");
+    var by = function (k) { return rows.filter(function (r) { return r.s.k === k; }); };
+    var rec = by("receive"), recLocal = rec.filter(function (r) { return !r.s.hub; }), outs = by("out"), col = by("collect"), tr = by("transit");
+    var b = [];
+    if (outs.length) b.push('<button class="btn proc-go" type="button" data-write data-proc="out">' + esc((LANG === "ur" ? "Delivery ke liye nikalein: " : "Take out for delivery: ") + outs.length) + '</button>');
+    if (rec.length) b.push('<button class="btn proc-go secondary" type="button" data-write data-proc="receive">' + esc((LANG === "ur" ? "Receive karein: " : "Receive: ") + rec.length) + (rec.length > recLocal.length ? esc(LANG === "ur" ? " (" + (rec.length - recLocal.length) + " aage bhejne wale)" : " (" + (rec.length - recLocal.length) + " to send on)") : "") + '</button>');
+    if (recLocal.length) b.push('<button class="btn proc-go" type="button" data-write data-proc="recout">' + esc((LANG === "ur" ? "Receive karke nikalein: " : "Receive and take out: ") + recLocal.length) + '</button>');
+    if (col.length) b.push('<button class="btn proc-go secondary" type="button" data-write data-proc="collect">' + esc((LANG === "ur" ? "Uthayein: " : "Collect: ") + col.length) + '</button>');
+    if (tr.length) b.push('<button class="btn proc-go secondary" type="button" data-proc-view="transit">' + esc((LANG === "ur" ? "Bhejne wale " + tr.length + " · Transit kholen" : tr.length + " to send on · open Transit")) + '</button>');
+    var count = q("procCount"); if (count) count.textContent = rows.length ? (rows.length + (LANG === "ur" ? " number" : rows.length === 1 ? " number" : " numbers")) : "";
+    plan.innerHTML = b.join("") || (rows.length ? '<p class="empty">' + esc(LANG === "ur" ? "Inn par yahan kuch nahi ho sakta." : "Nothing to do here for these numbers.") + '</p>' : "");
+    controls();
+  }
+  function procSetFromInput(typing) {
+    var el = q("procInput"); if (!el) return;
+    var r = procParse(el.value, typing);
+    PROC.list = r.awbs;
+    var formatted = r.awbs.join(", ") + (r.tail ? (r.awbs.length ? ", " : "") + r.tail : (typing && r.awbs.length && /[0-9]$/.test(el.value) ? ", " : ""));
+    if (el.value !== formatted) { el.value = formatted; try { el.setSelectionRange(formatted.length, formatted.length); } catch (_) {} }
+    procPaint();
+  }
+  function procAdd(awb) { var a = String(awb || "").toUpperCase().replace(/^N?/, "N"); if (!/^N\d{7}$/.test(a) || PROC.list.indexOf(a) > -1) return false;
+    PROC.list.push(a); var el = q("procInput"); if (el) el.value = PROC.list.join(", ") + ", "; procPaint(); return true; }
+  async function procRun(mode) {
+    if (busy || flushing || !authorized) return;
+    var mine = (data.rider && data.rider.cities || []).map(function (c) { return String(c).toLowerCase(); });
+    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine) }; });
+    var pick = function (k) { return rows.filter(function (r) { return r.s.k === k; }).map(function (r) { return r.p.awb; }); };
+    var recv = pick("receive"), recLocal = rows.filter(function (r) { return r.s.k === "receive" && !r.s.hub; }).map(function (r) { return r.p.awb; });
+    var outs = pick("out"), col = pick("collect"), done = [];
+    busy = true; controls();
+    try {
+      if (mode === "collect" && col.length) { for (var i = 0; i < col.length; i += 200) await station(col.slice(i, i + 200), "collect", "", null, await gps(BAR_GPS.collect)); done = col; }
+      if (mode === "receive" && recv.length) { for (var j = 0; j < recv.length; j += 200) await station(recv.slice(j, j + 200), "receive", "", null, null); done = recv; }
+      if (mode === "recout" && recLocal.length) {
+        if (!await confirm(LANG === "ur" ? "Receive karke nikalein" : "Receive and take out", (LANG === "ur" ? recLocal.length + " parcel receive honge aur delivery ke liye nikal jayenge." : recLocal.length + " parcels are received at your station and taken out for delivery in one go."))) return;
+        var here = await gps(BAR_GPS.out);
+        for (var k = 0; k < recLocal.length; k += 200) await station(recLocal.slice(k, k + 200), "receive", "", null, null);
+        for (var l = 0; l < recLocal.length; l += 200) await station(recLocal.slice(l, l + 200), "out", "", null, here);
+        done = recLocal;
+      }
+      if (mode === "out" && outs.length) {
+        var extra = null, early = rows.filter(function (r) { return r.s.k === "out" && r.s.later; });
+        if (early.length) {
+          if (!await confirm(LANG === "ur" ? "Pehle le ja rahe hain?" : "Take out early?", (LANG === "ur" ? "Customer ne baad ka din kaha tha: " : "The customer asked for a later day: ") + early.slice(0, 5).map(function (r) { return r.awb; }).join(", ") + (early.length > 5 ? " +" + (early.length - 5) : "") + ". " + (LANG === "ur" ? "Customer se baat ho gayi hai to aaj le jayein." : "Take it out today only if the customer is ready."))) return;
+          extra = { early: true };
+        }
+        var here2 = await gps(BAR_GPS.out);
+        for (var m = 0; m < outs.length; m += 200) await station(outs.slice(m, m + 200), "out", "", extra, here2);
+        done = outs;
+      }
+      if (done.length) {
+        PROC.list = PROC.list.filter(function (a) { return done.map(function (d) { return d.toUpperCase(); }).indexOf(a) < 0; });
+        var el = q("procInput"); if (el) el.value = PROC.list.length ? PROC.list.join(", ") + ", " : "";
+      }
+    } catch (e) { msg(String(e.message || e), "error"); }
+    finally { busy = false; render(); procPaint(); void flush(); }
+  }
+
   /* ---- scanning ---------------------------------------------------------- */
   var scanSession = null;
   function awbFrom(raw) { var v = String(raw || "").trim(); var m = v.match(/[?&]awb=([A-Za-z0-9-]{3,50})/); if (m) v = m[1]; return /^[a-z0-9-]{3,50}$/i.test(v) ? v.toUpperCase() : ""; }
@@ -1247,8 +1349,8 @@
       try {
         (await detector.detect(video)).map(function (c) { return awbFrom(c.rawValue); }).filter(Boolean).forEach(function (awb) {
           if (seen.indexOf(awb) > -1) return; seen.push(awb); beep();
-          locate(awb);
-          ov.querySelector(".scan-status").textContent = ui.sel.size + " selected. Keep scanning, or tap Done.";
+          if (ui.view === "process") procAdd(awb); else locate(awb);
+          ov.querySelector(".scan-status").textContent = (ui.view === "process" ? PROC.list.length + " in the list" : ui.sel.size + " selected") + ". Keep scanning, or tap Done.";
           ov.querySelector(".scan-list").textContent = seen.slice(-4).reverse().join("  ·  ");
         });
       } catch (_) {}
@@ -1263,7 +1365,7 @@
       bitmap = await createImageBitmap(file); var found = await new BarcodeDetector({ formats: formats }).detect(bitmap);
       var values = found.map(function (b) { return awbFrom(b.rawValue); }).filter(Boolean);
       if (!values.length) throw new Error("No AWB barcode found. Try a clear photo or type the last 4 digits.");
-      values.forEach(locate);
+      values.forEach(function (v) { if (ui.view === "process") procAdd(v); else locate(v); });
     } catch (e) { msg(String(e.message || e), "error"); } finally { if (bitmap) bitmap.close(); q("scanFile").value = ""; }
   };
 
@@ -1294,6 +1396,17 @@
     finally { busy = false; render(); void flush(); }
   };
   q("riderSearch").oninput = applySearch;
+  q("procInput").addEventListener("input", function () { procSetFromInput(true); });
+  q("procInput").addEventListener("paste", function () { setTimeout(function () { procSetFromInput(false); }, 0); });
+  q("procInput").addEventListener("blur", function () { procSetFromInput(false); });
+  q("procClear").onclick = function () { PROC.list = []; q("procInput").value = ""; procPaint(); q("procInput").focus(); };
+  q("procScan").onclick = function () { void startScan(); };
+  q("view-process").addEventListener("click", function (e) {
+    var del = e.target.closest("[data-proc-del]");
+    if (del) { var a = del.getAttribute("data-proc-del"); PROC.list = PROC.list.filter(function (x) { return x !== a; }); q("procInput").value = PROC.list.length ? PROC.list.join(", ") + ", " : ""; procPaint(); return; }
+    var go = e.target.closest("[data-proc]"); if (go) { void procRun(go.getAttribute("data-proc")); return; }
+    var v = e.target.closest("[data-proc-view]"); if (v) { ui.view = v.getAttribute("data-proc-view"); ui.sel.clear(); ui.selScope = ""; render(); window.scrollTo(0, 0); }
+  });
   q("riderSearch").onkeydown = function (e) {
     if (e.key !== "Enter") return; e.preventDefault();
     var raw = q("riderSearch").value.trim(); if (!raw) return;
