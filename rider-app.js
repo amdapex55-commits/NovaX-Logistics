@@ -1336,16 +1336,19 @@
     }
     var outs2 = by("isout").filter(function (r) { return !r.p.heldBy; });
     if (outs2.length) b.push('<button class="btn proc-go secondary" type="button" data-proc-view="parcels">' + esc(LANG === "ur" ? outs2.length + " aap ke paas · Mere parcel kholen" : outs2.length + " out with you · open My parcels to mark the result") + '</button>');
+    procCountPaint(rows.length);
+    plan.innerHTML = b.join("") || (rows.length ? '<p class="empty">' + esc(LANG === "ur" ? "Inn par yahan kuch nahi ho sakta." : "Nothing to do here for these numbers.") + '</p>' : "");
+    controls();
+  }
+  function procCountPaint(n) {
     var count = q("procCount"); if (count) {
       /* 3 Nov 2026 audit: a half-typed or short number used to sit in the box
          looking counted. Say which pieces are not a whole tracking number. */
       var bad = (PROC.bad || []).slice(0, 3);
-      count.textContent = (rows.length ? (rows.length + (LANG === "ur" ? " number" : rows.length === 1 ? " number" : " numbers")) : "") +
-        (bad.length ? (rows.length ? " · " : "") + (LANG === "ur" ? "Adhoora: " : "Not a full number: ") + bad.join(", ") + ((PROC.bad || []).length > 3 ? " …" : "") : "");
+      count.textContent = (n ? (n + (LANG === "ur" ? " number" : n === 1 ? " number" : " numbers")) : "") +
+        (bad.length ? (n ? " · " : "") + (LANG === "ur" ? "Adhoora: " : "Not a full number: ") + bad.join(", ") + ((PROC.bad || []).length > 3 ? " …" : "") : "");
       count.classList.toggle("proc-bad", bad.length > 0);
     }
-    plan.innerHTML = b.join("") || (rows.length ? '<p class="empty">' + esc(LANG === "ur" ? "Inn par yahan kuch nahi ho sakta." : "Nothing to do here for these numbers.") + '</p>' : "");
-    controls();
   }
   function procSetFromInput(typing) {
     var el = q("procInput"); if (!el) return;
@@ -1355,11 +1358,10 @@
        tap was lost (found 27 Oct with a real tap). */
     var changed = r.awbs.join() !== PROC.list.join();
     PROC.list = r.awbs;
-    var formatted = r.awbs.join(", ") + (r.tail ? (r.awbs.length ? ", " : "") + r.tail : (typing && r.awbs.length && /[0-9]$/.test(el.value) ? ", " : ""));
-    if (!typing && (PROC.bad || []).length !== (PROC.badShown || 0)) changed = true;
-    PROC.badShown = (PROC.bad || []).length;
+    var parts = r.awbs.concat(PROC.bad || []);
+    var formatted = parts.join(", ") + (r.tail ? (parts.length ? ", " : "") + r.tail : (typing && parts.length && /[0-9]$/.test(el.value) ? ", " : ""));
     if (el.value !== formatted && (typing || changed)) { el.value = formatted; try { el.setSelectionRange(formatted.length, formatted.length); } catch (_) {} }
-    if (changed || typing) procPaint();
+    if (changed || typing) procPaint(); else procCountPaint(PROC.list.length);
   }
   function procAdd(awb) { var a = String(awb || "").toUpperCase().replace(/^N?/, "N"); if (!/^N\d{7}$/.test(a) || PROC.list.indexOf(a) > -1) return false;
     PROC.list.push(a); var el = q("procInput"); if (el) el.value = PROC.list.join(", ") + ", "; procPaint(); return true; }

@@ -83,6 +83,11 @@ assert.equal(a.q('procInput').value,'N1000002, N9999999, ','done numbers leave t
 // receive typed numbers: the rider has them in hand, so no tick list
 procBtn(/^Receive: 1/).click();await wait(140);
 req=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.equal(req.at(-1).args.p_action,'receive');assert.equal(JSON.stringify(req.at(-1).args.p_awbs),'["N1000002"]');
+// pieces that are not a whole number stay in the box and are named, while typing and after leaving the box
+procType('1000003 12345 90000');await wait();
+assert.match(a.q('procCount').textContent,/Not a full number: 12345/);assert.match(a.q('procInput').value,/12345/,'kept so the rider can fix it');
+a.q('procInput').dispatchEvent(new a.w.Event('blur'));await wait();
+assert.match(a.q('procCount').textContent,/Not a full number: 12345, 90000/);
 // a parcel out with this rider points to My parcels
 procType('1000004');await wait();assert.ok(procBtn(/out with you/));
 procBtn(/out with you/).click();await wait();assert.equal(a.q('view-parcels').classList.contains('hidden'),false);
