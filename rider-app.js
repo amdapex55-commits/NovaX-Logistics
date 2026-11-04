@@ -76,7 +76,7 @@
     voiceRecorded: ["Recorded {len}. Listen, then send.", "{len} record hua. Sun kar bhejein."],
     voicePending: ["Voice note waiting to send", "Awaaz ka paigham bhejna baqi hai"], voiceSent: ["Voice note sent", "Awaaz ka paigham chala gaya"],
     voiceSaved: ["Voice note saved. It sends after the parcel update.", "Paigham save ho gaya. Parcel update ke baad jayega."],
-    showAwbs: ["Show the {n} tracking numbers", "{n} tracking number dekhein"], stReceived: ["received", "mil gaya"], stSelected: ["ticked", "tick"],
+    showAwbs: ["Show the {n} tracking numbers", "{n} tracking number dekhein"], showAwb1: ["Show the tracking number", "Tracking number dekhein"], stReceived: ["received", "mil gaya"], stSelected: ["ticked", "tick"],
     stWaiting: ["on the way", "raste mein"], stElsewhere: ["not in your list", "aap ki list mein nahi"],
     checkTitle: ["Check the {n} parcels", "{n} parcel check karein"], checkTitle1: ["Check the parcel", "Parcel check karein"],
     checkText: ["Keep the tick on every parcel you have in your hands. Untick any that did not arrive. Only ticked parcels are marked received.", "Jo parcel aap ke haath mein hai us par tick rehne dein. Jo nahi aaya us ka tick hata dein. Sirf tick wale received honge."],
@@ -405,7 +405,7 @@
       }).join("");
       return '<article class="parcel batch"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc(b.status) + '</span></div><p>' + esc(b.from_city) + ' → ' + esc(b.to_city) + ' · ' + esc(b.reference || "") + '<br>' + got + ' / ' + all + ' received</p>' +
         (got && awaiting.length ? '<p class="meta-line error-text">Not arrived yet: ' + esc(awaiting.join(", ")) + '</p>' : '') +
-        '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc(t("showAwbs", { n: all })) + '</summary><ol>' + rows + '</ol></details>' +
+        '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc((Number(all) === 1 ? t("showAwb1") : t("showAwbs", { n: all }))) + '</summary><ol>' + rows + '</ol></details>' +
         selectAllBtn("receive", awaiting.filter(function (a) { return inc.some(function (p) { return p.awb === a && !pend.has(a); }); })) + '</article>';
     }).join("");
     q("receiveList").innerHTML = (inc.length ? selectAllBtn("receive", free(inc).map(function (p) { return p.awb; })) : "") + (inc.map(function (p) { return card(p, { select: true }); }).join("") || empty());
@@ -486,7 +486,7 @@
         return '<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc((LANG === "ur" ? "Bheja: " : "Sent ") + sent) + '</span></div>' +
           '<p class="man-line"><b>' + waiting.length + '</b> ' + esc(LANG === "ur" ? "receive karne hain" : "to receive") + (rec.length ? ' · ' + rec.length + ' ' + esc(LANG === "ur" ? "aa chuke" : "already received") : '') +
           (onward ? ' · ' + onward + ' ' + esc(LANG === "ur" ? "aage bhejne wale" : "to send on") : '') + '<br><small>' + esc(b.from_city + " \u2192 " + b.to_city + (b.reference ? " · " + b.reference : "")) + '</small></p>' +
-          '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc(t("showAwbs", { n: waiting.length })) + '</summary><ol>' + rows + '</ol></details>' +
+          '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc((Number(waiting.length) === 1 ? t("showAwb1") : t("showAwbs", { n: waiting.length }))) + '</summary><ol>' + rows + '</ol></details>' +
           (ready.length ? '<button class="btn full" type="button" data-write data-recv-awbs="' + esc(ready.join(",")) + '">' + esc(t("receiveN", { n: ready.length })) + '</button>' : '<p class="pending-label">' + esc(t("saved")) + '</p>') + '</article>';
       }).filter(Boolean);
     var loose = inc.filter(function (p) { return !seen[p.awb.toUpperCase()]; });
@@ -494,7 +494,7 @@
       var ids = loose.filter(function (p) { return !pend.has(p.awb.toUpperCase()); }).map(function (p) { return p.awb; });
       cards.push('<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(LANG === "ur" ? "Baghair manifest" : "Not in a sack list") + '</b><span class="status">' + loose.length + '</span></div>' +
         '<p class="man-line"><small>' + esc(LANG === "ur" ? "Yeh parcel aap ki taraf aa rahe hain magar kisi khuli bori mein nahi." : "On their way to you, but not in an open sack for your station.") + '</small></p>' +
-        '<details class="batch-awbs"><summary>' + esc(t("showAwbs", { n: loose.length })) + '</summary><ol>' + loose.map(function (p) { return '<li><span class="awbx">' + esc(p.awb) + '</span><span class="who">' + esc((p.consignee || "") + " · " + (p.status || "")) + '</span></li>'; }).join("") + '</ol></details>' +
+        '<details class="batch-awbs"><summary>' + esc((Number(loose.length) === 1 ? t("showAwb1") : t("showAwbs", { n: loose.length }))) + '</summary><ol>' + loose.map(function (p) { return '<li><span class="awbx">' + esc(p.awb) + '</span><span class="who">' + esc((p.consignee || "") + " · " + (p.status || "")) + '</span></li>'; }).join("") + '</ol></details>' +
         (ids.length ? '<button class="btn full secondary" type="button" data-write data-recv-awbs="' + esc(ids.join(",")) + '">' + esc(t("receiveN", { n: ids.length })) + '</button>' : '') + '</article>');
     }
     host.innerHTML = cards.join("") || empty();
@@ -1290,12 +1290,13 @@
      offline saving, retries and the office log all still apply. */
   var PROC = { list: [] };
   function procParse(raw, typing) {
-    var out = [], tail = "";
+    var out = [], tail = "", bad = [];
     String(raw || "").split(/[^0-9]+/).forEach(function (run, i, all) {
       if (!run) return;
       while (run.length >= 7) { out.push("N" + run.slice(0, 7)); run = run.slice(7); }
-      if (run) { if (typing && i === all.length - 1) tail = run; }
+      if (run) { if (typing && i === all.length - 1) tail = run; else bad.push(run); }
     });
+    PROC.bad = bad;
     var seen = {}; out = out.filter(function (a) { if (seen[a]) return false; seen[a] = true; return true; });
     return { awbs: out, tail: tail };
   }
@@ -1335,7 +1336,14 @@
     }
     var outs2 = by("isout").filter(function (r) { return !r.p.heldBy; });
     if (outs2.length) b.push('<button class="btn proc-go secondary" type="button" data-proc-view="parcels">' + esc(LANG === "ur" ? outs2.length + " aap ke paas · Mere parcel kholen" : outs2.length + " out with you · open My parcels to mark the result") + '</button>');
-    var count = q("procCount"); if (count) count.textContent = rows.length ? (rows.length + (LANG === "ur" ? " number" : rows.length === 1 ? " number" : " numbers")) : "";
+    var count = q("procCount"); if (count) {
+      /* 3 Nov 2026 audit: a half-typed or short number used to sit in the box
+         looking counted. Say which pieces are not a whole tracking number. */
+      var bad = (PROC.bad || []).slice(0, 3);
+      count.textContent = (rows.length ? (rows.length + (LANG === "ur" ? " number" : rows.length === 1 ? " number" : " numbers")) : "") +
+        (bad.length ? (rows.length ? " · " : "") + (LANG === "ur" ? "Adhoora: " : "Not a full number: ") + bad.join(", ") + ((PROC.bad || []).length > 3 ? " …" : "") : "");
+      count.classList.toggle("proc-bad", bad.length > 0);
+    }
     plan.innerHTML = b.join("") || (rows.length ? '<p class="empty">' + esc(LANG === "ur" ? "Inn par yahan kuch nahi ho sakta." : "Nothing to do here for these numbers.") + '</p>' : "");
     controls();
   }
@@ -1348,8 +1356,10 @@
     var changed = r.awbs.join() !== PROC.list.join();
     PROC.list = r.awbs;
     var formatted = r.awbs.join(", ") + (r.tail ? (r.awbs.length ? ", " : "") + r.tail : (typing && r.awbs.length && /[0-9]$/.test(el.value) ? ", " : ""));
+    if (!typing && (PROC.bad || []).length !== (PROC.badShown || 0)) changed = true;
+    PROC.badShown = (PROC.bad || []).length;
     if (el.value !== formatted && (typing || changed)) { el.value = formatted; try { el.setSelectionRange(formatted.length, formatted.length); } catch (_) {} }
-    if (changed) procPaint();
+    if (changed || typing) procPaint();
   }
   function procAdd(awb) { var a = String(awb || "").toUpperCase().replace(/^N?/, "N"); if (!/^N\d{7}$/.test(a) || PROC.list.indexOf(a) > -1) return false;
     PROC.list.push(a); var el = q("procInput"); if (el) el.value = PROC.list.join(", ") + ", "; procPaint(); return true; }

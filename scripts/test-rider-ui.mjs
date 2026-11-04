@@ -174,7 +174,7 @@ a.q('refreshBtn').click();await wait(80);
 { const cards=[...a.q('manifestList').querySelectorAll('.manifest')];
   assert.equal(cards.length,2,'two sacks, two cards');
   assert.match(cards[0].textContent,/KAR-LAH-1012-HO.*Sent 12 Oct.*1 to receive/);assert.match(cards[1].textContent,/KAR-LAH-1013-HO.*Sent 13 Oct.*1 to receive/);
-  assert.match(cards[0].querySelector('summary').textContent,/Show the 1 tracking number/);
+  assert.match(cards[0].querySelector('summary').textContent,/^Show the tracking number$/);
   // Receive a whole sack: the check dialog first; cancel sends nothing; confirm sends only that sack
   cards[0].querySelector('[data-recv-awbs]').click();await wait(60);assert.equal(a.q('dialogTitle').textContent,'Check the parcel');
   a.dialog.close('cancel');await wait(80);assert.equal(a.fixture.requests.filter(r=>r.name==='rider_station_action').length,0);
