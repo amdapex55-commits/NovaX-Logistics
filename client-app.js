@@ -17500,6 +17500,54 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }catch(e){ return { data:null, error:{message:String((e&&e.message)||e)} }; }
       }
 
+      /* 4 Nov 2026: egress. Every realtime nudge, tab return and fallback
+         poll re-read ALL of this merchant's parcels with their whole meta,
+         about 92% of NovaX's Supabase egress (over the Free plan's 5 GB in
+         October). After one full read, a reload now fetches only parcels
+         whose changed_at (set by a trigger on every insert/update) moved,
+         with 5 minutes of overlap for slow transactions. A head-only count
+         catches deletes and parcels moved to another account: if the merged
+         list does not match it, or 20 minutes have passed, it reads in full. */
+      var __nvPc={ mine:null, rows:null, cursor:"", fullAt:0 };
+      function nvPcList(){
+        var arr=Object.keys(__nvPc.rows).map(function(k){ return __nvPc.rows[k]; });
+        arr.sort(function(a,b){
+          var x=String(b.booked_at||""), y=String(a.booked_at||"");
+          if(x!==y) return x<y?-1:1;
+          var i=String(b.id||""), j=String(a.id||"");
+          return i<j?-1:(i>j?1:0);
+        });
+        return arr;
+      }
+      function nvPcKeep(rows){
+        var map={}, cur="";
+        (rows||[]).forEach(function(p){ map[p.id]=p; if(p.changed_at && String(p.changed_at)>cur) cur=String(p.changed_at); });
+        __nvPc={ mine:MY, rows:map, cursor:cur, fullAt:Date.now() };
+      }
+      async function nvReadParcels(){
+        var fresh=__nvPc.mine===MY && __nvPc.rows && __nvPc.cursor && (Date.now()-__nvPc.fullAt)<20*60e3;
+        if(fresh){
+          try{
+            var since=new Date(Date.parse(__nvPc.cursor)-5*60e3).toISOString();
+            var res=await Promise.all([
+              sb.from("parcels").select("*").eq("client_id",MY).gte("changed_at",since).order("changed_at",{ascending:true}).limit(1000),
+              sb.from("parcels").select("id",{ count:"exact", head:true }).eq("client_id",MY)
+            ]);
+            var d=res[0], c=res[1];
+            if(d&&d.error) return { data:null, error:d.error };
+            if(c&&c.error) return { data:null, error:c.error };
+            var got=(d&&d.data)||[];
+            if(got.length<1000){
+              got.forEach(function(p){ __nvPc.rows[p.id]=p; if(p.changed_at && String(p.changed_at)>__nvPc.cursor) __nvPc.cursor=String(p.changed_at); });
+              if(typeof c.count==="number" && Object.keys(__nvPc.rows).length===c.count) return { data:nvPcList(), error:null };
+            }
+          }catch(e){}
+        }
+        var full=await nvReadAll("parcels","booked_at");
+        if(full && full.data) nvPcKeep(full.data);
+        return full;
+      }
+
       /* A load that FAILED must never look like an account with nothing in it.
          Put back the last saved view when there is one; when there is not,
          keep the screen in its loading shape with a Retry, instead of "No
@@ -17533,7 +17581,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // alone.
         return Promise.all([
           sb.from("clients").select("*").eq("id",MY).maybeSingle(),
-          nvReadAll("parcels","booked_at"),
+          nvReadParcels(),
           nvReadAll("invoices","created_at"),
           nvReadAll("withdrawals","created_at"),
           nvReadAll("payment_logs","created_at"),

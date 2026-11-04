@@ -95,6 +95,26 @@ async function table(path: string) {
   return { ok: r.ok, status: r.status, data };
 }
 
+/* 4 Nov 2026: egress. One integration reads GET /orders/:awb about 10,000
+   times a day, and select=* sent each parcel's whole meta (status history,
+   edit history, quote: ~3.6 KB) when parcelOut() needs seven keys. These
+   columns are all parcelOut() and the order routes read; meta is rebuilt
+   from the same keys, with their JSON types kept (-> not ->>). */
+const PARCEL_COLS = "id,awb,status,consignee,phone,city,address,cod_amount,fee,exception,booked_at,delivered_at,updated_at,invoice_id," +
+  "m_category:meta->category,m_comments:meta->comments,m_paymentMode:meta->paymentMode,m_allowOpen:meta->allowOpen," +
+  "m_orderId:meta->orderId,m_weight:meta->weight,m_steps:meta->steps";
+function slimMeta(p: any) {
+  if (!p) return p;
+  const meta: Record<string, unknown> = {};
+  for (const k of ["category", "comments", "paymentMode", "allowOpen", "orderId", "weight", "steps"]) {
+    const v = p["m_" + k];
+    if (v !== null && v !== undefined) meta[k] = v;
+    delete p["m_" + k];
+  }
+  p.meta = meta;
+  return p;
+}
+
 /** Public shape of a parcel. Deliberately small and stable: internal columns
  *  are not exposed, so we can change them without breaking a merchant. */
 function parcelOut(p: any) {
@@ -528,19 +548,19 @@ Deno.serve(async (req) => {
     if (path === "/orders" && req.method === "GET") {
       const limit = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 200);
       const status = url.searchParams.get("status");
-      let q = `parcels?client_id=eq.${clientId}&order=booked_at.desc&limit=${limit}`;
+      let q = `parcels?client_id=eq.${clientId}&order=booked_at.desc&limit=${limit}&select=${PARCEL_COLS}`;
       if (status) q += `&status=eq.${encodeURIComponent(status)}`;
       const r = await table(q);
       if (!r.ok) return fail(502, "upstream_error");
-      return json({ ok: true, count: r.data.length, orders: r.data.map(parcelOut) });
+      return json({ ok: true, count: r.data.length, orders: r.data.map((p: any) => parcelOut(slimMeta(p))) });
     }
 
     const one = path.match(/^\/orders\/([^/]+)$/);
     if (one && req.method === "GET") {
       const awb = decodeURIComponent(one[1]).toUpperCase();
-      const r = await table(`parcels?client_id=eq.${clientId}&awb=eq.${encodeURIComponent(awb)}&limit=1`);
+      const r = await table(`parcels?client_id=eq.${clientId}&awb=eq.${encodeURIComponent(awb)}&limit=1&select=${PARCEL_COLS}`);
       if (!r.ok) return fail(502, "upstream_error", "Try again in a minute.");
-      const p = r.data?.[0];
+      const p = slimMeta(r.data?.[0]);
       if (!p) {
         /* 1 Oct 2026: one integration asked for a parcel NovaX had deleted 672
            times in a week -- a 404 reads as "not there yet, ask again". A
