@@ -7819,9 +7819,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         owedPanel.style.display = owedTotal > 0 ? "" : "none";
         var amt = document.getElementById("nvOwedAmount");
         if(amt) amt.textContent = money(owedTotal);
+        /* 4 Nov 2026: a wallet below zero is not always prepaid charges. KKM
+           owed Rs 10,000 because NovaX paid them an advance, and this panel
+           told them it was delivery charges. Name what the shortfall is made
+           of: the newest balance-reducing entries that are not payouts. */
+        var why = document.getElementById("nvOwedWhy"), shortRows = [];
+        if(f.shortfall > 0){
+          var left = f.shortfall;
+          (state.walletLedger||[]).filter(function(l){
+            return l && l.clientId===(state.client&&state.client.id) && l.affectsBalance && Number(l.amount) < 0 && !/withdraw|payout/i.test(l.entryType||"");
+          }).sort(function(a,b){ return String(b.createdAt).localeCompare(String(a.createdAt)); }).some(function(l){
+            shortRows.push(l); left -= Math.abs(Number(l.amount)||0); return left <= 0.005;
+          });
+        }
+        if(why){
+          var parts = [];
+          if(f.shortfall > 0) parts.push("Your wallet is " + moneyExact(f.shortfall) + " below zero" + (shortRows.length ? " because of the entries below" : "") + ". New COD clears it first, then the rest is yours.");
+          if(f.owed > 0) parts.push("Delivery charges on prepaid parcels, where there was no COD to deduct them from.");
+          why.textContent = parts.join(" ");
+        }
         var list = document.getElementById("nvOwedList");
         if(list){
-          list.innerHTML = f.invoices.filter(function(i){
+          list.innerHTML = shortRows.map(function(l){
+            var label = l.entryType === "admin_adjustment" ? (/advance/i.test(l.note||"") ? "Advance from NovaX" : "Adjustment by NovaX")
+                      : /fee/i.test(l.entryType||"") ? "NovaX fee" : "Charge";
+            return '<div class="log-item"><strong>' + escLabelText(label) + '</strong>' +
+                   '<div><strong>' + money(Math.abs(Number(l.amount)||0)) + '</strong>' +
+                   '<div class="footer-note" style="margin-top:2px">' + escLabelText(nvDateTime(l.createdAt)) +
+                   (l.note ? ' &middot; ' + escLabelText(String(l.note).slice(0,90)) : '') + '</div></div></div>';
+          }).join("") + f.invoices.filter(function(i){
             return Number(i.dueToNovax||0) > 0 && i.status !== "Paid to NovaX" && i.status !== "Cancelled" && !nvInvTaken(i);
           }).map(function(i){
             return '<div class="log-item"><strong>' + escLabelText(i.id) + '</strong>' +
@@ -13648,6 +13674,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvRateNotice(){
       var host = document.getElementById("nvRateNotice");
       if(!host) return;
+      host.classList.toggle("nv-off-tab", !!state.activeClientTab && state.activeClientTab!=="dashboard");
       if(!NV_RATE_NOTICE_ACTIVE){ host.style.display = "none"; host.innerHTML = ""; return; }
       /* Audit 17 Oct 2026: a new merchant got the nine-card tour and this
          card at once. It waits for the tour (without spending a view) and is
@@ -15941,7 +15968,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); try{ renderLoadSheetList(); }catch(e){} renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; /* 4 Nov 2026: announcements sit on Home only; on Wallet they pushed the merchant's money below the fold. */ try{ var rnH=document.getElementById("nvRateNotice"); if(rnH) rnH.classList.toggle("nv-off-tab", id!=="dashboard"); }catch(e){} saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); try{ renderLoadSheetList(); }catch(e){} renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -19092,6 +19119,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                               '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
           return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Confirm re-delivery</button>'+
                  '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
+        }
+        /* 4 Nov 2026: a parcel stuck in transit or at the destination station
+           is listed under "Needs you now" with nothing to tap (KKM's N8530304,
+           at Lahore since 12 Oct). Chasing NovaX is the one thing the
+           merchant can do, so offer it once the parcel has stood too long. */
+        /* At the destination a parcel should go out the next day; on the
+           road, other cities take 2-3 days, so only past that. */
+        var ageH=Number(p&&p.statusAgeHours)||0;
+        if((st==="Parcel received at destination" && ageH>=24) ||
+           (/^(Parcel now in transit|Arrived at warehouse|Collected by rider)$/.test(st) && ageH>=72)){
+          return '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
         }
         return "";
       }
