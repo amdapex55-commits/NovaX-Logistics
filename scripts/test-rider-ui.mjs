@@ -188,6 +188,24 @@ a.q('refreshBtn').click();await wait(80);
   assert.equal(a.q('reasonPresets').innerHTML,'','the dialog is left clean for the next question');assert.equal(a.q('dialogConfirm').textContent,'Confirm'); }
 a.dom.window.close();
 
+// 4 Nov 2026: each arriving tracking number opens to address, phone, cash and shop;
+// parcels still at the Lahore hub say so, and the card is named after the hub
+a=await app();a.fixture.batches=[{code:'KAR-LAH-1012-HO',kind:'forward',from_city:'Karachi',to_city:'Lahore',reference:'Head office dispatch',awbs:['N1000002'],received:[],status:'Sent',sent_at:'2026-10-12T10:00:00Z'}];
+a.q('refreshBtn').click();await wait(80);
+{ const row=a.q('manifestList').querySelector('details.man-awb[data-awb="N1000002"]');assert.ok(row,'the sack row opens');
+  assert.match(row.querySelector('summary').textContent,/N1000002.*Recipient 2 · Lahore/);
+  assert.match(row.querySelector('.man-more').textContent,/Destination address, building 12, Lahore/);
+  assert.equal(row.querySelector('a.man-call').getAttribute('href'),'tel:+923001234567');
+  assert.match(row.textContent,/Collect Rs 1,200 · Shop: Shipper Store/);
+  assert.equal(row.querySelector('.man-where'),null,'inside its own sack the sack is not repeated'); }
+a.dom.window.close();
+a=await app();a.fixture.rows[2].meta={atHub:'Lahore',hub:'Lahore',transitBatch:'KAR-LAH-1102-HO'};a.q('refreshBtn').click();await wait(80);
+{ const card=[...a.q('manifestList').querySelectorAll('.manifest')].find(c=>/via Lahore hub/.test(c.textContent));assert.ok(card,'hub parcels get a card named after the hub');
+  assert.match(card.querySelector('.man-line').textContent,/1 at Lahore hub/);
+  assert.match(card.querySelector('.man-where').textContent,/At Lahore hub with the hub rider, not sent on yet/);
+  assert.ok(card.querySelector('[data-recv-awbs]'),'still one tap to receive them when they arrive'); }
+a.dom.window.close();
+
 // the message for a return, a prepaid exchange, and in Roman Urdu
 a=await app({swap:true});a.go('parcels');
 { const txt=awb=>{ const card=a.q('outList').querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent)); return new URL(w.getAttribute('href')).searchParams.get('text'); };

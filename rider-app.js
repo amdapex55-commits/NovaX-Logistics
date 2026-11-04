@@ -34,7 +34,7 @@
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, lastFull = 0, stampOff = false, checking = false, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
-  var ui = { view: "process", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {} };
+  var ui = { view: "process", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {}, openAwb: {} };
 
   /* ---- words: English / Roman Urdu -------------------------------------- */
   var LANG = "en";
@@ -467,6 +467,29 @@
      shows its own count, its sent day, and receives in one tap (the check
      dialog still lets him untick what did not come). Parcels on the way with
      no open sack for this station are listed last. */
+  /* 4 Nov 2026: Naveed asked to see what is coming before it arrives. Every
+     tracking number in an arriving list opens to the customer, address,
+     phone, cash and shop, and says where the parcel is right now (at the
+     Lahore hub with Khalid, or in a sack on its way). */
+  function manWhere(p) {
+    var m = p.meta || {};
+    if (m.atHub) return LANG === "ur" ? (m.atHub + " hub par " + (p.heldBy || "hub rider") + " ke paas, abhi aage nahi bheja") : ("At " + m.atHub + " hub with " + (p.heldBy || "the hub rider") + ", not sent on yet");
+    if (m.hub && m.transitBatch) return LANG === "ur" ? ("Bori " + m.transitBatch + " mein, " + m.hub + " hub ki taraf") : ("In sack " + m.transitBatch + ", on the way to " + m.hub + " hub");
+    if (m.transitBatch) return LANG === "ur" ? ("Bori " + m.transitBatch + " mein") : ("In sack " + m.transitBatch);
+    return "";
+  }
+  function manRow(a, p, inSack) {
+    if (!p) return '<li class="man-li"><span class="awbx">' + esc(a) + '</span></li>';
+    var c = where(p), call = R.phone(c.phone), ok = /^\+?\d{9,15}$/.test(call), w = inSack ? "" : manWhere(p);
+    var cash = (isReturn(p) || p.meta.swapLeg === "back") ? (LANG === "ur" ? "Wapsi · kuch collect nahi karna" : "Return · collect nothing")
+      : p.cod > 0 ? (LANG === "ur" ? "Collect " : "Collect ") + money(p.cod) : (LANG === "ur" ? "Paid · kuch collect nahi karna" : "Prepaid · collect nothing");
+    var extra = [cash, p.meta.weight || "", p.shipper && p.shipper.name ? (LANG === "ur" ? "Shop: " : "Shop: ") + p.shipper.name : ""].filter(Boolean).join(" · ");
+    return '<li class="man-li"><details class="man-awb" data-awb="' + esc(p.awb) + '"' + (ui.openAwb[p.awb] ? " open" : "") + '><summary><span class="awbx">' + esc(a) + '</span>' +
+      '<span class="who">' + esc((c.name || "") + (p.city ? " · " + p.city : "")) + '</span></summary>' +
+      '<div class="man-more"><p>' + esc(c.address || (LANG === "ur" ? "Address nahi hai. Office ko call karein." : "Address missing. Call the office.")) + (p.city ? ', ' + esc(p.city) : '') + '</p>' +
+      (c.phone ? '<p>' + (ok ? '<a class="man-call" href="tel:' + esc(call) + '">☎ ' + esc(c.phone) + '</a>' : esc(c.phone)) + '</p>' : '') +
+      '<p class="meta-line">' + esc(extra) + '</p>' + (w ? '<p class="man-where">' + esc(w) + '</p>' : '') + '</div></details></li>';
+  }
   function renderManifests(inc, myCities) {
     var host = q("manifestList"); if (!host) return;
     var pend = pendingAwbs(), seen = {};
@@ -482,7 +505,7 @@
         var ready = waiting.filter(function (a) { return !pend.has(a); });
         var onward = waiting.filter(function (a) { var p = incBy[a]; return p && myCities.indexOf(String(p.city).toLowerCase()) < 0 && p.status !== "Return in transit"; }).length;
         var sent = ""; try { sent = new Date(b.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Karachi" }); } catch (_) {}
-        var rows = waiting.map(function (a) { var p = incBy[a]; return '<li><span class="awbx">' + esc(a) + '</span><span class="who">' + esc(p ? (p.consignee || "") + " · " + (p.city || "") : "") + '</span></li>'; }).join("");
+        var rows = waiting.map(function (a) { return manRow(a, incBy[a], true); }).join("");
         return '<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc((LANG === "ur" ? "Bheja: " : "Sent ") + sent) + '</span></div>' +
           '<p class="man-line"><b>' + waiting.length + '</b> ' + esc(LANG === "ur" ? "receive karne hain" : "to receive") + (rec.length ? ' · ' + rec.length + ' ' + esc(LANG === "ur" ? "aa chuke" : "already received") : '') +
           (onward ? ' · ' + onward + ' ' + esc(LANG === "ur" ? "aage bhejne wale" : "to send on") : '') + '<br><small>' + esc(b.from_city + " \u2192 " + b.to_city + (b.reference ? " · " + b.reference : "")) + '</small></p>' +
@@ -492,9 +515,20 @@
     var loose = inc.filter(function (p) { return !seen[p.awb.toUpperCase()]; });
     if (loose.length) {
       var ids = loose.filter(function (p) { return !pend.has(p.awb.toUpperCase()); }).map(function (p) { return p.awb; });
-      cards.push('<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(LANG === "ur" ? "Baghair manifest" : "Not in a sack list") + '</b><span class="status">' + loose.length + '</span></div>' +
-        '<p class="man-line"><small>' + esc(LANG === "ur" ? "Yeh parcel aap ki taraf aa rahe hain magar kisi khuli bori mein nahi." : "On their way to you, but not in an open sack for your station.") + '</small></p>' +
-        '<details class="batch-awbs"><summary>' + esc((Number(loose.length) === 1 ? t("showAwb1") : t("showAwbs", { n: loose.length }))) + '</summary><ol>' + loose.map(function (p) { return '<li><span class="awbx">' + esc(p.awb) + '</span><span class="who">' + esc((p.consignee || "") + " · " + (p.status || "")) + '</span></li>'; }).join("") + '</ol></details>' +
+      /* Mostly hub parcels: still in Lahore, or in the Karachi sack to
+         Lahore. Say where they are, nearest first, so the rider knows what
+         to expect and ticks only what has physically arrived. */
+      var atHubN = loose.filter(function (p) { return p.meta && p.meta.atHub; }).length, wayN = loose.length - atHubN;
+      loose = loose.slice().sort(function (x, y) { return (y.meta && y.meta.atHub ? 1 : 0) - (x.meta && x.meta.atHub ? 1 : 0); });
+      var hubName = (loose.filter(function (p) { return p.meta && (p.meta.atHub || p.meta.hub); })[0] || { meta: {} }).meta;
+      hubName = hubName.atHub || hubName.hub || "";
+      var looseSum = hubName ? (LANG === "ur"
+          ? [atHubN ? atHubN + " " + hubName + " hub par" : "", wayN ? wayN + " " + hubName + " ki taraf raste mein" : ""].filter(Boolean).join(" · ")
+          : [atHubN ? atHubN + " at " + hubName + " hub" : "", wayN ? wayN + " on the way to " + hubName : ""].filter(Boolean).join(" · "))
+        : (LANG === "ur" ? "Yeh parcel aap ki taraf aa rahe hain magar kisi khuli bori mein nahi." : "On their way to you, but not in an open sack for your station.");
+      cards.push('<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(hubName ? (LANG === "ur" ? "Hub se aane wale" : "Coming via " + hubName + " hub") : (LANG === "ur" ? "Baghair manifest" : "Not in a sack list")) + '</b><span class="status">' + loose.length + '</span></div>' +
+        '<p class="man-line">' + esc(looseSum) + '<br><small>' + esc(LANG === "ur" ? "Parcel pohanchne par sirf wohi tick karein jo aap ke paas hain." : "When they reach you, tick only the ones you have.") + '</small></p>' +
+        '<details class="batch-awbs" data-batch="__loose"' + (ui.openBatch.__loose ? " open" : "") + '><summary>' + esc((Number(loose.length) === 1 ? t("showAwb1") : t("showAwbs", { n: loose.length }))) + '</summary><ol>' + loose.map(function (p) { return manRow(p.awb, p); }).join("") + '</ol></details>' +
         (ids.length ? '<button class="btn full secondary" type="button" data-write data-recv-awbs="' + esc(ids.join(",")) + '">' + esc(t("receiveN", { n: ids.length })) + '</button>' : '') + '</article>');
     }
     host.innerHTML = cards.join("") || empty();
@@ -1512,6 +1546,7 @@
   q("actionClear").onclick = function () { ui.sel.clear(); ui.selScope = ""; render(); };
   document.addEventListener("toggle", function (e) {
     var d = e.target; if (d && d.matches && d.matches("details[data-batch]")) ui.openBatch[d.dataset.batch] = d.open;
+    if (d && d.matches && d.matches("details.man-awb[data-awb]")) ui.openAwb[d.dataset.awb] = d.open;
     if (d && d.matches && d.matches("details[data-route]")) ui.routeOpen = d.open;
     if (d && d.matches && d.matches("details[data-fold=stuck]")) ui.openStuck = d.open;
   }, true);
