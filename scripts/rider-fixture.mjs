@@ -39,6 +39,7 @@ export function installFixture(window, options = {}) {
   async function rpc(name,args={}) {
     fixture.requests.push({name,args});
     if(name==='rider_cash_summary')return{data:{...fixture.cash},error:null};
+    if(name==='rider_today')return{data:fixture.today||[],error:null};
     if(name==='rider_station_stamp')return fixture.online?{data:fixture.stamp,error:null}:{error:{message:'Failed to fetch'}};
     if(name==='rider_queue_discard'){fixture.discards=(fixture.discards||[]).concat([args]);return{data:{ok:true},error:null};}
     if(name==='rider_station_view'){

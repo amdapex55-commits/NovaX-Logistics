@@ -34,7 +34,7 @@
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, lastFull = 0, stampOff = false, checking = false, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
-  var ui = { view: "process", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {}, openAwb: {} };
+  var ui = { view: "process", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {}, openAwb: {}, openToday: {} };
 
   /* ---- words: English / Roman Urdu -------------------------------------- */
   var LANG = "en";
@@ -339,10 +339,29 @@
     var el = q("todayList"); if (!el) return;
     if (!TODAY) { el.innerHTML = ""; return; }
     if (!TODAY.length) { el.innerHTML = '<p class="empty">' + esc(t("noneToday")) + '</p>'; return; }
-    el.innerHTML = TODAY.map(function (x) {
+    /* 4 Nov 2026: each row opens to the address, phone, cash and shop
+       (rider_today returns them), so a rider can check the cash in his pocket
+       against what he marked Delivered. The total sits on top. */
+    var cashOf = function (x) {
+      var c = P.classify({ cod: Number(x.cod_amount || 0), paymentMode: x.payment_mode || "" });
+      return { amt: Number(c.collectable != null ? c.collectable : (x.cod_amount || 0)) || 0, conflict: !!c.conflict };
+    };
+    var seenD = {}, nD = 0, sumD = 0;
+    TODAY.forEach(function (x) { if (x.to_status === "Delivered" && !seenD[x.awb]) { seenD[x.awb] = 1; nD++; sumD += cashOf(x).amt; } });
+    var head = nD ? '<p class="today-sum">' + esc(LANG === "ur" ? nD + " deliver kiye · COD " + money(sumD) + " aap ke paas hona chahiye" : nD + " delivered today · COD " + money(sumD) + " should be with you") + '</p>' : "";
+    el.innerHTML = head + TODAY.map(function (x) {
       var tm = ""; try { tm = new Date(x.changed_at).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }); } catch (_) {}
       var v = x.voice === "sent" ? '<span class="tg ok">' + esc(t("voiceSent")) + '</span>' : x.voice === "skipped" ? '<span class="tg warn">' + esc(t("voiceSkipped")) + '</span>' : x.voice === "missing" ? '<span class="tg bad">' + esc(t("voiceMissing")) + '</span>' : "";
-      return '<div class="today-row"><span class="today-t">' + esc(tm) + '</span><span class="today-m"><b>' + esc(x.awb) + '</b> ' + esc(x.to_status) + '<small>' + esc([x.consignee, x.city].filter(Boolean).join(" · ")) + '</small></span>' + v + '</div>';
+      var key = x.awb + "|" + x.changed_at, call = R.phone(x.phone || ""), ok = /^\+?\d{9,15}$/.test(call), cs = cashOf(x);
+      var cash = /return/i.test(x.to_status || "") ? (LANG === "ur" ? "Wapsi · kuch collect nahi" : "Return · nothing to collect")
+        : cs.amt > 0 ? (x.to_status === "Delivered" ? (LANG === "ur" ? "COD liya: " : "COD collected: ") : "COD ") + money(cs.amt)
+        : (LANG === "ur" ? "Paid · kuch collect nahi" : "Prepaid · nothing to collect");
+      return '<details class="today-row" data-today="' + esc(key) + '"' + (ui.openToday[key] ? " open" : "") + '><summary><span class="today-t">' + esc(tm) + '</span><span class="today-m"><b>' + esc(x.awb) + '</b> ' + esc(x.to_status) +
+        '<small>' + esc([x.consignee, x.city].filter(Boolean).join(" · ") + (cs.amt > 0 && x.to_status === "Delivered" ? " · " + money(cs.amt) : "")) + '</small></span>' + v + '</summary>' +
+        '<div class="man-more today-more"><p>' + esc(x.address || (LANG === "ur" ? "Address nahi hai." : "Address missing.")) + (x.city ? ', ' + esc(x.city) : '') + '</p>' +
+        (x.phone ? '<p>' + (ok ? '<a class="man-call" href="tel:' + esc(call) + '">\u260e ' + esc(x.phone) + '</a>' : esc(x.phone)) + '</p>' : '') +
+        '<p class="moneyline' + (cs.conflict ? ' error-text' : '') + '">' + esc(cash) + (cs.conflict ? ' · ' + esc(LANG === "ur" ? "COD/prepaid ka masla, office ko batayein" : "COD/prepaid conflict, tell the office") : '') + '</p>' +
+        (x.shop ? '<p class="meta-line">' + esc((LANG === "ur" ? "Shop: " : "Shop: ") + x.shop) + '</p>' : '') + '</div></details>';
     }).join("");
   }
   function render() {
@@ -1572,6 +1591,7 @@
   document.addEventListener("toggle", function (e) {
     var d = e.target; if (d && d.matches && d.matches("details[data-batch]")) ui.openBatch[d.dataset.batch] = d.open;
     if (d && d.matches && d.matches("details.man-awb[data-awb]")) ui.openAwb[d.dataset.awb] = d.open;
+    if (d && d.matches && d.matches("details.today-row[data-today]")) ui.openToday[d.dataset.today] = d.open;
     if (d && d.matches && d.matches("details[data-route]")) ui.routeOpen = d.open;
     if (d && d.matches && d.matches("details[data-fold=stuck]")) ui.openStuck = d.open;
   }, true);
@@ -1813,7 +1833,8 @@
       else if (name === "rider_station_stamp") d = "demo-" + rev;
       else if (name === "rider_cash_summary") d = cash();
       else if (name === "rider_today") d = rows.filter(function (p) { return /Delivered|Refused|Consignee not available/.test(p.status); }).slice(0, 6).map(function (p, i) {
-          return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i % 2 ? "sent" : "skipped") }; });
+          return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i % 2 ? "sent" : "skipped"),
+                   address: p.address, phone: p.phone, cod_amount: p.cod_amount, payment_mode: (p.meta && p.meta.paymentMode) || "COD", shop: (p.shipper && p.shipper.name) || "Karachi Kicks" }; });
       else if (name === "rider_station_action") d = act(a);
       else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }
       else if (name === "rider_deposit_cash_v2") { var c = cash(), hand = rows.filter(function (p) { return p.status === "Delivered" && p.cod_amount > 0 && !p._hand; });

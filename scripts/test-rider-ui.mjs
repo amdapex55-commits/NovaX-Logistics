@@ -216,6 +216,21 @@ a=await app();a.fixture.rows[2].meta={atHub:'Lahore',hub:'Lahore',transitBatch:'
   assert.ok(card.querySelector('[data-recv-awbs]'),'still one tap to receive them when they arrive'); }
 a.dom.window.close();
 
+// 4 Nov 2026: What you marked today opens to address, phone, cash and shop, with the day's COD on top
+a=await app();a.fixture.today=[
+  {awb:'N1000005',consignee:'Recipient 5',city:'Lahore',from_status:'Parcel out for delivery',to_status:'Delivered',changed_at:'2026-11-04T08:00:00Z',voice:null,address:'House 5, Model Town',phone:'03001234567',cod_amount:1970,payment_mode:'COD',shop:'Shipper Store'},
+  {awb:'N1000006',consignee:'Recipient 6',city:'Lahore',from_status:'Parcel out for delivery',to_status:'Delivered',changed_at:'2026-11-04T07:00:00Z',voice:null,address:'Flat 2, Gulberg',phone:'03001234568',cod_amount:0,payment_mode:'Non COD Prepaid',shop:'Shipper Store'},
+  {awb:'N1000007',consignee:'Recipient 7',city:'Lahore',from_status:'Parcel out for delivery',to_status:'Refused',changed_at:'2026-11-04T06:00:00Z',voice:'sent',address:'Street 9',phone:'03001234569',cod_amount:1200,payment_mode:'COD',shop:'Shipper Store'}];
+a.q('refreshBtn').click();await wait(120);a.go('parcels');await wait(40);
+{ const el=a.q('todayList');assert.match(el.querySelector('.today-sum').textContent,/^2 delivered today · COD Rs 1,970 should be with you$/);
+  const row=el.querySelector('details.today-row');assert.ok(row,'rows open');
+  assert.match(row.querySelector('summary').textContent,/N1000005 Delivered.*Recipient 5 · Lahore · Rs 1,970/);
+  assert.match(row.querySelector('.today-more').textContent,/House 5, Model Town, Lahore/);
+  assert.equal(row.querySelector('a.man-call').getAttribute('href'),'tel:+923001234567');
+  assert.match(row.textContent,/COD collected: Rs 1,970/);assert.match(row.textContent,/Shop: Shipper Store/);
+  const rows=[...el.querySelectorAll('details.today-row')];assert.match(rows[1].textContent,/Prepaid · nothing to collect/);assert.match(rows[2].textContent,/COD Rs 1,200/); }
+a.dom.window.close();
+
 // the message for a return, a prepaid exchange, and in Roman Urdu
 a=await app({swap:true});a.go('parcels');
 { const txt=awb=>{ const card=a.q('outList').querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent)); return new URL(w.getAttribute('href')).searchParams.get('text'); };
