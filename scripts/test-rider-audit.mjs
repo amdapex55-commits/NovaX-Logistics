@@ -16,7 +16,10 @@ async function app(opts={},tweak){
   dialog.close=v=>{dialog.returnValue=v;dialog.open=false;dialog.onclose&&dialog.onclose();};
   scripts.forEach(s=>w.eval(s));await wait();
   const q=id=>w.document.getElementById(id);
-  return{dom,w,fixture,q,dialog,go:v=>w.document.querySelector(`nav [data-view="${v}"]`).click(),tab:t=>w.document.querySelector(`[data-tab="${t}"]`).click(),
+  const MAP={delivery:'parcels',cash:'parcels',home:'process',pickup:'process',transit:'process'};
+  const type=t=>{const el=q('procInput');el.value=t;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
+  const btn=re=>[...q('procPlan').querySelectorAll('button')].find(b=>re.test(b.textContent));
+  return{dom,w,fixture,q,dialog,type,btn,go:v=>{w.document.querySelector(`nav [data-view="${MAP[v]||v}"]`).click();if(v==='cash')q('cashFold').open=true;},tab:()=>{},
     pick:a=>{const cb=w.document.querySelector(`[data-pick="${a}"]`);cb.checked=true;cb.dispatchEvent(new w.Event('change',{bubbles:true}));}};
 }
 const passed=[];const ok=m=>passed.push(m);
@@ -27,25 +30,21 @@ let a=await app({},f=>{f.cash={...f.cash,hand_rows:[{awb:'N9000001',consignee:'A
 a.go('cash');assert.match(a.q('cashList').textContent,/N9000001/);assert.match(a.q('cashList').textContent,/N9000002/);assert.match(a.q('cashPendingList').textContent,/Easypaisa/);assert.match(a.q('cashPendingList').textContent,/N9000003/);
 a.dom.window.close();ok('001');
 
-// RIDER-004 a parcel with 3 attempts cannot be selected to go out, and says why
-a=await app({},f=>{f.rows[3].attempts=3;});a.go('delivery');
-const cb=a.w.document.querySelector('[data-pick="N1000003"]');assert.equal(cb.disabled,true);assert.match(a.q('stationList').textContent,/3 attempts done/);
+// RIDER-004 a parcel with 3 attempts cannot go out, and says why (station card and Process)
+a=await app({},f=>{f.rows[3].attempts=3;});a.go('delivery');assert.match(a.q('stationList').textContent,/3 attempts done/);
+a.go('process');a.type('1000003');await wait();assert.match(a.q('procList').textContent,/3 attempts done/);assert.equal(a.btn(/Take out/),undefined);
 a.dom.window.close();ok('004');
 
-// RIDER-009 + RIDER-010 select all respects the search filter and stops at 200
-a=await app({large:true});a.go('delivery');a.tab('delivery:receive');
-a.q('riderSearch').value='B1004';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
-a.w.document.querySelector('#receiveList [data-selall]').click();await wait();
-assert.match(a.q('actionGo').textContent,/Mark 1 received/);ok('010');
-a.q('riderSearch').value='';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
-a.q('actionClear').click();a.w.document.querySelector('#receiveList [data-selall]').click();await wait();
-assert.match(a.q('actionGo').textContent,/Mark 200 received/);ok('009 cap');
-a.q('actionGo').click();await wait(60);a.dialog.close('confirm');await wait(200);
+// RIDER-010 the same number typed twice counts once; RIDER-009 a 1,000-parcel arrival goes in calls of at most 200
+a=await app();a.type('1000003 N1000003 n1000003');await wait();assert.equal(a.q('procInput').value,'N1000003, ');ok('010');a.dom.window.close();
+a=await app({large:true});
+assert.match(a.q('manifestList').querySelector('[data-recv-awbs]').textContent,/Mark 1007 received/);ok('009 cap');
+a.q('manifestList').querySelector('[data-recv-awbs]').click();await wait(80);a.dialog.close('confirm');await wait(400);
 const recv=a.fixture.requests.filter(r=>r.name==='rider_station_action');assert.ok(recv.every(r=>r.args.p_awbs.length<=200));ok('009 server calls within 200');
 a.dom.window.close();
 
 // RIDER-017 + RIDER-018 a rejected pickup can be removed (logged) and never blocks cash
-a=await app();a.fixture.failRpc='reject';a.go('pickup');a.pick('N1000000');a.q('actionGo').click();await wait(120);
+a=await app();a.fixture.failRpc='reject';a.q('collectList').querySelector('[data-collect-awbs]').click();await wait(120);
 assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY))[0].state,'review');
 a.fixture.failRpc=null;a.go('cash');a.q('depositMethod').value='Cash to office';await wait();
 assert.equal(a.q('depositCashBtn').disabled,false);ok('018');
@@ -75,18 +74,18 @@ a.tab('delivery:station');
 const noPhone=a.w.document.querySelector('#stationList [data-awb="N1000003"]');assert.match(noPhone.textContent,/Directions/);assert.doesNotMatch(noPhone.textContent,/WhatsApp/);
 a.dom.window.close();ok('026');
 
-// RIDER-027 a selected parcel that disappears on refresh is dropped from the selection
-a=await app();a.go('delivery');a.pick('N1000003');assert.match(a.q('actionGo').textContent,/Take 1 out/);
+// RIDER-027 a typed parcel that changes on refresh is re-read: no stale "Take out"
+a=await app();a.type('1000003');await wait();assert.ok(a.btn(/Take out for delivery: 1/));
 a.fixture.rows[3].status='Delivered';a.q('refreshBtn').click();await wait(150);
-assert.equal(a.q('actionBar').classList.contains('hidden'),true);a.dom.window.close();ok('027');
+assert.equal(a.btn(/Take out/),undefined);assert.match(a.q('procList').textContent,/Not at your station|Delivered/);a.dom.window.close();ok('027');
 
 // RIDER-028 a server answer that moved nothing is not treated as success
-a=await app();a.fixture.zeroMove=true;a.go('pickup');a.pick('N1000000');a.q('actionGo').click();await wait(150);
+a=await app();a.fixture.zeroMove=true;a.q('collectList').querySelector('[data-collect-awbs]').click();await wait(150);
 assert.equal(JSON.parse(a.w.localStorage.getItem(QKEY))[0].state,'review');assert.match(a.q('queueReview').textContent,/confirmed 0 of 1/);
 a.dom.window.close();ok('028');
 
 // RIDER-030 switching tabs clears the search
 a=await app();a.go('delivery');a.q('riderSearch').value='N1000000';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
-a.tab('delivery:receive');assert.equal(a.q('riderSearch').value,'');a.dom.window.close();ok('030');
+a.go('process');a.go('delivery');assert.equal(a.q('riderSearch').value,'');a.dom.window.close();ok('030');
 
 console.log('PASS rider audit regressions: '+passed.join(', '));

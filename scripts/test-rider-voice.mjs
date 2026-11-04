@@ -46,8 +46,7 @@ async function app({micBlocked=false,pilot=true,brokenStore=false}={}){
   return{w,fixture,q,action:w.document.getElementById('actionDialog'),voice:w.document.getElementById('voiceDialog')};
 }
 async function refuse(a){
-  a.w.document.querySelector('nav [data-view="delivery"]').click();
-  a.w.document.querySelector('[data-tab="delivery:out"]').click();
+  a.w.document.querySelector('nav [data-view="parcels"]').click();
   a.q('outList').querySelector('[data-act="refused"][data-awb="N1000004"]').click();await wait();
   a.q('reasonOther').value='Customer refused';a.action.close('confirm');await wait(80);
 }

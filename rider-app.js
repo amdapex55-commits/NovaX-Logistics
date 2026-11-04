@@ -34,14 +34,16 @@
   var userId, riderId, queue, cacheKey, authSubscription, lastSync = 0, lastFull = 0, stampOff = false, checking = false, connected = false;
   var busy = false, loading = false, flushing = false, authorized = false, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], batches: [], cash: null };
-  var ui = { view: "home", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {} };
+  var ui = { view: "process", tab: { delivery: "station" }, sel: new Set(), selScope: "", transitTo: "", openBatch: {} };
 
   /* ---- words: English / Roman Urdu -------------------------------------- */
   var LANG = "en";
   try { LANG = localStorage.getItem("novaxRiderLang") === "ur" ? "ur" : "en"; } catch (_) {}
   var TXT = {
     pickup: ["Parcel Pickup", "Parcel Uthana"], delivery: ["Parcel Delivery", "Parcel Delivery"], transit: ["Parcel Transit", "Doosre Shehar Bhejna"],
-    home: ["Home", "Home"], navProcess: ["Process", "Kaam"], procTitle: ["Process parcels", "Parcel process karein"], procHelp: ["Type, paste or scan tracking numbers. The N is optional and the commas go in by themselves.", "Tracking number likhein, paste ya scan karein. N zaroori nahi, comma khud lag jata hai."], navPickup: ["Pickup", "Uthana"], navDelivery: ["Delivery", "Delivery"], navTransit: ["Transit", "Bhejna"], navCash: ["Cash", "Cash"],
+    home: ["Home", "Home"], navProcess: ["Process", "Kaam"], navParcels: ["My parcels", "Mere parcel"], manifests: ["Arriving manifests", "Aane wale manifest"],
+    manifestHelp: ["Each sack is listed on its own with the day it was sent. Receive a whole sack in one tap, then untick anything that did not come.", "Har bori alag dikhti hai, bhejne ke din ke saath. Poori bori ek tap mein receive karein, jo nahi aaya us ka tick hata dein."],
+    toSendH: ["To send on", "Aage bhejna"], toCollectH: ["To collect", "Uthana hai"], procTitle: ["Process parcels", "Parcel process karein"], procHelp: ["Type, paste or scan tracking numbers. The N is optional and the commas go in by themselves.", "Tracking number likhein, paste ya scan karein. N zaroori nahi, comma khud lag jata hai."], navPickup: ["Pickup", "Uthana"], navDelivery: ["Delivery", "Delivery"], navTransit: ["Transit", "Bhejna"], navCash: ["Cash", "Cash"],
     receiveTab: ["Arriving", "Aane wale"],
     pickupHelp: ["Parcels to collect from shippers in {city}.", "{city} ke shippers se uthane wale parcel."],
     receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
@@ -242,7 +244,7 @@
   function dayLabel(d) { try { return new Date(d + "T12:00:00+05:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Karachi" }); } catch (_) { return d; } }
   function card(p, opts) {
     opts = opts || {};
-    var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p), lock = opts.select ? outLock(p) : "";
+    var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p), lock = p.bucket === "station" ? outLock(p) : "";
     var vn = VOICE.pending[p.awb.toUpperCase()];
     var call = R.phone(c.phone), validPhone = /^\+?\d{9,15}$/.test(call);
     var sel = opts.select ? '<input type="checkbox" class="pick" data-pick="' + esc(p.awb) + '"' + (ui.sel.has(p.awb) && !lock ? " checked" : "") + (pend || lock ? " disabled" : "") + ' aria-label="Select ' + esc(p.awb) + '">' : "";
@@ -283,7 +285,7 @@
       (p.heldBy && p.bucket === "out" ? '<p class="meta-line">Was with ' + esc(p.heldBy) + ' — now yours</p>' : '') +
       (p.outside ? '<p class="meta-line error-text">Outside your cities — call the office before delivering.</p>' : '') +
       (lock ? '<p class="meta-line error-text">' + esc(lock) + '</p>' : '') +
-      (opts.select && !lock && laterDay(p) ? '<p class="meta-line">' + esc(LANG === "ur" ? "Customer ne " + dayLabel(laterDay(p)) + " ka kaha — pehle bhi le ja sakte hain" : "Customer asked for " + dayLabel(laterDay(p)) + " — you can still take it out") + '</p>' : '') +
+      (p.bucket === "station" && !lock && laterDay(p) ? '<p class="meta-line">' + esc(LANG === "ur" ? "Customer ne " + dayLabel(laterDay(p)) + " ka kaha — pehle bhi le ja sakte hain" : "Customer asked for " + dayLabel(laterDay(p)) + " — you can still take it out") + '</p>' : '') +
       '<div class="moneyline">' + money2 + '</div>';
     if (opts.contacts && (validPhone || c.address)) {
       var wa = call.replace(/^\+/, "");
@@ -363,7 +365,7 @@
     q("homeTransit").textContent = tr.length + " " + t("toSend");
     var deliveredToday = done.filter(function (p) { return R.day(R.deliveredAt(p)) === today(); });
     q("stats").innerHTML = stat("Delivered today", deliveredToday.length) + stat("Out now", out.length) + stat("Cash to hand over", data.cash ? money(data.cash.net) : "Unavailable", true) +
-      (data.route ? stat(t("distToday"), kmText(data.route.km)) : "") + stat("City", cities);
+      (data.route ? stat(t("distToday"), kmText(data.route.km)) : "");
     renderRoute();
     /* 21 Oct 2026 audit: 17 refusals the rider cannot act on filled Home and
        pushed "What you marked today" 5,000 px down. They are one line now;
@@ -385,7 +387,8 @@
       return '<section class="shipper' + (odd[k] ? ' odd-city' : '') + '"><div class="shipper-head"><div><b>' + esc(s.name || "Shipper") + '</b><small>' + esc(s.address || "") + '</small></div>' +
         (okPh ? '<a class="call" href="tel:' + esc(ph) + '">' + esc(t("call")) + '</a>' : '') + '</div>' +
         (odd[k] ? '<p class="wrong-city" role="alert">' + esc(t("wrongCity", { looks: odd[k], city: cities })) + '</p>'
-          : selectAllBtn("collect", free(list).map(function (p) { return p.awb; }))) + list.map(function (p) { return card(p, { select: true }); }).join("") + '</section>';
+          : (function () { var ids = free(list).map(function (p) { return p.awb; }); return ids.length ? '<button class="btn full" type="button" data-write data-collect-awbs="' + esc(ids.join(",")) + '">' + esc(t("collectN", { n: ids.length })) + '</button>' : ""; })()) +
+          list.map(function (p) { return card(p, {}); }).join("") + '</section>';
     }).join("") || empty();
 
     // Arriving (Delivery): batches + parcels on their way here from another city
@@ -422,10 +425,10 @@
     var ready = st.filter(function (p) { return !waitingOn(p) && !outLock(p) && !laterDay(p); });
     var stuck = st.filter(waitingOn).sort(function (x, y) { return R.timestamp(x.statusSince) - R.timestamp(y.statusSince); });
     q("stationList").innerHTML = (st.length ? "" : empty()) +
-      (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + selectAllBtn("station", free(ready).map(function (p) { return p.awb; })) + ready.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
-      (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
-      (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") : "") +
-      (stuck.length ? '<details class="grp-fold" data-fold="stuck"' + (ui.openStuck ? " open" : "") + '><summary class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</summary>" + stuck.map(function (p) { return card(p, { select: true, contacts: true }); }).join("") + '</details>' : "");
+      (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + ready.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
+      (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
+      (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
+      (stuck.length ? '<details class="grp-fold" data-fold="stuck"' + (ui.openStuck ? " open" : "") + '><summary class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</summary>" + stuck.map(function (p) { return card(p, { contacts: true }); }).join("") + '</details>' : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
     q("doneList").innerHTML = deliveredToday.map(function (p) { return card(p); }).join("") || empty();
 
@@ -441,8 +444,15 @@
       var bits = k.split("|"), ret = bits[0] === "R", from = bits[1], to = bits[2], list = tg[k], ids = free(list).map(function (p) { return p.awb; });
       return '<section class="shipper"><div class="shipper-head"><div><b>' + (multi ? esc(from) + " \u2192 " : "") + (ret ? "Returns to " : "To ") + esc(to) + ' (' + list.length + ')</b></div>' +
         (ids.length ? '<button class="btn" type="button" data-write data-sendall="' + esc(to) + '" data-awbs="' + esc(ids.join(",")) + '">' + esc(t("sendN", { n: ids.length, city: to })) + '</button>' : '') + '</div>' +
-        list.map(function (p) { return card(p, { select: true }); }).join("") + '</section>';
+        list.map(function (p) { return card(p, {}); }).join("") + '</section>';
     }).join("") || empty();
+    renderManifests(inc, myCities);
+    /* 3 Nov 2026: counts beside each section heading, rider ID, cash total on the fold */
+    q("hTransit").textContent = tr.length; q("hCollect").textContent = pick.length; q("nDone").textContent = deliveredToday.length;
+    var rid = String(riderId || data.rider.id || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+    q("riderIdLine").innerHTML = '<b>' + esc(data.rider.name || "Rider") + '</b> · ' + esc((LANG === "ur" ? "Rider ID " : "Rider ID ") + rid) + ' · ' + esc(cities) +
+      '<small>' + esc(LANG === "ur" ? "Jo bhi aap yahan lagate hain, isi ID par save hota hai." : "Everything you mark here is saved under this ID.") + '</small>';
+    q("cashFoldNet").textContent = data.cash ? money(data.cash.net) : "";
     q("sentList").innerHTML = (data.batches || []).filter(function (b) { return b.from_city && myCities.indexOf(String(b.from_city).toLowerCase()) > -1; }).map(function (b) {
       return '<article class="parcel batch"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc(b.status) + '</span></div><p>To ' + esc(b.to_city) + ' · ' + esc(b.reference || "") + ' · ' + (b.awbs || []).length + ' parcels</p></article>';
     }).join("") || empty();
@@ -450,6 +460,45 @@
     renderCash(); paintView(); applySearch(); paintQueue(); paintBar(); controls();
     document.querySelectorAll("[data-blocked]").forEach(function (b) { b.disabled = true; });
     geoSync(); paintGeo();
+  }
+  /* 3 Nov 2026: one card per sack. The old Arriving tab added every open
+     sack together (13 sent one day + 11 the next showed "24"), so a rider
+     could not tell what was in the sack in front of him. Each manifest now
+     shows its own count, its sent day, and receives in one tap (the check
+     dialog still lets him untick what did not come). Parcels on the way with
+     no open sack for this station are listed last. */
+  function renderManifests(inc, myCities) {
+    var host = q("manifestList"); if (!host) return;
+    var pend = pendingAwbs(), seen = {};
+    var incBy = {}; inc.forEach(function (p) { incBy[p.awb.toUpperCase()] = p; });
+    var cards = (data.batches || []).filter(function (b) { return myCities.indexOf(String(b.to_city).toLowerCase()) > -1; })
+      .sort(function (x, y) { return String(x.sent_at || "").localeCompare(String(y.sent_at || "")); })
+      .map(function (b) {
+        var rec = (b.received || []).map(function (a) { return String(a).toUpperCase(); });
+        var all = (b.awbs || []).map(function (a) { return String(a).toUpperCase(); });
+        var waiting = all.filter(function (a) { return rec.indexOf(a) < 0 && incBy[a]; });
+        all.forEach(function (a) { seen[a] = true; });
+        if (!waiting.length) return "";
+        var ready = waiting.filter(function (a) { return !pend.has(a); });
+        var onward = waiting.filter(function (a) { var p = incBy[a]; return p && myCities.indexOf(String(p.city).toLowerCase()) < 0 && p.status !== "Return in transit"; }).length;
+        var sent = ""; try { sent = new Date(b.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Karachi" }); } catch (_) {}
+        var rows = waiting.map(function (a) { var p = incBy[a]; return '<li><span class="awbx">' + esc(a) + '</span><span class="who">' + esc(p ? (p.consignee || "") + " · " + (p.city || "") : "") + '</span></li>'; }).join("");
+        return '<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc((LANG === "ur" ? "Bheja: " : "Sent ") + sent) + '</span></div>' +
+          '<p class="man-line"><b>' + waiting.length + '</b> ' + esc(LANG === "ur" ? "receive karne hain" : "to receive") + (rec.length ? ' · ' + rec.length + ' ' + esc(LANG === "ur" ? "aa chuke" : "already received") : '') +
+          (onward ? ' · ' + onward + ' ' + esc(LANG === "ur" ? "aage bhejne wale" : "to send on") : '') + '<br><small>' + esc(b.from_city + " \u2192 " + b.to_city + (b.reference ? " · " + b.reference : "")) + '</small></p>' +
+          '<details class="batch-awbs" data-batch="' + esc(b.code) + '"' + (ui.openBatch[b.code] ? " open" : "") + '><summary>' + esc(t("showAwbs", { n: waiting.length })) + '</summary><ol>' + rows + '</ol></details>' +
+          (ready.length ? '<button class="btn full" type="button" data-write data-recv-awbs="' + esc(ready.join(",")) + '">' + esc(t("receiveN", { n: ready.length })) + '</button>' : '<p class="pending-label">' + esc(t("saved")) + '</p>') + '</article>';
+      }).filter(Boolean);
+    var loose = inc.filter(function (p) { return !seen[p.awb.toUpperCase()]; });
+    if (loose.length) {
+      var ids = loose.filter(function (p) { return !pend.has(p.awb.toUpperCase()); }).map(function (p) { return p.awb; });
+      cards.push('<article class="parcel batch manifest"><div class="parcel-head"><b>' + esc(LANG === "ur" ? "Baghair manifest" : "Not in a sack list") + '</b><span class="status">' + loose.length + '</span></div>' +
+        '<p class="man-line"><small>' + esc(LANG === "ur" ? "Yeh parcel aap ki taraf aa rahe hain magar kisi khuli bori mein nahi." : "On their way to you, but not in an open sack for your station.") + '</small></p>' +
+        '<details class="batch-awbs"><summary>' + esc(t("showAwbs", { n: loose.length })) + '</summary><ol>' + loose.map(function (p) { return '<li><span class="awbx">' + esc(p.awb) + '</span><span class="who">' + esc((p.consignee || "") + " · " + (p.status || "")) + '</span></li>'; }).join("") + '</ol></details>' +
+        (ids.length ? '<button class="btn full secondary" type="button" data-write data-recv-awbs="' + esc(ids.join(",")) + '">' + esc(t("receiveN", { n: ids.length })) + '</button>' : '') + '</article>');
+    }
+    host.innerHTML = cards.join("") || empty();
+    q("hManifests").textContent = cards.length ? String(inc.length) : "0";
   }
   function stat(label, value, cash) { return '<div class="stat' + (cash ? ' money' : '') + '"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'; }
   function kmText(v) { var n = Number(v || 0); return (n < 10 ? n.toFixed(1) : String(Math.round(n))) + " km"; }
@@ -501,7 +550,7 @@
   function paintView() {
     document.querySelectorAll(".view").forEach(function (el) { el.classList.toggle("hidden", el.id !== "view-" + ui.view); });
     document.querySelectorAll(".navbtn").forEach(function (b) { var on = b.dataset.view === ui.view; b.classList.toggle("active", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
-    q("searchRow").classList.toggle("hidden", ["pickup", "delivery", "transit"].indexOf(ui.view) < 0);
+    q("searchRow").classList.toggle("hidden", ui.view !== "parcels");
     if (ui.view === "process") { try { procPaint(); } catch (_) {} }
     q("deliveryReceive").classList.toggle("hidden", ui.tab.delivery !== "receive");
     q("deliveryStation").classList.toggle("hidden", ui.tab.delivery !== "station"); q("deliveryOut").classList.toggle("hidden", ui.tab.delivery !== "out");
@@ -1079,6 +1128,20 @@
     } catch (e) { msg(String(e.message || e), "error"); }
     finally { busy = false; render(); void flush(); }
   }
+  async function bulkAct(action, list) {
+    if (busy || flushing || !authorized || !list.length) return;
+    busy = true; controls();
+    try {
+      if (action === "receive") {
+        var keep = await checkParcels(list);
+        if (!keep || !keep.length) return;
+        list = keep;
+      }
+      var here = BAR_GPS[action] ? await gps(BAR_GPS[action]) : null;
+      for (var i = 0; i < list.length; i += 200) await station(list.slice(i, i + 200), action, "", null, here);
+    } catch (e) { msg(String(e.message || e), "error"); }
+    finally { busy = false; render(); void flush(); }
+  }
   async function sendTransit(list) {
     var to = transitTarget(list); if (!to) throw new Error("Pick parcels going to one city.");
     if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
@@ -1266,7 +1329,12 @@
     if (rec.length) b.push('<button class="btn proc-go secondary" type="button" data-write data-proc="receive">' + esc((LANG === "ur" ? "Receive karein: " : "Receive: ") + rec.length) + (rec.length > recLocal.length ? esc(LANG === "ur" ? " (" + (rec.length - recLocal.length) + " aage bhejne wale)" : " (" + (rec.length - recLocal.length) + " to send on)") : "") + '</button>');
     if (recLocal.length) b.push('<button class="btn proc-go" type="button" data-write data-proc="recout">' + esc((LANG === "ur" ? "Receive karke nikalein: " : "Receive and take out: ") + recLocal.length) + '</button>');
     if (col.length) b.push('<button class="btn proc-go secondary" type="button" data-write data-proc="collect">' + esc((LANG === "ur" ? "Uthayein: " : "Collect: ") + col.length) + '</button>');
-    if (tr.length) b.push('<button class="btn proc-go secondary" type="button" data-proc-view="transit">' + esc((LANG === "ur" ? "Bhejne wale " + tr.length + " · Transit kholen" : tr.length + " to send on · open Transit")) + '</button>');
+    if (tr.length) {
+      var byCity = {}; tr.forEach(function (r) { var to = r.p.status === "Ready for return" ? r.p.origin : r.p.city; (byCity[to] = byCity[to] || []).push(r.p.awb); });
+      Object.keys(byCity).forEach(function (to) { b.push('<button class="btn proc-go secondary" type="button" data-write data-sendall="' + esc(to) + '" data-awbs="' + esc(byCity[to].join(",")) + '">' + esc(t("sendN", { n: byCity[to].length, city: to })) + '</button>'); });
+    }
+    var outs2 = by("isout").filter(function (r) { return !r.p.heldBy; });
+    if (outs2.length) b.push('<button class="btn proc-go secondary" type="button" data-proc-view="parcels">' + esc(LANG === "ur" ? outs2.length + " aap ke paas · Mere parcel kholen" : outs2.length + " out with you · open My parcels to mark the result") + '</button>');
     var count = q("procCount"); if (count) count.textContent = rows.length ? (rows.length + (LANG === "ur" ? " number" : rows.length === 1 ? " number" : " numbers")) : "";
     plan.innerHTML = b.join("") || (rows.length ? '<p class="empty">' + esc(LANG === "ur" ? "Inn par yahan kuch nahi ho sakta." : "Nothing to do here for these numbers.") + '</p>' : "");
     controls();
@@ -1486,6 +1554,11 @@
       if (skipped) ping("200 selected — the most one action can carry. Send these, then select the rest.", "info");
       return;
     }
+    /* 3 Nov 2026: one-tap Receive (a whole sack) and Collect (a whole shipper) */
+    var recv = e.target.closest("[data-recv-awbs]");
+    if (recv) { void bulkAct("receive", String(recv.getAttribute("data-recv-awbs") || "").split(",").filter(Boolean)); return; }
+    var coll = e.target.closest("[data-collect-awbs]");
+    if (coll) { void bulkAct("collect", String(coll.getAttribute("data-collect-awbs") || "").split(",").filter(Boolean)); return; }
     var send = e.target.closest("[data-sendall]");
     if (send) {
       if (busy || flushing || !authorized) return;

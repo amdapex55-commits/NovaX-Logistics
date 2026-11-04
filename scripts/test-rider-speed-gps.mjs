@@ -34,8 +34,9 @@ async function app(options={},geoMode='watch',setup){
   dialog.close=value=>{dialog.returnValue=value;dialog.open=false;dialog.onclose&&dialog.onclose();};
   scripts.forEach(s=>w.eval(s));await wait(150);
   const q=id=>w.document.getElementById(id);
-  const go=v=>w.document.querySelector(`nav [data-view="${v}"]`).click();
-  const tab=t=>w.document.querySelector(`[data-tab="${t}"]`).click();
+  const MAP={delivery:'parcels',cash:'parcels',home:'process',pickup:'process',transit:'process'};
+  const go=v=>w.document.querySelector(`nav [data-view="${MAP[v]||v}"]`).click();
+  const tab=()=>{};   // 3 Nov 2026: My parcels has no sub-tabs
   const pick=awb=>{const cb=w.document.querySelector(`.view:not(.hidden) [data-pick="${awb}"]`);cb.checked=true;cb.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const views=()=>fixture.requests.filter(r=>r.name==='rider_station_view').length;
   const back=async()=>{w.document.dispatchEvent(new w.Event('visibilitychange'));await wait(120);};
@@ -83,7 +84,7 @@ const lastAction=f=>f.requests.filter(r=>r.name==='rider_station_action').slice(
   assert.ok(job.args.p_loc.at&&job.args.p_loc.fix_at,'the tap time and the reading time are both sent');
   assert.ok(Date.now()-t0<1000,'no waiting');
   assert.equal(a.geo.watches.size,1,'a return is still out: still one watch, never a second one');
-  a.w.document.querySelector('nav [data-view="cash"]').click();await wait();
+  a.w.document.querySelector('nav [data-view="parcels"]').click();a.q('cashFold').open=true;await wait();
   assert.equal(a.geo.watches.size,1,'other screens do not stop it while parcels are out');
   ok('GPS: a reading within 30 m is ready before the tap and goes with Delivered straight away');
 }
@@ -100,7 +101,7 @@ const lastAction=f=>f.requests.filter(r=>r.name==='rider_station_action').slice(
   const job=lastAction(a.fixture);
   assert.equal(job.args.p_action,'refused');assert.equal(job.args.p_loc.accuracy,12);assert.equal(job.args.p_loc.lat,31.4);
   // At station → take out: the place is sent with it (the station, the start of the route)
-  a.tab('delivery:station');a.pick(STATION);a.q('actionGo').click();await wait(150);
+  a.go('process');{const el=a.q('procInput');el.value=STATION;el.dispatchEvent(new a.w.Event('input',{bubbles:true}));await wait();[...a.q('procPlan').querySelectorAll('button')].find(b=>/Take out for delivery/.test(b.textContent)).click();}await wait(150);
   const out=lastAction(a.fixture);
   assert.equal(out.args.p_action,'out');assert.ok(out.args.p_loc&&typeof out.args.p_loc.lat==='number','taking out carries the place');
   ok('GPS: a weak reading waits for a better one; Refused and taking out save the place too');
