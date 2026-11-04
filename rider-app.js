@@ -48,7 +48,7 @@
     pickupHelp: ["Parcels to collect from shippers in {city}.", "{city} ke shippers se uthane wale parcel."],
     receiveHelp: ["On their way to your station from another city. Mark them received when they reach you.", "Doosre shehar se aap ke station aa rahe hain. Pohanchne par received lagayein."],
     wrongCity: ["This address looks like {looks}, not {city}. Do not go. Tell the office.", "Yeh address {looks} ka lagta hai, {city} ka nahi. Mat jayein. Office ko batayein."],
-    stationTab: ["At station", "Station par"], outTab: ["Out now", "Rastay mein"], doneToday: ["Delivered today", "Aaj deliver hue"],
+    stationTab: ["Arrived at your station", "Station par pohanch gaye"], takeOut: ["Take out for delivery", "Delivery ke liye nikalein"], outTab: ["Out now", "Rastay mein"], doneToday: ["Delivered today", "Aaj deliver hue"],
     attention: ["Needs attention", "Dhyan dein"], waitShipper: ["{n} refused / not available are waiting for the shipper’s decision. Nothing to do now.", "{n} mana / nahi mila parcel shipper ke faislay ke intezar mein hain. Abhi kuch nahi karna."],
     seeThem: ["See them", "Dekhein"], notTaken: ["Not accepted by NovaX", "NovaX ne qabool nahi kiya"], tryAgain: ["Try again", "Dobara bhejein"], removeIt: ["Remove", "Hata dein"],
     cashWaitSend: ["Waiting for your saved deliveries to reach NovaX. The handover opens after they send.", "Aap ki saved deliveries NovaX ko ja rahi hain. Us ke baad cash jama kar sakte hain."],
@@ -296,6 +296,7 @@
     }
     if (pend) body += '<p class="pending-label">' + esc(t("saved")) + '</p>';
     else if (opts.outcomes) body += '<div class="actions">' + outcomeButtons(p, pay) + '</div>';
+    else if (opts.takeout && !lock) body += '<div class="actions"><button class="btn" type="button" data-write data-takeout="' + esc(p.awb) + '">' + esc(t("takeOut")) + '</button></div>';
     var search = [p.awb, c.name, c.phone, c.address, p.city, p.origin, p.consignee, CITY_WORDS[p.city] || ""].join(" ").toLowerCase();
     return '<article class="parcel' + (pend ? ' pending' : '') + (ui.sel.has(p.awb) && !lock ? ' picked' : '') + '" data-awb="' + esc(p.awb) + '" data-search="' + esc(search) + '">' + body + '</article>';
   }
@@ -425,8 +426,10 @@
     var ready = st.filter(function (p) { return !waitingOn(p) && !outLock(p) && !laterDay(p); });
     var stuck = st.filter(waitingOn).sort(function (x, y) { return R.timestamp(x.statusSince) - R.timestamp(y.statusSince); });
     q("stationList").innerHTML = (st.length ? "" : empty()) +
-      (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" + ready.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
-      (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
+      (ready.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Deliver karne ke liye tayyar" : "Ready to deliver") + " (" + ready.length + ")</h3>" +
+        selectAllBtn("station", ready.filter(function (p) { return !pendingAwbs().has(p.awb.toUpperCase()); }).map(function (p) { return p.awb; })) +
+        ready.map(function (p) { return card(p, { contacts: true, select: true, takeout: true }); }).join("") : "") +
+      (later.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Customer ne baad ka din kaha" : "Customer asked for a later day") + " (" + later.length + ")</h3>" + later.map(function (p) { return card(p, { contacts: true, select: true, takeout: true }); }).join("") : "") +
       (notReady.length ? '<h3 class="grp">' + esc(LANG === "ur" ? "Abhi nahi ja sakte" : "Can’t go out now") + " (" + notReady.length + ")</h3>" + notReady.map(function (p) { return card(p, { contacts: true }); }).join("") : "") +
       (stuck.length ? '<details class="grp-fold" data-fold="stuck"' + (ui.openStuck ? " open" : "") + '><summary class="grp">' + esc(LANG === "ur" ? "Mana / nahi mila — shipper ke faislay ka intezar" : "Refused or not available — waiting for the shipper") + " (" + stuck.length + ")</summary>" + stuck.map(function (p) { return card(p, { contacts: true }); }).join("") + '</details>' : "");
     q("outList").innerHTML = out.map(function (p) { return card(p, { outcomes: true, contacts: true }); }).join("") || empty();
@@ -596,6 +599,8 @@
     if (ui.view === "delivery" && ui.tab.delivery === "receive") return "receive";
     if (ui.view === "delivery" && ui.tab.delivery === "station") return "station";
     if (ui.view === "transit") return "transit";
+    /* 4 Nov 2026: My parcels takes arrived parcels out (tick, Select all, or one tap). */
+    if (ui.view === "parcels") return "station";
     return "";
   }
   function paintBar() {
@@ -1255,7 +1260,7 @@
       var el = document.querySelector('[data-awb="' + p.awb + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: "center" });
       ping("✓ " + p.awb + " selected (" + ui.sel.size + ")", "ok", 30); return true;
     }
-    var place = { pickup: "Pickup", incoming: "Delivery → Arriving", station: "Delivery → At station", out: "Delivery → Out now", transit: "Transit", done: "Delivered" }[p.bucket] || p.status;
+    var place = { pickup: "Process → To collect", incoming: "Process → Arriving", station: "My parcels → Arrived", out: "My parcels → Out now", transit: "Process → To send on", done: "Delivered" }[p.bucket] || p.status;
     ping(p.awb + " is in " + place + " (" + p.status + ").", "info"); return false;
   }
 
@@ -1444,14 +1449,34 @@
     try { s.stream.getTracks().forEach(function (tr) { tr.stop(); }); } catch (_) {}
     if (s.ov && s.ov.parentNode) s.ov.parentNode.removeChild(s.ov);
   }
+  /* 4 Nov 2026: iPhones (and Firefox) have no built-in BarcodeDetector, so
+     Scan only ever said "not available" there. barcode-detector (ZXing in
+     WebAssembly, MIT, free) gives the same API; it is fetched on the first
+     Scan, only on those phones. */
+  var BD_SRC = "https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/dist/iife/polyfill.min.js";
+  function loadBarcode() {
+    if (window.BarcodeDetector) return Promise.resolve(true);
+    if (loadBarcode.p) return loadBarcode.p;
+    loadBarcode.p = new Promise(function (ok) {
+      var s = document.createElement("script"), t0 = setTimeout(function () { ok(!!window.BarcodeDetector); }, 20000);
+      s.src = BD_SRC; s.async = true; s.crossOrigin = "anonymous";
+      s.onload = function () { clearTimeout(t0); ok(!!window.BarcodeDetector); };
+      s.onerror = function () { clearTimeout(t0); loadBarcode.p = null; ok(false); };
+      document.head.appendChild(s);
+    });
+    return loadBarcode.p;
+  }
+  function typeBox() { return ui.view === "process" ? q("procInput") : q("riderSearch"); }
   async function startScan() {
     if (scanSession) return;
+    if (!window.BarcodeDetector) { ping(LANG === "ur" ? "Scanner tayyar ho raha hai…" : "Getting the scanner ready…", "info"); await loadBarcode(); }
     if (!window.BarcodeDetector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       if (window.BarcodeDetector) { q("scanFile").click(); return; }
-      msg("Camera scanning is not available on this phone. Type the last 4 digits of the AWB in the box and press Enter.", "info"); q("riderSearch").focus(); return;
+      msg(LANG === "ur" ? "Scanner load nahi hua. Internet check karein, ya numbers box mein likhein." : "The scanner could not load. Check the internet and try again, or type the numbers in the box.", "info");
+      try { typeBox().focus(); } catch (_) {} return;
     }
     var formats = []; try { var sup = await BarcodeDetector.getSupportedFormats(); formats = ["code_128", "code_39", "ean_13", "qr_code"].filter(function (f) { return sup.includes(f); }); } catch (_) {}
-    if (!formats.length) { msg("This phone cannot read barcodes. Type the last 4 digits instead.", "info"); return; }
+    if (!formats.length) { msg("This phone cannot read barcodes. Type the numbers in the box instead.", "info"); try { typeBox().focus(); } catch (_) {} return; }
     var stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); }
     catch (_) { msg("Camera permission was not given. Take a photo of the barcode instead.", "info"); q("scanFile").click(); return; }
@@ -1585,6 +1610,8 @@
       finally { busy = false; render(); }
       return;
     }
+    var to1 = e.target.closest("[data-takeout]");
+    if (to1) { if (to1.disabled || busy || flushing || !authorized) return; ui.sel = new Set([to1.dataset.takeout]); ui.selScope = "station"; void runBar(); return; }
     var sw = e.target.closest("[data-swap]"); if (sw) { if (!sw.disabled) void swapAction(sw.dataset.awb, sw.dataset.swap); return; }
     var act = e.target.closest("[data-act]"); if (act) { if (!act.disabled) void outcome(act.dataset.awb, act.dataset.act); return; }
     var all = e.target.closest("[data-selall]");

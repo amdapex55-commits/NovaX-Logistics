@@ -93,9 +93,19 @@ procType('1000004');await wait();assert.ok(procBtn(/out with you/));
 procBtn(/out with you/).click();await wait();assert.equal(a.q('view-parcels').classList.contains('hidden'),false);
 a.dom.window.close();
 
-// My parcels: station cards (no ticks), Directions + WhatsApp text, out card outcomes, refusal with reason
+// My parcels: arrived parcels go out from here too (4 Nov 2026): tick + Select all + bar, or one tap per card
 a=await app();a.go('parcels');
-assert.equal(a.q('stationList').querySelectorAll('[data-pick]').length,0,'no tick boxes: taking out happens in Process');
+{ const picks=a.q('stationList').querySelectorAll('[data-pick]');assert.ok(picks.length>=1,'arrived parcels have tick boxes');
+  const all=a.q('stationList').querySelector('[data-selall="station"]');assert.ok(all,'Select all for the ready ones');
+  all.click();await wait(30);assert.equal(a.q('actionBar').classList.contains('hidden'),false,'the bar shows in My parcels');
+  assert.match(a.q('actionGo').textContent,/^Take \d+ out for delivery$/);
+  a.q('actionClear').click();await wait(30);
+  const one=a.q('stationList').querySelector('[data-takeout="N1000003"]');assert.ok(one,'each arrived card has Take out for delivery');
+  one.click();await wait(200);
+  const r=a.fixture.requests.filter(x=>x.name==='rider_station_action');assert.equal(r.length,1);
+  assert.equal(r[0].args.p_action,'out');assert.equal(JSON.stringify(r[0].args.p_awbs),'["N1000003"]'); }
+a.dom.window.close();
+a=await app();a.go('parcels');
 { const dir=[...a.q('stationList').querySelectorAll('a.call')].find(x=>/Directions/.test(x.textContent));
   assert.equal(dir.getAttribute('href'),'https://www.google.com/maps/search/?api=1&query=Destination%20address%2C%20Lahore%2C%20Pakistan','the card opens Maps on the cleaned address'); }
 const waText=(root,awb)=>{ const card=root.querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent));
