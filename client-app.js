@@ -3708,6 +3708,41 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        journey panel still works, so nothing that depended on the old behaviour
        breaks; the drawer is simply the fast path. Falls back to the original
        navigation if the UI module is unavailable. */
+    /* 4 Nov 2026: KKM's shipper opened N8530348 and saw "Consignee —,
+       Address Not provided, Phone Not provided" while the server had all
+       three. His sign-in had lapsed, so the portal was showing its saved copy,
+       which never holds customer names, phones or addresses (privacy, 1 Oct).
+       A parcel from that copy is _partial: its contact cells say Loading and
+       are fetched from the server (nvHydrateContact) instead of claiming the
+       details do not exist. "Not provided" is only said about a full row. */
+    function nvContactMissing(p){ return !!p && (p._partial || (!p.consignee && !p.phone && !p.address)); }
+    function nvContactCell(p,key,none){
+      var v=p&&p[key];
+      if(v) return escLabelText(v);
+      if(nvContactMissing(p)) return '<span class="nvdr-load" data-nv-contact="'+escLabelText(key)+'">'+(p.__nvContactErr?escLabelText(p.__nvContactErr):"Loading…")+'</span>';
+      return escLabelText(none);
+    }
+    var NV_HYDRATING={};
+    function nvHydrateContact(p, after){
+      var sb=window.__nvSb, awb=p&&p.awb;
+      if(!sb||!sb.from||!awb||NV_HYDRATING[awb]) return;
+      NV_HYDRATING[awb]=true;
+      Promise.resolve(sb.from("parcels").select("consignee,phone,address").eq("awb",awb).maybeSingle()).then(function(r){
+        if(r&&r.error) throw r.error;
+        var row=r&&r.data;
+        if(!row){ p.__nvContactErr="Sign in again to see the customer's details."; }
+        else { p.consignee=row.consignee||""; p.phone=row.phone||""; p.address=row.address||""; delete p.__nvContactErr;
+          if(!row.consignee&&!row.phone&&!row.address) p._partial=false; }
+        /* The field alarm: every time a merchant is shown a saved copy this
+           lands in Admin > Error monitor, so a stale portal is seen by NovaX
+           before a shipper has to complain. */
+        try{ if(p._partial && !NV_HYDRATING.__logged){ NV_HYDRATING.__logged=true; window.__nvSb.rpc("log_portal_error",{ p_source:"client", p_rpc_name:"stale_contact", p_page:"parcel drawer",
+          p_message:("Portal showed a saved copy without customer details; filled from the server for "+awb+(row?"":" (no row: sign-in lapsed)")).slice(0,300), p_severity:"warning" }).then(function(){},function(){}); } }catch(_){}
+      }).catch(function(e){
+        var m=String((e&&e.message)||e||"");
+        p.__nvContactErr=/jwt|401|auth|session/i.test(m) ? "Sign in again to see the customer's details." : "Could not load. Check your connection.";
+      }).then(function(){ NV_HYDRATING[awb]=false; try{ if(after) after(); }catch(_){} });
+    }
     function nvParcelDrawerHtml(p){
       const U=window.NovaXUI;
       const FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
@@ -3749,10 +3784,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ((typeof nvOpsChecking==="function" && nvOpsChecking(p))?'<div class="nvdr-why is-calm"><span>NovaX is checking</span>No movement for over two days, so NovaX Ops is following this parcel up with the rider. You do not need to do anything.</div>':'')+
       '</div>'+
       '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
-        '<dt>Consignee</dt><dd>'+escLabelText(p.consignee||"—")+'</dd>'+
+        '<dt>Consignee</dt><dd>'+nvContactCell(p,"consignee","—")+'</dd>'+
         '<dt>City</dt><dd>'+escLabelText(p.city||"—")+'</dd>'+
-        '<dt>Address</dt><dd>'+escLabelText(p.address||"Not provided")+'</dd>'+
-        '<dt>Phone</dt><dd>'+escLabelText(p.phone||"Not provided")+'</dd>'+
+        '<dt>Address</dt><dd>'+nvContactCell(p,"address","Not provided")+'</dd>'+
+        '<dt>Phone</dt><dd>'+nvContactCell(p,"phone","Not provided")+'</dd>'+
         '<dt>Delivery charge</dt><dd>'+escLabelText(money(p.fee||0))+'</dd>'+
         (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
         '<dt>Booked</dt><dd>'+escLabelText(p.date?nvDate(p.date):"—")+'</dd>'+
@@ -4010,6 +4045,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+
           (p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p));
         nvDrawerAwb=nvWasPicked?"":awb;
+        if(nvContactMissing(p)) nvHydrateContact(p, function(){
+          /* Redraw only if this parcel is still the one open. */
+          if(nvDrawerAwb!==awb && state.selectedAwb!==awb) return;
+          try{ U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+(p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p)); }catch(_){}
+        });
       }catch(e){
         state.activeClientTab="dashboard"; render();
       }
@@ -17691,6 +17731,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               try{ render(); }catch(e){ console.warn("NovaX render",e); }
               window.__novaxClientDataReady=true;
               nvAccountUnconfirmed("We could not confirm your account just now, so this is your last saved view.");
+              /* 4 Nov 2026: the usual reason for "no row" is a sign-in that
+                 lapsed while the laptop slept. Ask the server who this is; if
+                 nobody, say so plainly instead of leaving the merchant on a
+                 saved copy without customer details. */
+              try{ Promise.resolve(sb.auth.getUser()).then(function(u){ if(!(u&&u.data&&u.data.user)) nvSessionExpired("loadAll/no-row"); }, function(){}); }catch(_){}
               return;
             }
             console.warn("NovaX: profile.client_id "+MY+" has no matching row in clients.");
