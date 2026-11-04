@@ -2065,6 +2065,7 @@
     }
 
     /* 22 Oct 2026: folded by default; the summary line carries the counts. */
+    #nvQueuePanel[hidden]{display:none!important}
     .nv-calls-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:28px}
     .nv-calls-fold>summary::-webkit-details-marker{display:none}
     .nv-calls-fold>summary b{font-size:16px;margin-right:4px}
@@ -5743,6 +5744,18 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div><h4 class="nv-calls-h">Rider problems today <span class="chip" id="nvRiderProbCount">0</span></h4><div class="ops-list" id="nvRiderProblems"><p class="footer-note">Loading…</p></div></div>
                   <div><h4 class="nv-calls-h">Merchants gone quiet <span class="chip warn" id="nvQuietCount">0</span></h4><div class="ops-list" id="nvGoneQuiet"><p class="footer-note">Loading…</p></div><button class="ghost-btn mt-6" type="button" id="nvQuietMore" hidden onclick="nvCallsAll=!nvCallsAll;nvCallsPaint()">Show all</button></div>
                 </div>
+              </details>
+
+              <!-- 4 Nov 2026: signup queue. New merchants wait here until an admin
+                   lets them in (admin_queue_list / admin_queue_approve). -->
+              <details class="panel mt-14 nv-calls-fold" id="nvQueuePanel">
+                <summary class="nv-calls-sum"><b>Waiting list</b><span class="chip" id="nvQueueCountS">0 waiting</span><span class="nv-calls-tap">Tap to open</span></summary>
+                <div class="section-head" style="margin-top:12px">
+                  <div><p>New merchants see their portal but cannot book until you let them in. They get an email when you do.</p></div>
+                  <button class="action-btn ghost" type="button" onclick="nvQueueLoad(true)">Refresh</button>
+                </div>
+                <div class="ops-list" id="nvQueueList"><p class="footer-note">Loading…</p></div>
+                <div id="nvQueueDone"></div>
               </details>
 
               <div class="panel mt-14" id="adminPeriodPanel">
@@ -13045,6 +13058,59 @@ html,body{ background:var(--bg); color:var(--ink); }
         if(tries>60){ clearInterval(t); return; }
         if(!window.__nvSb||!document.getElementById("nvCallsPanel")) return;
         nvCallsLoad(true).then(function(ok){ if(ok) clearInterval(t); });
+      }, 3000);
+    })();
+    var nvQueueRows=[], nvQueueBusy={};
+    async function nvQueueLoad(){
+      var sb=window.__nvSb; if(!sb||!sb.rpc) return false;
+      try{ var r=await sb.rpc("admin_queue_list"); if(r.error) throw new Error(r.error.message); nvQueueRows=r.data||[]; }
+      catch(e){
+        if(/Admins only/i.test(String(e.message||e))){ var pn=document.getElementById("nvQueuePanel"); if(pn) pn.hidden=true; return true; }
+        var h=document.getElementById("nvQueueList"); if(h) h.innerHTML='<p class="footer-note">Could not load: '+nvEscAdmin(e.message||e)+'</p>'; return false;
+      }
+      nvQueuePaint(); return true;
+    }
+    function nvQueueDay(v){ try{ return new Date(v).toLocaleString("en-PK",{ day:"numeric", month:"short", hour:"numeric", minute:"2-digit", timeZone:"Asia/Karachi" }); }catch(e){ return ""; } }
+    function nvQueuePaint(){
+      var list=document.getElementById("nvQueueList"), done=document.getElementById("nvQueueDone"), panel=document.getElementById("nvQueuePanel"); if(!list) return;
+      var wait=nvQueueRows.filter(function(r){ return r.status==="waiting"; }), ok=nvQueueRows.filter(function(r){ return r.status!=="waiting"; });
+      var cs=document.getElementById("nvQueueCountS");
+      if(cs){ cs.textContent=wait.length+" waiting"; cs.className="chip"+(wait.length?" warn":""); }
+      if(panel && wait.length && !panel.__nvAuto){ panel.__nvAuto=true; panel.open=true; }
+      list.innerHTML=wait.length?wait.map(function(c){
+        var tel=nvTel(c.phone), wa=nvWa(c.phone), id=String(c.clientId);
+        var bits=[c.owner, c.city, c.business].filter(Boolean).map(nvEscAdmin).join(" · ");
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(c.name||"New merchant")+'</strong><span class="chip">#'+nvEscAdmin(String(c.number))+'</span></div>'+
+          (bits?'<p class="footer-note">'+bits+'</p>':'')+
+          '<p class="footer-note">'+nvEscAdmin(c.email||"no email")+(c.phone?' · '+nvEscAdmin(c.phone):'')+' · signed up '+nvEscAdmin(nvQueueDay(c.joinedAt))+'</p>'+
+          (c.address?'<p class="footer-note">'+nvEscAdmin(c.address)+'</p>':'')+
+          (c.website?'<p class="footer-note">'+nvEscAdmin(c.website)+'</p>':'')+
+          '<div class="inline-actions" style="margin-top:6px">'+
+          '<button class="action-btn" type="button" data-nvq-ok="'+nvEscAdmin(id)+'"'+(nvQueueBusy[id]?' disabled':'')+'>'+(nvQueueBusy[id]?'Letting in…':'Let in')+'</button>'+
+          (tel?'<a class="action-btn ghost" href="tel:'+tel+'">Call</a>':'')+
+          (wa?'<a class="action-btn ghost" href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</div></div>';
+      }).join(""):'<p class="footer-note">Nobody is waiting.</p>';
+      if(done) done.innerHTML=ok.length?'<h4 class="nv-calls-h" style="margin-top:14px">Let in, last 14 days</h4><p class="footer-note">'+
+        ok.map(function(c){ return nvEscAdmin(c.name)+' ('+nvEscAdmin(nvQueueDay(c.approvedAt))+')'; }).join(", ")+'</p>':"";
+    }
+    document.addEventListener("click",async function(e){
+      var b=e.target.closest&&e.target.closest("[data-nvq-ok]"); if(!b) return;
+      var id=b.getAttribute("data-nvq-ok"), row=nvQueueRows.filter(function(r){ return String(r.clientId)===id; })[0];
+      if(!row||nvQueueBusy[id]) return;
+      if(!(await window.nvAsk({ title:"Let "+(row.name||"this merchant")+" in?", body:"Their portal opens straight away and they get an email saying so.", ok:"Let in" }))) return;
+      nvQueueBusy[id]=true; nvQueuePaint();
+      try{ var r=await window.__nvSb.rpc("admin_queue_approve",{ p_client:id }); if(r.error) throw new Error(r.error.message);
+        row.status="approved"; row.approvedAt=new Date().toISOString();
+        toast((row.name||"Merchant")+" is in."+(r.data&&r.data.emailed===false?" No email on file, so tell them yourself.":" They have been emailed."),"success");
+      }catch(err){ toast("Could not let them in: "+(err.message||err),"error"); }
+      delete nvQueueBusy[id]; nvQueuePaint();
+    });
+    (function nvQueueBoot(){
+      var tries=0, t=setInterval(function(){
+        tries++;
+        if(tries>60){ clearInterval(t); return; }
+        if(!window.__nvSb||!document.getElementById("nvQueuePanel")) return;
+        nvQueueLoad().then(function(ok){ if(ok) clearInterval(t); });
       }, 3000);
     })();
     async function resolveErrorLog(id){

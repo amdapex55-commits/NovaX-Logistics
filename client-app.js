@@ -485,7 +485,7 @@ window.nvCount=function(n,one,many){
          what they are looking at. */
       var first = demo
         ? { k:"Live demo", t:"This is the real portal, with sample parcels", nav:"dashboard",
-            b:"Every tab works on example data, and nothing you do here is sent anywhere. Sign up and your own workspace opens straight away: no approval queue, no waiting.",
+            b:"Every tab works on example data, and nothing you do here is sent anywhere. Sign up to get your place in line, and we email you the moment your own workspace opens.",
             v: m.rows([["Workspace","Demo","ok"],["Parcels","Samples","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) }
         : { k:"Welcome", t:"Your workspace is live", nav:"dashboard",
             b:"No approval queue, no waiting. Three steps send your first parcel, and the next three cards show each one.",
@@ -15079,6 +15079,78 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }).then(function(){ NV_TERMS.busy=false; });
       }); }
     }
+    /* 4 Nov 2026: signup queue. A merchant who signs up sees their portal
+       but cannot use it until NovaX lets them in (admin Dashboard > Waiting
+       list). nv_my_queue() gives their place in line (a random 101-199 set at
+       signup). The server refuses bookings, pickups, flyers and API keys for
+       them whatever this screen shows. Merchants with no queue row are not
+       affected. The screen checks again every 30 s and opens by itself. */
+    var NV_Q={ tried:false, timer:0, data:null, open:false };
+    function nvQueueEsc(v){ return String(v==null?"":v).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+    function nvQueueShell(on){
+      var shell=document.querySelector(".app-shell");
+      if(shell){ if(on){ shell.setAttribute("inert",""); shell.setAttribute("aria-hidden","true"); } else { shell.removeAttribute("inert"); shell.removeAttribute("aria-hidden"); } }
+      document.documentElement.classList.toggle("nvq-on", !!on);
+    }
+    function nvQueuePaint(){
+      var d=NV_Q.data||{}, host=document.getElementById("nvQueue");
+      if(!host){
+        host=document.createElement("div"); host.id="nvQueue"; host.className="nvq";
+        host.setAttribute("role","dialog"); host.setAttribute("aria-modal","true"); host.setAttribute("aria-labelledby","nvqT");
+        document.body.appendChild(host);
+        host.addEventListener("click",function(e){
+          var b=e.target.closest&&e.target.closest("[data-nvq]"); if(!b) return;
+          var act=b.getAttribute("data-nvq");
+          if(act==="out"){
+            var real=document.getElementById("nvTopLogout")||document.getElementById("nvLogoutBtn");
+            if(real) real.click(); else location.href="index.html";
+          } else if(act==="enter"){
+            NV_Q.open=false; host.remove(); nvQueueShell(false);
+            toast("Welcome to NovaX. Your portal is open.","success");
+          } else if(act==="check"){ nvQueueCheck(true); }
+        });
+      }
+      var n=Math.floor(Number(d.number))||0, done=d.waiting===false;
+      var joined=""; try{ joined=new Date(d.joinedAt).toLocaleDateString("en-GB",{ day:"numeric", month:"short", timeZone:"Asia/Karachi" }); }catch(e){}
+      var email=d.email||window.__novaxSessionEmail||"";
+      var wa="https://wa.me/923123922558?text="+encodeURIComponent("Hi NovaX, I signed up"+(state.client&&state.client.name?" as "+state.client.name:"")+" and I am in the queue"+(n?" at #"+n:"")+".");
+      host.classList.toggle("is-open", done);
+      host.innerHTML='<div class="nvq-card">'+
+        '<span class="nvq-pill"><i aria-hidden="true"></i>'+(done?'You are in':'Early access')+'</span>'+
+        '<h2 id="nvqT">'+(done?'Your portal is open.':'You are on the list.')+'</h2>'+
+        '<p class="nvq-lead">'+(done
+          ?'Everything is ready. Book your first parcel, print its label and a rider collects it from your door.'
+          :'NovaX opens to new merchants a few at a time, so every one gets pickups, riders and payouts that work from the first parcel.')+'</p>'+
+        '<div class="nvq-place"><span>'+(done?'Your place in line was':'Your place in line')+'</span><b>#'+(n||"—")+'</b>'+
+          (joined?'<small>Joined '+nvQueueEsc(joined)+'</small>':'')+'</div>'+
+        '<ol class="nvq-steps" aria-label="Your progress">'+
+          '<li class="done">Signed up</li><li class="'+(done?'done':'now')+'">In review</li><li class="'+(done?'done':'')+'">Portal opens</li></ol>'+
+        (done
+          ?'<button type="button" class="nvq-go" data-nvq="enter">Open my portal</button>'
+          :'<p class="nvq-mail">We will email '+(email?'<b>'+nvQueueEsc(email)+'</b>':'you')+' the moment your portal opens. This page opens by itself too.</p>'+
+           '<div class="nvq-acts"><a class="nvq-wa" href="'+nvQueueEsc(wa)+'" target="_blank" rel="noopener">Message us on WhatsApp</a>'+
+           '<button type="button" class="nvq-out" data-nvq="out">Sign out</button></div>')+
+        '</div>';
+      nvQueueShell(true);
+      if(done){ var g=host.querySelector(".nvq-go"); if(g) try{ g.focus(); }catch(e){} }
+    }
+    function nvQueueCheck(){
+      var sb=window.__nvSb; if(!sb||!sb.rpc) return;
+      Promise.resolve(sb.rpc("nv_my_queue")).then(function(r){
+        if(!r||r.error||!r.data) return;
+        if(r.data.waiting){ NV_Q.data=r.data; NV_Q.open=true; nvQueuePaint(); return; }
+        clearInterval(NV_Q.timer); NV_Q.timer=0;
+        if(NV_Q.open){ NV_Q.data=Object.assign({},NV_Q.data,r.data); nvQueuePaint(); }
+      }).catch(function(){});
+    }
+    function nvQueueEnsure(){
+      if(NV_Q.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
+      if(!window.__nvSb||!window.__nvSb.rpc) return;
+      NV_Q.tried=true;
+      nvQueueCheck();
+      NV_Q.timer=setInterval(function(){ if(NV_Q.open && !document.hidden) nvQueueCheck(); else if(!NV_Q.open) { clearInterval(NV_Q.timer); NV_Q.timer=0; } }, 30000);
+      document.addEventListener("visibilitychange",function(){ if(NV_Q.open && !document.hidden && NV_Q.data && NV_Q.data.waiting) nvQueueCheck(); });
+    }
     function nvKycSendState(){
       var b=nvKycEl("nvKycSend");
       if(b && !NV_KYC.sending) b.disabled=!(NV_KYC.pick && NV_KYC.pick.ready());
@@ -15803,6 +15875,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ nvPfEnsureHeader(); }catch(e){}
       try{ nvKycEnsure(); }catch(e){}
+      try{ nvQueueEnsure(); }catch(e){}
       try{ nvTermsEnsure(); }catch(e){}
       try{ nvQuietCard(); }catch(e){}
       try{ nvResumeEnsure(); }catch(e){}

@@ -76,7 +76,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=4201c6b3">
+  <link rel="preload" as="script" href="client-app.min.js?v=fc709277">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2818,7 +2818,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=4201c6b3" defer></script>
+  <script src="client-app.min.js?v=fc709277" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -7075,6 +7075,45 @@ body:not(.nv-rc-fresh) #clientMenu .nv-recover-promo,
 .nv-chist.warn b{color:var(--nvu-warn-fg)}
 .nv-chist.good{background:var(--nvu-good-bg);border-color:var(--nvu-good-ln)}
 .nv-chist.good b{color:var(--nvu-good-fg)}
+
+/* 4 Nov 2026: signup queue screen (nvQueueEnsure in client-app.js). The
+   portal stays visible behind it, blurred and inert, so a new merchant sees
+   what is waiting for them. No entrance animation: it never gates content. */
+html.nvq-on,html.nvq-on body{overflow:hidden}
+html.nvq-on body>*:not(#nvQueue):not(script):not(style){filter:blur(7px) saturate(.85);pointer-events:none;user-select:none}
+.nvq{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;
+  padding:16px;background:var(--nvu-scrim,rgba(8,20,16,.42));overflow-y:auto}
+.nvq-card{width:100%;max-width:440px;margin:auto;background:var(--nvu-bg,#fff);color:var(--nvu-ink,#121821);
+  border:1px solid var(--nvu-line,#e5e9ee);border-radius:20px;padding:28px 24px 22px;
+  box-shadow:0 30px 80px -24px var(--nvu-shadow,rgba(6,20,14,.28))}
+.nvq-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:700;
+  letter-spacing:.02em;background:var(--nvu-info-bg,#eaf3fb);color:var(--nvu-info-fg,#155a82);border:1px solid var(--nvu-info-ln,#c9e0f2)}
+.nvq-pill i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.nvq.is-open .nvq-pill{background:var(--nvu-good-bg,#e6f6ee);color:var(--nvu-good-fg,#0c7c59);border-color:var(--nvu-good-ln,#b7e3ce)}
+@media (prefers-reduced-motion:no-preference){ .nvq:not(.is-open) .nvq-pill i{animation:nvqPulse 1.8s ease-in-out infinite} }
+@keyframes nvqPulse{50%{transform:scale(.55)}}
+.nvq-card h2{margin:16px 0 8px;font-size:clamp(26px,7vw,32px);line-height:1.08;letter-spacing:-.02em;color:var(--nvu-ink,#121821)}
+.nvq-lead{margin:0;color:var(--nvu-ink-2,#5b6875);font-size:15px;line-height:1.5}
+.nvq-place{margin:22px 0 18px;padding:18px 18px 16px;border-radius:16px;background:var(--nvu-bg-2,#f7f9fb);border:1px solid var(--nvu-line,#e5e9ee);
+  display:grid;grid-template-columns:1fr auto;align-items:end;gap:2px 12px}
+.nvq-place span{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--nvu-ink-3,#667380)}
+.nvq-place b{font-size:clamp(46px,15vw,60px);line-height:1;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--nvu-accent,#0c7c59)}
+.nvq-place small{font-size:13px;color:var(--nvu-ink-2,#5b6875);padding-bottom:6px;white-space:nowrap}
+.nvq-steps{list-style:none;margin:0 0 18px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;counter-reset:nvq}
+.nvq-steps li{counter-increment:nvq;font-size:12.5px;font-weight:650;color:var(--nvu-ink-3,#667380);padding-top:10px;border-top:3px solid var(--nvu-line-2,#d4dae1);min-width:0}
+.nvq-steps li.done{color:var(--nvu-ink,#121821);border-top-color:var(--nvu-accent,#0c7c59)}
+.nvq-steps li.now{color:var(--nvu-ink,#121821);border-top-color:var(--nvu-warn-fg,#8a5a00)}
+.nvq-mail{margin:0 0 16px;font-size:14px;line-height:1.5;color:var(--nvu-ink-2,#5b6875);overflow-wrap:anywhere}
+.nvq-mail b{color:var(--nvu-ink,#121821);font-weight:700}
+.nvq-acts{display:grid;gap:8px}
+.nvq-wa,.nvq-go{display:flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border-radius:12px;
+  background:var(--nvu-accent,#0c7c59);color:var(--nvu-accent-ink,#fff);font-weight:800;font-size:15px;text-decoration:none;border:0;cursor:pointer}
+.nvq-go{width:100%}
+.nvq-out{min-height:44px;padding:0 16px;border-radius:12px;background:transparent;color:var(--nvu-ink-2,#5b6875);
+  border:0;font-weight:700;font-size:14px;cursor:pointer}
+.nvq-wa:focus-visible,.nvq-go:focus-visible,.nvq-out:focus-visible{outline:none;box-shadow:var(--ring,0 0 0 3px rgba(19,163,111,.28))}
+@media (max-width:380px){ .nvq-card{padding:22px 18px 18px} .nvq-steps li{font-size:11.5px} }
+@media print{ .nvq{display:none!important} html.nvq-on body>*{filter:none!important} }
 </style>
 
 <script>

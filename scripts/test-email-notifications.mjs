@@ -20,6 +20,9 @@ const fixtures = {
 };
 const NUDGE_KINDS = ['back_quiet', 'back_tried', 'setup_ready'];
 const REMINDER_KINDS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
+const open = buildEmail('portal_open', 'owner@example.com', { name: 'Sara', business: 'Sample Store', number: 137 });
+assert.ok(open.html.includes('#137') && open.html.includes('Open my portal') && open.text.includes('Sample Store'));
+assert.ok(!buildEmail('portal_open', 'owner@example.com', {}).html.includes('#NaN'));
 for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
   assert.ok(message.html.includes('name="viewport"'));
@@ -41,7 +44,8 @@ assert.ok(buildEmail('cnic_rejected', 'owner@example.com', fixtures.cnic_rejecte
 assert.throws(() => buildEmail('cnic_rejected', 'owner@example.com', { business: 'Sample Store' }), /missing_reason/);
 assert.ok(!buildEmail('cnic_rejected', 'owner@example.com', { business: 'S', reason: '<img src=x onerror=alert(1)>' }).html.includes('<img src=x'));
 const welcome = buildEmail('welcome', 'owner@example.com', fixtures.welcome);
-for (const feature of ['bulk bookings', 'parcel statuses', 'request payouts', 'Connect Shopify']) {
+// 4 Nov 2026: new merchants join the signup queue; the welcome says so.
+for (const feature of ['on the list', 'Your place is saved', 'portal opens']) {
   assert.ok(welcome.html.includes(feature));
   assert.ok(welcome.text.includes(feature));
 }
@@ -51,7 +55,7 @@ for (const [kind, data] of Object.entries(fixtures)) {
   for (const link of message.html.matchAll(/href="([^"]+)"/g)) {
     const url = new URL(link[1].replaceAll('&amp;', '&'));
     // The day-7 reminder's button opens NovaX's own WhatsApp support number, nothing else.
-    if ((kind === 'first_parcel_d7' || NUDGE_KINDS.includes(kind)) && url.origin === 'https://wa.me') {
+    if ((kind === 'first_parcel_d7' || kind === 'welcome' || NUDGE_KINDS.includes(kind)) && url.origin === 'https://wa.me') {
       assert.equal(url.pathname, '/923123922558');
       continue;
     }

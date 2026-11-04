@@ -2,7 +2,7 @@ export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_veri
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
   | 'back_quiet' | 'back_tried' | 'setup_ready'
   | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch'
-  | 'reattempt_digest';
+  | 'reattempt_digest' | 'portal_open';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -87,21 +87,44 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
   const hi = name ? `Hi ${name}, ` : 'Hi there, ';
   const forBiz = business ? ' for ' + business : '';
   if (kind === 'welcome') {
+    // 4 Nov 2026: every new merchant joins the signup queue first
+    // (nv_client_queue). The portal opens when NovaX approves them, and
+    // that sends 'portal_open'.
     return {
-      subject: 'Welcome to NovaX Logistics',
-      preheader: 'Your account is created. Book a parcel, print its label and a rider collects it.',
-      pill: 'Account created', tone: 'good',
-      title: name ? `Welcome to NovaX, ${name}.` : 'Welcome to NovaX.',
-      intro: `Your account${forBiz} is created. From your first parcel to your next payout, your whole shipping day lives in one portal.`,
-      cta: 'Open your portal', destination: PORTAL,
-      stepsTitle: 'What you can do from day one',
+      subject: 'You are on the NovaX list',
+      preheader: 'Your place is saved. We will email you the moment your portal opens.',
+      pill: 'On the list', tone: 'info',
+      title: name ? `You are on the list, ${name}.` : 'You are on the list.',
+      intro: `Thank you for signing up${forBiz}. NovaX opens to new merchants a few at a time, so every one gets pickups, riders and payouts that work from the first parcel. Your place is saved.`,
+      cta: 'See my place in line', destination: PORTAL,
+      stepsTitle: 'What happens next',
       steps: [
-        ['Book one, or book in bulk.', 'Create single parcels, upload bulk bookings and print your AWB labels.'],
-        ['Follow the whole journey.', 'See parcel statuses from booking through pickup, delivery or return.'],
-        ['Keep your money in view.', 'Check your NovaX Wallet, request payouts and see every payment record.'],
-        ['Bring your store along.', 'Connect Shopify or WooCommerce and book your store orders from the same place.'],
+        ['We look at your sign-up.', 'Your business name, city and pickup address help us plan your pickups.'],
+        ['Your portal opens.', 'We email you the moment it does. Sign in and book from day one.'],
+        ['Questions in the meantime?', 'Message us on WhatsApp and a person answers.'],
       ],
-      note: 'If you received a separate verification email, verify your email address before signing in.',
+      extraLink: ['Message NovaX on WhatsApp', WHATSAPP],
+      note: 'If you received a separate verification email, verify your email address so you can sign in when your portal opens.',
+      signoff: true,
+    };
+  }
+  if (kind === 'portal_open') {
+    const n = Math.floor(Number(data.number));
+    return {
+      subject: 'Your NovaX portal is open',
+      preheader: 'You are in. Sign in, book your first parcel and a rider collects it from your door.',
+      pill: 'You are in', tone: 'good',
+      title: name ? `You are in, ${name}.` : 'You are in.',
+      intro: `Your NovaX portal${forBiz} is open. Everything is ready: book a parcel, print its label and request a pickup.`,
+      ...(Number.isFinite(n) && n > 0 ? { fact: { label: 'YOUR PLACE IN LINE WAS', value: '#' + n, caption: 'Now open', size: 28 } } : {}),
+      cta: 'Open my portal', destination: PORTAL,
+      stepsTitle: 'Your first parcel',
+      steps: [
+        ['Book it.', 'Add the customer, city and cash to collect. ' + PRICE],
+        ['Print the label.', 'Stick it on the parcel.'],
+        ['Request a pickup.', 'A rider collects it from your door.'],
+      ],
+      note: 'Sign in with the email and password you signed up with.',
       signoff: true,
     };
   }
