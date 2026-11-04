@@ -1335,6 +1335,10 @@ window.nvCount=function(n,one,many){
            present: signing in reloads client.html without it. */
         if(qp.get("shopifyConnect")==="1"){
           try{ sessionStorage.setItem("novaxShopifyConnect","1"); }catch(e){}
+          /* Kept for the whole visit (the flag above is removed once the code
+             shows): a merchant still in the signup queue who came from the
+             Shopify app must see their code, not the waiting screen. */
+          try{ sessionStorage.setItem("novaxViaShopify","1"); }catch(e){}
         }
         var wantTab=qp.get("tab")||(qp.get("shopifyConnect")==="1"?"integrations":"")
           ||(location.hash==="#integrations"?"integrations":"");
@@ -15138,7 +15142,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var sb=window.__nvSb; if(!sb||!sb.rpc) return;
       Promise.resolve(sb.rpc("nv_my_queue")).then(function(r){
         if(!r||r.error||!r.data) return;
-        if(r.data.waiting){ NV_Q.data=r.data; NV_Q.open=true; nvQueuePaint(); return; }
+        if(r.data.waiting){
+          /* Came from the Shopify app's "Get my code": show the code. Linking
+             the store lets them in on the server (nvsh_link_claim). */
+          var viaShopify=false; try{ viaShopify=sessionStorage.getItem("novaxViaShopify")==="1"; }catch(e){}
+          if(viaShopify){ clearInterval(NV_Q.timer); NV_Q.timer=0; return; }
+          NV_Q.data=r.data; NV_Q.open=true; nvQueuePaint(); return;
+        }
         clearInterval(NV_Q.timer); NV_Q.timer=0;
         if(NV_Q.open){ NV_Q.data=Object.assign({},NV_Q.data,r.data); nvQueuePaint(); }
       }).catch(function(){});

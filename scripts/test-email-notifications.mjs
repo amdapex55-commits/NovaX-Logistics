@@ -20,6 +20,9 @@ const fixtures = {
 };
 const NUDGE_KINDS = ['back_quiet', 'back_tried', 'setup_ready'];
 const REMINDER_KINDS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
+const listed = buildEmail('welcome', 'owner@example.com', { name: 'Sara', business: 'Sample Store', number: 173 });
+assert.ok(listed.html.includes('#173') && listed.text.includes('#173'));
+assert.ok(!buildEmail('welcome', 'owner@example.com', { name: 'Sara' }).html.includes('#NaN'));
 const open = buildEmail('portal_open', 'owner@example.com', { name: 'Sara', business: 'Sample Store', number: 137 });
 assert.ok(open.html.includes('#137') && open.html.includes('Open my portal') && open.text.includes('Sample Store'));
 assert.ok(!buildEmail('portal_open', 'owner@example.com', {}).html.includes('#NaN'));

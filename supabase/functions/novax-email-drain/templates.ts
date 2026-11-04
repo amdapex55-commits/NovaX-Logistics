@@ -89,13 +89,16 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
   if (kind === 'welcome') {
     // 4 Nov 2026: every new merchant joins the signup queue first
     // (nv_client_queue). The portal opens when NovaX approves them, and
-    // that sends 'portal_open'.
+    // that sends 'portal_open'. number = nv_queue_number(user id), the same
+    // place the portal's waiting screen shows.
+    const place = Math.floor(Number(data.number));
     return {
       subject: 'You are on the NovaX list',
       preheader: 'Your place is saved. We will email you the moment your portal opens.',
       pill: 'On the list', tone: 'info',
       title: name ? `You are on the list, ${name}.` : 'You are on the list.',
       intro: `Thank you for signing up${forBiz}. NovaX opens to new merchants a few at a time, so every one gets pickups, riders and payouts that work from the first parcel. Your place is saved.`,
+      ...(place >= 101 && place <= 199 ? { fact: { label: 'YOUR PLACE IN LINE', value: '#' + place, caption: 'We email you the moment your portal opens', size: 34 } } : {}),
       cta: 'See my place in line', destination: PORTAL,
       stepsTitle: 'What happens next',
       steps: [
