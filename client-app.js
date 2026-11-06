@@ -10394,7 +10394,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvCityTilesHtml(){
       var news=(window.NV_STATIONS_NEW||["Faisalabad","Multan","Sahiwal","Okara","Chichawatni","Harappa","Yousuf Wala","Adda Gamber"]);
       return '<div class="nv-cityp-main">'+NV_TILE_MAIN.map(function(m){ return '<button type="button" data-nv-newst="'+m[0]+'"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>'; }).join("")+'</div>'+
-        '<div class="nv-cityp-h"><b>New stations</b><span>Same rate as Lahore \u00b7 2\u20133 days</span></div>'+
+        '<div class="nv-cityp-h"><b>More cities</b><span>Same rate as Lahore \u00b7 2\u20133 days</span></div>'+
         '<div class="nv-cityp-new">'+news.map(function(n){ return '<button type="button" data-nv-newst="'+n+'">'+n+'</button>'; }).join("")+'</div>';
     }
     function nvCityTilesBind(sel, host){
@@ -13662,10 +13662,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* 19 Oct 2026: announcements queue. Each runs its three views (or until
        "Got it"); the next starts from the following browser session, never in
        the same session as the last view of the one before. */
-    var NV_NOTICES = [
-      { id:"stations-2026-10-17", html:function(){ return nvRateNoticeHtml(); }, tab:"newBooking", focus:"bookingNewStations" },
-      { id:"flyers-2026-10-19", html:function(){ return nvFlyNoticeHtml(); }, tab:"flyers", focus:"nvFlyRoot" }
-    ];
+    /* 6 Nov 2026 (owner): every old announcement (new stations, flyers) was
+       removed; new ones are coming. Add { id, html, tab, focus } entries here. */
+    var NV_NOTICES = [];
     function nvRateNoticePick(){
       try{
         for(var i=0;i<NV_NOTICES.length;i++){
@@ -13677,39 +13676,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
       return null;
     }
-    function nvFlyNoticeHtml(){
-      return '<h4>\u2605 New: buy courier flyers from NovaX</h4>' +
-        '<p>Packs of 100 in 8 sizes, from 7 \u00d7 9 to 18 \u00d7 24 inches, from <strong>Rs 14.28</strong> a flyer. ' +
-        'Paid from your wallet, or cash to the rider, who brings them with your next pickup.</p>' +
-        '<div class="nv-rn-foot">' +
-          '<button type="button" class="nv-rn-go" id="nvRateNoticeGo">Buy flyers</button>' +
-          '<button type="button" class="nv-rn-x" id="nvRateNoticeDismiss">Got it</button>' +
-          '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
-        '</div>';
-    }
-    /* 17 Oct 2026: the notice slot announces the eight new stations. The rate
-       quoted is the merchant's OWN Zone B card (a special-rate shop sees its
-       own number), because that is what novax_quote_fee charges them for a
-       parcel to any of these towns. The 10 September rate-rise text this
-       function used to return is in git history (rate-2026-09-10). */
-    function nvRateNoticeHtml(){
-      var b = null;
-      try{ var c = clientById(state.client && state.client.id); b = normalizeRateCard(c && c.rateCard, c && c.rate).B; }catch(e){}
-      var base = b && Number(b.overnight) > 0 ? Number(b.overnight) : NV_ZONE_B_BASE;
-      var addl = b && Number(b.additionalKg) >= 0 ? Number(b.additionalKg) : 85;
-      return '<h4>\u2605 New stations: NovaX now delivers to 8 more cities</h4>' +
-        '<p>Book COD parcels to these towns today, from the same New booking form:</p>' +
-        '<ul class="nv-st-chips">' + NV_STATIONS_NEW.map(function(c){ return '<li>' + escLabelText(c) + '</li>'; }).join("") + '</ul>' +
-        '<p>Same price as Lahore: <strong>Rs ' + fmt(base) + '</strong> for the first kg, plus <strong>Rs ' + fmt(addl) + '</strong> for each extra kg. ' +
-        'Delivered in 2\u20133 working days, with COD in your wallet the day it lands.</p>' +
-        '<div class="nv-rn-foot">' +
-          '<button type="button" class="nv-rn-go" id="nvRateNoticeGo">Book to a new station</button>' +
-          '<button type="button" class="nv-rn-x" id="nvRateNoticeDismiss">Got it</button>' +
-          '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
-        '</div>';
-    }
     /* The machinery below runs one announcement at a time: set
-       NV_RATE_NOTICE_ACTIVE and bump the notice id. Now: new stations. */
+       NV_RATE_NOTICE_ACTIVE and bump the notice id. Now: none (6 Nov 2026). */
     var NV_RATE_NOTICE_ACTIVE = true;
     function nvRateNotice(){
       var host = document.getElementById("nvRateNotice");

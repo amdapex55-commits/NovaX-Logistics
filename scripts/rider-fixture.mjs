@@ -40,6 +40,8 @@ export function installFixture(window, options = {}) {
     fixture.requests.push({name,args});
     if(name==='rider_cash_summary')return{data:{...fixture.cash},error:null};
     if(name==='rider_today')return{data:fixture.today||[],error:null};
+    if(name==='rider_out_of_area')return{data:fixture.ooa||[],error:null};
+    if(name==='rider_awb_why')return{data:(fixture.why||[]).filter(x=>(args&&args.p_awbs||[]).includes(x.awb)),error:null};
     if(name==='rider_station_stamp')return fixture.online?{data:fixture.stamp,error:null}:{error:{message:'Failed to fetch'}};
     if(name==='rider_queue_discard'){fixture.discards=(fixture.discards||[]).concat([args]);return{data:{ok:true},error:null};}
     if(name==='rider_station_view'){

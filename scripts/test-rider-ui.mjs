@@ -231,6 +231,22 @@ a.q('refreshBtn').click();await wait(120);a.go('parcels');await wait(40);
   const rows=[...el.querySelectorAll('details.today-row')];assert.match(rows[1].textContent,/Prepaid · nothing to collect/);assert.match(rows[2].textContent,/COD Rs 1,200/); }
 a.dom.window.close();
 
+// 6 Nov 2026: parcels the office marked Out of service area are shown (read only, with the reason), and Process says why
+a=await app();a.fixture.ooa=[{awb:'N8530344',consignee:'Awais Mehmood',city:'Lahore',address:'Daultala, Gujar Khan',phone:'03001234570',cod_amount:1380,payment_mode:'COD',shop:'KKM',reason:'not for this city',changed_at:'2026-11-03T07:41:05Z'}];
+a.fixture.why=[{awb:'N7777777',status:'Return to shipper',city:'Lahore',reason:null,changed_at:'2026-11-01T00:00:00Z'}];
+a.q('refreshBtn').click();await wait(120);a.go('parcels');await wait(40);
+{ const el=a.q('ooaList');assert.match(el.querySelector('h2').textContent,/Office marked out of service area\s*1/);
+  const row=el.querySelector('details.today-row');assert.match(row.querySelector('summary').textContent,/N8530344.*Awais Mehmood · Lahore.*Out of area/);
+  assert.match(row.textContent,/Daultala, Gujar Khan, Lahore/);assert.match(row.textContent,/COD Rs 1,380/);assert.match(row.textContent,/Office: not for this city/);
+  assert.equal(row.querySelectorAll('button').length,0,'no action on them'); }
+a.go('process');await wait(20);
+{ const el=a.q('procInput');el.value='N8530344, N7777777, N0000001, ';el.dispatchEvent(new a.w.Event('input',{bubbles:true}));await wait(60);
+  const txt=a.q('procList').textContent;
+  assert.match(txt,/N8530344.*Office marked out of service area: not for this city · call the office/);
+  assert.match(txt,/N7777777.*In the office system: Return to shipper · call the office/);
+  assert.match(txt,/N0000001.*Not at your station/); }
+a.dom.window.close();
+
 // the message for a return, a prepaid exchange, and in Roman Urdu
 a=await app({swap:true});a.go('parcels');
 { const txt=awb=>{ const card=a.q('outList').querySelector(`[data-awb="${awb}"]`); const w=[...card.querySelectorAll('a.call')].find(x=>/WhatsApp/.test(x.textContent)); return new URL(w.getAttribute('href')).searchParams.get('text'); };

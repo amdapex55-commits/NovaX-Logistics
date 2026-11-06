@@ -364,8 +364,41 @@
         (x.shop ? '<p class="meta-line">' + esc((LANG === "ur" ? "Shop: " : "Shop: ") + x.shop) + '</p>' : '') + '</div></details>';
     }).join("");
   }
+  /* 6 Nov 2026: N8530344 and N9830081 were in Naveed's hand, but the office
+     had marked them "Out of service area" (Daultala, Wah Cantt), which takes
+     a parcel off every rider list, and the app only said "Not at your
+     station". The owner: keep the status, but show them. Read only, with the
+     office's reason; the app offers no action on them. */
+  var OOA = null;
+  function loadOoa() {
+    try {
+      Promise.resolve(sb.rpc("rider_out_of_area")).then(function (r) {
+        if (r && !r.error && Array.isArray(r.data)) { OOA = r.data; renderOoa(); if (ui.view === "process") { try { procPaint(); } catch (_) {} } }
+      }, function () {});
+    } catch (_) {}
+  }
+  function renderOoa() {
+    var el = q("ooaList"); if (!el) return;
+    if (!OOA || !OOA.length) { el.innerHTML = ""; return; }
+    el.innerHTML = '<h2 class="sec-h"><span>' + esc(LANG === "ur" ? "Office ne service area se bahar kaha" : "Office marked out of service area") + '</span><b class="segn">' + OOA.length + '</b></h2>' +
+      '<p class="sub">' + esc(LANG === "ur" ? "Yeh parcel aap ke paas ho sakte hain. Kuch karne se pehle office ko call karein." : "These may be with you. Keep them safe and call the office before doing anything with them.") + '</p>' +
+      '<div class="today-list">' + OOA.map(function (x) {
+        var d = ""; try { d = new Date(x.changed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Karachi" }); } catch (_) {}
+        var key = "ooa|" + x.awb, call = R.phone(x.phone || ""), ok = /^\+?\d{9,15}$/.test(call);
+        var c = P.classify({ cod: Number(x.cod_amount || 0), paymentMode: x.payment_mode || "" });
+        var amt = Number(c.collectable != null ? c.collectable : (x.cod_amount || 0)) || 0;
+        return '<details class="today-row" data-today="' + esc(key) + '"' + (ui.openToday[key] ? " open" : "") + '><summary><span class="today-t">' + esc(d) + '</span><span class="today-m"><b>' + esc(x.awb) + '</b> ' +
+          '<small>' + esc([x.consignee, x.city].filter(Boolean).join(" · ")) + '</small></span><span class="tg bad">' + esc(LANG === "ur" ? "Area se bahar" : "Out of area") + '</span></summary>' +
+          '<div class="man-more today-more"><p>' + esc(x.address || (LANG === "ur" ? "Address nahi hai." : "Address missing.")) + (x.city ? ', ' + esc(x.city) : '') + '</p>' +
+          (x.phone ? '<p>' + (ok ? '<a class="man-call" href="tel:' + esc(call) + '">\u260e ' + esc(x.phone) + '</a>' : esc(x.phone)) + '</p>' : '') +
+          '<p class="moneyline">' + esc(amt > 0 ? "COD " + money(amt) : (LANG === "ur" ? "Paid" : "Prepaid")) + '</p>' +
+          '<p class="error-text">' + esc((LANG === "ur" ? "Office: " : "Office: ") + (x.reason || (LANG === "ur" ? "wajah nahi likhi" : "no reason written"))) + '</p>' +
+          (x.shop ? '<p class="meta-line">' + esc("Shop: " + x.shop) + '</p>' : '') + '</div></details>';
+      }).join("") + '</div>';
+  }
   function render() {
     if (!data.rider) return;
+    try { renderOoa(); } catch (_) {}
     paintWords();
     var cities = (data.rider.cities || []).join(" + ") || "No city set";
     q("riderName").textContent = data.rider.name || "My station";
@@ -694,7 +727,7 @@
       connected = true; lastSync = lastFull = Date.now();
       try { store.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
       catch (_) { msg("This phone cannot save the station for offline use. Do not reload without signal.", "error"); }
-      q("gate").classList.add("hidden"); render(); loadToday();
+      q("gate").classList.add("hidden"); render(); loadToday(); loadOoa();
       if (!(data.rider.cities || []).length) msg("No city is set on your rider account. Ask the office to set it.", "error");
       else if (cash.error) msg("Cash services are unavailable. Handover is disabled; contact the office.", "error");
       else if (!silent) msg("Station refreshed.", "ok");
@@ -1346,7 +1379,7 @@
      here and does it in one tap: receive the sack, take everything out for
      delivery, collect. It uses the same saved actions as the other tabs, so
      offline saving, retries and the office log all still apply. */
-  var PROC = { list: [] };
+  var PROC = { list: [], why: {}, asked: {} };
   function procParse(raw, typing) {
     var out = [], tail = "", bad = [];
     String(raw || "").split(/[^0-9]+/).forEach(function (run, i, all) {
@@ -1358,8 +1391,13 @@
     var seen = {}; out = out.filter(function (a) { if (seen[a]) return false; seen[a] = true; return true; });
     return { awbs: out, tail: tail };
   }
-  function procKind(p, mine) {
-    if (!p) return { k: "missing", why: LANG === "ur" ? "Aap ke station par nahi" : "Not at your station" };
+  function procKind(p, mine, a) {
+    if (!p) {
+      var oa = (OOA || []).filter(function (x) { return String(x.awb).toUpperCase() === a; })[0], w = PROC.why[a];
+      if (oa) return { k: "missing", why: (LANG === "ur" ? "Office ne service area se bahar kaha" : "Office marked out of service area") + (oa.reason ? ": " + oa.reason : "") + (LANG === "ur" ? " · office ko call karein" : " · call the office") };
+      if (w) return { k: "missing", why: (LANG === "ur" ? "Office mein: " : "In the office system: ") + w.status + (w.reason ? " (" + w.reason + ")" : "") + (LANG === "ur" ? " · office ko call karein" : " · call the office") };
+      return { k: "missing", why: LANG === "ur" ? "Aap ke station par nahi" : "Not at your station" };
+    }
     if (pendingAwbs().has(p.awb.toUpperCase())) return { k: "saved", why: LANG === "ur" ? "Pehle se save" : "Already saved, sending" };
     if (p.bucket === "incoming") {
       var hub = p.meta && p.meta.hub && mine.indexOf(String(p.city).toLowerCase()) < 0;
@@ -1375,8 +1413,17 @@
   function procPaint() {
     var host = q("procList"), plan = q("procPlan"); if (!host || !plan) return;
     var mine = (data.rider && data.rider.cities || []).map(function (c) { return String(c).toLowerCase(); });
-    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine) }; });
+    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine, a) }; });
     var tone = { receive: "warn", out: "ok", collect: "warn", transit: "warn", locked: "bad", missing: "bad", isout: "", done: "", saved: "", other: "" };
+    var ask = rows.filter(function (r) { return !r.p && !PROC.asked[r.awb]; }).map(function (r) { return r.awb; });
+    if (ask.length) {
+      ask.forEach(function (a) { PROC.asked[a] = 1; });
+      try {
+        Promise.resolve(sb.rpc("rider_awb_why", { p_awbs: ask })).then(function (r) {
+          if (r && !r.error && Array.isArray(r.data) && r.data.length) { r.data.forEach(function (x) { PROC.why[String(x.awb).toUpperCase()] = x; }); procPaint(); }
+        }, function () {});
+      } catch (_) {}
+    }
     host.innerHTML = rows.map(function (r) {
       return '<div class="proc-row"><b class="awbx">' + esc(r.awb) + '</b><span class="proc-who">' + esc(r.p ? (r.p.consignee || "") + (r.p.city ? " · " + r.p.city : "") : "") + '</span>' +
         '<span class="tg ' + (tone[r.s.k] || "") + '">' + esc(r.s.why) + '</span><button type="button" class="proc-x" data-proc-del="' + esc(r.awb) + '" aria-label="Remove ' + esc(r.awb) + '">\u00d7</button></div>';
@@ -1426,7 +1473,7 @@
   async function procRun(mode) {
     if (busy || flushing || !authorized) return;
     var mine = (data.rider && data.rider.cities || []).map(function (c) { return String(c).toLowerCase(); });
-    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine) }; });
+    var rows = PROC.list.map(function (a) { var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === a; }); return { awb: a, p: p, s: procKind(p, mine, a) }; });
     var pick = function (k) { return rows.filter(function (r) { return r.s.k === k; }).map(function (r) { return r.p.awb; }); };
     var recv = pick("receive"), recLocal = rows.filter(function (r) { return r.s.k === "receive" && !r.s.hub; }).map(function (r) { return r.p.awb; });
     var outs = pick("out"), col = pick("collect"), done = [];
@@ -1835,6 +1882,8 @@
       else if (name === "rider_today") d = rows.filter(function (p) { return /Delivered|Refused|Consignee not available/.test(p.status); }).slice(0, 6).map(function (p, i) {
           return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i % 2 ? "sent" : "skipped"),
                    address: p.address, phone: p.phone, cod_amount: p.cod_amount, payment_mode: (p.meta && p.meta.paymentMode) || "COD", shop: (p.shipper && p.shipper.name) || "Karachi Kicks" }; });
+      else if (name === "rider_out_of_area") d = [{ awb: "N9000099", consignee: "Awais Mehmood", city: "Lahore", address: "Near veterinary hospital, Daultala, Gujar Khan", phone: "03001234599", cod_amount: 1380, payment_mode: "COD", shop: "Karachi Kicks", reason: "Address is outside Lahore", changed_at: iso(60) }];
+      else if (name === "rider_awb_why") d = [];
       else if (name === "rider_station_action") d = act(a);
       else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }
       else if (name === "rider_deposit_cash_v2") { var c = cash(), hand = rows.filter(function (p) { return p.status === "Delivered" && p.cod_amount > 0 && !p._hand; });
