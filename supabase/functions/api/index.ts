@@ -191,6 +191,28 @@ Deno.serve(async (req) => {
       "Send your key as: Authorization: Bearer nvx_live_...");
   }
 
+  /* 6 Nov 2026: egress. GET /orders/:awb is ~11,000 calls a day (one
+     integration polling every few minutes), and each made three round trips
+     here: resolve the key, read the parcel, write the log. One RPC now does
+     all three (nv_api_order_lookup, which calls nv_api_resolve_key_v2, so
+     limits and inactive accounts behave the same). Bad keys, limits and
+     errors return handled=false and fall through to the normal path below,
+     which answers them exactly as before. */
+  if (req.method === "GET" && /^\/orders\/[^/]+$/.test(path)) {
+    const awb = decodeURIComponent(path.slice("/orders/".length)).toUpperCase();
+    const fast = await rpc("nv_api_order_lookup", { p_key: key, p_awb: awb, p_route: path });
+    const d: any = fast.ok ? fast.data : null;
+    if (d && d.handled === true) {
+      if (d.parcel) {
+        const p = slimMeta(d.parcel);
+        const steps = (p.meta && p.meta.steps) || [];
+        return json({ ok: true, order: { ...parcelOut(p), history: steps } });
+      }
+      if (d.deleted_at) return fail(410, "order_deleted", `${awb} was deleted by NovaX on ${String(d.deleted_at).slice(0, 10)}. Stop tracking it.`);
+      return fail(404, "order_not_found", `No parcel ${awb} on this account.`);
+    }
+  }
+
   /* Resolve, count and rate-check in one round trip. The limits are
      deliberately generous -- 1000 calls and 200 bookings an hour -- because
      the point is to stop a runaway loop on a merchant's side from dispatching

@@ -26,6 +26,12 @@ assert.ok(!buildEmail('welcome', 'owner@example.com', { name: 'Sara' }).html.inc
 const open = buildEmail('portal_open', 'owner@example.com', { name: 'Sara', business: 'Sample Store', number: 137 });
 assert.ok(open.html.includes('#137') && open.html.includes('Open my portal') && open.text.includes('Sample Store'));
 assert.ok(!buildEmail('portal_open', 'owner@example.com', {}).html.includes('#NaN'));
+// 6 Nov 2026: the new-rates email to merchants on the standard card.
+const rates = buildEmail('rates_launch', 'owner@example.com', { name: 'Sara', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11' });
+assert.ok(rates.subject.includes('Rs 170') && rates.subject.includes('Rs 210'));
+assert.ok(rates.html.includes('Opt in now') && rates.html.includes('href="https://novaxlogistics.com/client.html"'));
+assert.ok(rates.text.includes('Rs 85') && rates.text.includes('Islamabad and Rawalpindi count as one city'));
+assert.ok(rates.html.includes('unsubscribe.html?t=8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11'), 'rates email carries the stop link');
 for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
   assert.ok(message.html.includes('name="viewport"'));

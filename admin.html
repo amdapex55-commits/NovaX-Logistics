@@ -5752,10 +5752,23 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <summary class="nv-calls-sum"><b>Waiting list</b><span class="chip" id="nvQueueCountS">0 waiting</span><span class="nv-calls-tap">Tap to open</span></summary>
                 <div class="section-head" style="margin-top:12px">
                   <div><p>New merchants see their portal but cannot book until you let them in. They get an email when you do.</p></div>
-                  <button class="action-btn ghost" type="button" onclick="nvQueueLoad(true)">Refresh</button>
+                  <div class="inline-actions"><button class="action-btn" type="button" id="nvQueueAll" hidden>Let in all</button><button class="action-btn ghost" type="button" onclick="nvQueueLoad(true)">Refresh</button></div>
                 </div>
+                <p class="footer-note" id="nvQueueAlert" hidden style="color:var(--nvu-bad-fg);font-weight:700"></p>
+                <p class="footer-note">A merchant whose CNIC you verify is let in automatically.</p>
                 <div class="ops-list" id="nvQueueList"><p class="footer-note">Loading…</p></div>
                 <div id="nvQueueDone"></div>
+              </details>
+
+              <!-- 6 Nov 2026: new rates (Rs 170 / Rs 210). Who opted in, and how far the emails have got (admin_promo_status). -->
+              <details class="panel mt-14 nv-calls-fold" id="nvPromoPanel">
+                <summary class="nv-calls-sum"><b>New rates opt-ins</b><span class="chip" id="nvPromoCountS">…</span><span class="nv-calls-tap">Tap to open</span></summary>
+                <div class="section-head" style="margin-top:12px">
+                  <div><p>Merchants on the old Rs 225 / Rs 250 card switch to Rs 170 / Rs 210 with Opt in now on their Home. New sign-ups start on the new rates.</p></div>
+                  <button class="action-btn ghost" type="button" onclick="nvPromoLoad()">Refresh</button>
+                </div>
+                <div class="ops-list" id="nvPromoStats"><p class="footer-note">Loading…</p></div>
+                <div class="ops-list" id="nvPromoList"></div>
               </details>
 
               <div class="panel mt-14" id="adminPeriodPanel">
@@ -7010,6 +7023,58 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
       }
       return page(0);
+    }
+
+    /* ── Admin parcels: read only what changed (6 Nov 2026) ──────────────
+       Every load and every refresh pulled all ~2,000 parcels of the 120-day
+       window with full meta: 93 reads and 137,000 rows on 5-6 Nov, most of
+       the project's daily egress on the free plan. Like the merchant portal
+       (nvReadParcels), the admin now keeps the rows it has and asks only for
+       parcels whose changed_at (stamped by trigger zzzz_nv_parcels_changed_at)
+       moved since the last read, with 5 minutes of overlap. A head count
+       catches deletes, and a full read still happens every 20 minutes or
+       when anything looks off. Resolves to { data, error } like nvAllRows. */
+    function nvApSb(){ return window.__nvSb || window.__nvGuardSb; }   // the client loadAll uses
+    var NV_AP = { rows: null, cursor: "", fullAt: 0, busy: null };
+    function nvAdminParcelsFull(){
+      return nvAllRows(function(){ return nvApSb().from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000).then(function(r){
+        if(r && !r.error && Array.isArray(r.data)){
+          var m = {}, cur = "";
+          r.data.forEach(function(row){ m[row.id] = row; if(row.changed_at && row.changed_at > cur) cur = row.changed_at; });
+          NV_AP.rows = m; NV_AP.cursor = cur; NV_AP.fullAt = Date.now();
+        }
+        return r;
+      });
+    }
+    function nvAdminParcelsList(){
+      var w = NV_ADMIN_WINDOW(), out = [];
+      Object.keys(NV_AP.rows).forEach(function(k){ var row = NV_AP.rows[k]; if(row.booked_at && row.booked_at < w) delete NV_AP.rows[k]; else out.push(row); });
+      out.sort(function(a,b){ return a.booked_at < b.booked_at ? 1 : a.booked_at > b.booked_at ? -1 : (a.id < b.id ? -1 : 1); });
+      return out;
+    }
+    function nvAdminParcels(){
+      if(NV_AP.busy) return NV_AP.busy;
+      var p;
+      if(!NV_AP.rows || !NV_AP.cursor || Date.now() - NV_AP.fullAt > 20*60*1000){
+        p = nvAdminParcelsFull().then(function(r){ return (r && !r.error) ? { data: nvAdminParcelsList(), error: null } : r; });
+      } else {
+        var since = new Date(new Date(NV_AP.cursor).getTime() - 5*60*1000).toISOString(), w = NV_ADMIN_WINDOW();
+        p = Promise.all([
+          nvAllRows(function(){ return nvApSb().from("parcels").select("*").gte("changed_at",since).gte("booked_at",w).order("changed_at",{ascending:true}); }, 20000),
+          Promise.resolve(nvApSb().from("parcels").select("id",{ count:"exact", head:true }).gte("booked_at",w))
+        ]).then(function(res){
+          var d = res[0], h = res[1];
+          if(!d || d.error || !h || h.error) return nvAdminParcelsFull().then(function(r){ return (r && !r.error) ? { data: nvAdminParcelsList(), error: null } : r; });
+          (d.data||[]).forEach(function(row){ NV_AP.rows[row.id] = row; if(row.changed_at && row.changed_at > NV_AP.cursor) NV_AP.cursor = row.changed_at; });
+          var list = nvAdminParcelsList();
+          /* A delete, or a row the delta could not see: count differs, read in full. */
+          if(typeof h.count === "number" && h.count !== list.length)
+            return nvAdminParcelsFull().then(function(r){ return (r && !r.error) ? { data: nvAdminParcelsList(), error: null } : r; });
+          return { data: list, error: null };
+        });
+      }
+      NV_AP.busy = p.then(function(r){ NV_AP.busy = null; return r; }, function(e){ NV_AP.busy = null; return { data: null, error: e }; });
+      return NV_AP.busy;
     }
 
     /* Progress from the shared journey (nv-journey.js), the one client and
@@ -13084,17 +13149,30 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       nvQueuePaint(); return true;
     }
+    /* 6 Nov 2026: ad campaigns. Waiting longer than this turns red, and the
+       admin is told once per session. */
+    var NV_QUEUE_LATE_H = 12;
+    function nvQueueHours(v){ var t=new Date(v).getTime(); return isFinite(t)?Math.max(0,(Date.now()-t)/36e5):0; }
+    function nvQueueAge(h){ return h<1?"under an hour":h<24?Math.floor(h)+" h":Math.floor(h/24)+" d "+Math.floor(h%24)+" h"; }
     function nvQueueDay(v){ try{ return new Date(v).toLocaleString("en-PK",{ day:"numeric", month:"short", hour:"numeric", minute:"2-digit", timeZone:"Asia/Karachi" }); }catch(e){ return ""; } }
     function nvQueuePaint(){
       var list=document.getElementById("nvQueueList"), done=document.getElementById("nvQueueDone"), panel=document.getElementById("nvQueuePanel"); if(!list) return;
       var wait=nvQueueRows.filter(function(r){ return r.status==="waiting"; }), ok=nvQueueRows.filter(function(r){ return r.status!=="waiting"; });
       var cs=document.getElementById("nvQueueCountS");
-      if(cs){ cs.textContent=wait.length+" waiting"; cs.className="chip"+(wait.length?" warn":""); }
+      var late=wait.filter(function(r){ return nvQueueHours(r.joinedAt)>=NV_QUEUE_LATE_H; });
+      var oldest=wait.reduce(function(m,r){ return Math.max(m,nvQueueHours(r.joinedAt)); },0);
+      if(cs){ cs.textContent=wait.length+" waiting"+(wait.length?" · oldest "+nvQueueAge(oldest):""); cs.className="chip"+(late.length?" bad":wait.length?" warn":""); }
+      var al=document.getElementById("nvQueueAlert");
+      if(al){ al.hidden=!late.length; al.textContent=late.length?(late.length+(late.length===1?" merchant has":" merchants have")+" waited more than "+NV_QUEUE_LATE_H+" hours. Let them in or call them."):""; }
+      var all=document.getElementById("nvQueueAll");
+      if(all){ all.hidden=wait.length<2; all.textContent="Let in all ("+wait.length+")"; all.disabled=!!nvQueueBusy.__all; }
+      if(late.length && !window.__nvQueueToasted){ window.__nvQueueToasted=true; try{ toast(late.length+" on the waiting list for over "+NV_QUEUE_LATE_H+" hours.","error"); }catch(e){} }
       if(panel && wait.length && !panel.__nvAuto){ panel.__nvAuto=true; panel.open=true; }
       list.innerHTML=wait.length?wait.map(function(c){
         var tel=nvTel(c.phone), wa=nvWa(c.phone), id=String(c.clientId);
         var bits=[c.owner, c.city, c.business].filter(Boolean).map(nvEscAdmin).join(" · ");
-        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(c.name||"New merchant")+'</strong><span class="chip">#'+nvEscAdmin(String(c.number))+'</span></div>'+
+        var hw=nvQueueHours(c.joinedAt);
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(c.name||"New merchant")+'</strong><span class="chip">#'+nvEscAdmin(String(c.number))+'</span><span class="chip'+(hw>=NV_QUEUE_LATE_H?' bad':'')+'">waiting '+nvEscAdmin(nvQueueAge(hw))+'</span></div>'+
           (bits?'<p class="footer-note">'+bits+'</p>':'')+
           '<p class="footer-note">'+nvEscAdmin(c.email||"no email")+(c.phone?' · '+nvEscAdmin(c.phone):'')+' · signed up '+nvEscAdmin(nvQueueDay(c.joinedAt))+'</p>'+
           (c.address?'<p class="footer-note">'+nvEscAdmin(c.address)+'</p>':'')+
@@ -13119,6 +13197,41 @@ html,body{ background:var(--bg); color:var(--ink); }
       }catch(err){ toast("Could not let them in: "+(err.message||err),"error"); }
       delete nvQueueBusy[id]; nvQueuePaint();
     });
+    document.addEventListener("click",async function(e){
+      var b=e.target.closest&&e.target.closest("#nvQueueAll"); if(!b||nvQueueBusy.__all) return;
+      var n=nvQueueRows.filter(function(r){ return r.status==="waiting"; }).length; if(!n) return;
+      if(!(await window.nvAsk({ title:"Let all "+n+" merchants in?", body:"Their portals open straight away and each gets an email saying so.", ok:"Let all in" }))) return;
+      nvQueueBusy.__all=true; nvQueuePaint();
+      try{ var r=await window.__nvSb.rpc("admin_queue_approve_all"); if(r.error) throw new Error(r.error.message);
+        var d=r.data||{}; toast((d.let_in||0)+" merchants let in."+(d.no_email?" "+d.no_email+" had no email on file, so tell them yourself.":" They have been emailed."),"success");
+      }catch(err){ toast("Could not let them in: "+(err.message||err),"error"); }
+      delete nvQueueBusy.__all; nvQueueLoad();
+    });
+    /* Keep the list current while admin is open, so a new sign-up from an ad shows without a reload. */
+    setInterval(function(){ if(!document.hidden && window.__nvSb && document.getElementById("nvQueuePanel")) nvQueueLoad(); }, 5*60*1000);
+    async function nvPromoLoad(){
+      var sb=window.__nvSb; if(!sb||!sb.rpc) return false;
+      var st=document.getElementById("nvPromoStats"), li=document.getElementById("nvPromoList"), cs=document.getElementById("nvPromoCountS");
+      try{ var r=await sb.rpc("admin_promo_status"); if(r.error) throw new Error(r.error.message); var d=r.data||{}; }
+      catch(e){
+        if(/Admins only/i.test(String(e.message||e))){ var pn=document.getElementById("nvPromoPanel"); if(pn) pn.hidden=true; return true; }
+        if(st) st.innerHTML='<p class="footer-note">Could not load: '+nvEscAdmin(e.message||e)+'</p>'; return false;
+      }
+      var opted=d.opted||[];
+      if(cs){ cs.textContent=opted.length+" opted in"; cs.className="chip"+(opted.length?" good":""); }
+      if(st) st.innerHTML='<p class="footer-note"><b>'+opted.length+'</b> opted in · <b>'+Number(d.promo||0)+'</b> accounts on the new rates (including new sign-ups) · <b>'+Number(d.standard||0)+'</b> still on the old card · announcement email sent to <b>'+Number(d.emailed||0)+'</b>, <b>'+Number(d.queued||0)+'</b> waiting to send (up to 80 a day)</p>';
+      if(li) li.innerHTML=opted.length?opted.map(function(o){
+        return '<div class="ops-card"><div class="ops-card-head"><strong>'+nvEscAdmin(o.name||"Merchant")+'</strong><span class="chip good">Rs 170 / 210</span></div><p class="footer-note">'+nvEscAdmin(o.city||"")+(o.city?' · ':'')+'opted in '+nvEscAdmin(nvQueueDay(o.at))+'</p></div>';
+      }).join(""):'<p class="footer-note">Nobody has opted in yet.</p>';
+      return true;
+    }
+    (function nvPromoBoot(){
+      var tries=0, t=setInterval(function(){
+        tries++; if(tries>60){ clearInterval(t); return; }
+        if(!window.__nvSb||!document.getElementById("nvPromoPanel")) return;
+        nvPromoLoad().then(function(ok){ if(ok) clearInterval(t); });
+      }, 3000);
+    })();
     (function nvQueueBoot(){
       var tries=0, t=setInterval(function(){
         tries++;
@@ -19243,7 +19356,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              history was pulled on every admin refresh; a 120-day window covers
              every parcel that can still be invoiced, disputed or reconciled,
              and keeps the working set flat as the business grows. */
-          nvAllRows(function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000),
+          nvAdminParcels(),
           nvAllRows(sb.from("invoices").select("*").order("created_at",{ascending:false}), 5000),
           nvAllRows(sb.from("expenses").select("*").order("created_at",{ascending:false}), 3000),
           nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000),
@@ -19387,7 +19500,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           set: function(d){ state.riders = d.map(rRider); }
         },
         parcels: {
-          q: function(){ return nvAllRows(function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000); },
+          q: function(){ return nvAdminParcels(); },
           set: function(d){ state.parcels = d.map(rParcel); }
         }
       };

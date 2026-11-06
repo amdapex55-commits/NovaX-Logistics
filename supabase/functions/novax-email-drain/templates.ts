@@ -1,7 +1,7 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
   | 'back_quiet' | 'back_tried' | 'setup_ready'
-  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch'
+  | 'recover_refused' | 'recover_won' | 'recover_launch' | 'stations_launch' | 'flyers_launch' | 'rates_launch'
   | 'reattempt_digest' | 'portal_open';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
@@ -20,7 +20,7 @@ const PRICE_OPT = PRICE + ' Account opened before 6 November? Tap Opt in now on 
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.
-const NUDGES = ['back_quiet', 'back_tried', 'setup_ready', 'stations_launch', 'flyers_launch'];
+const NUDGES = ['back_quiet', 'back_tried', 'setup_ready', 'stations_launch', 'flyers_launch', 'rates_launch'];
 // 17 Oct 2026: the eight delivery-only stations (same list as _shared/stations.ts).
 const NEW_STATIONS = ['Faisalabad', 'Multan', 'Sahiwal', 'Okara', 'Chichawatni', 'Harappa', 'Yousuf Wala', 'Adda Gamber'];
 const HELP = WHATSAPP + '?text=' + encodeURIComponent('Hi NovaX, I got your email and want to talk about my parcels.');
@@ -380,6 +380,29 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
         ['The rider brings them.', 'To your pickup address, on the next visit. You can cancel until the rider sets out.'],
       ],
       note: 'The portal shows the full price list and your total before you confirm.',
+      extraLink: ['Questions? WhatsApp us', HELP],
+    };
+  }
+  // 6 Nov 2026: the promotional rates, to merchants still on the standard
+  // card. Opting in is one tap on Home (nv_promo_opt_in); nothing changes
+  // until they tap it. Sent once each, in daily batches (nv_email_rates_batch).
+  if (kind === 'rates_launch') {
+    return {
+      subject: 'New NovaX rates: Rs 170 in your city, Rs 210 anywhere else',
+      preheader: 'Down from Rs 225 and Rs 250. One tap on Home in your portal switches your account.',
+      pill: 'New rates', tone: 'good',
+      title: 'Lower rates, one tap away.',
+      intro: `${hi}NovaX has new, lower delivery rates${forBiz}. They apply as soon as you tap Opt in now on Home in your portal.`,
+      fact: { label: 'NEW RATES · FIRST KG', value: 'Rs\u00a0170 · Rs\u00a0210', caption: 'Same city, down from Rs 225 · Any other city, down from Rs 250', size: 28 },
+      rows: [['Each extra kg', 'Rs 85, as before'], ['Hidden charges', 'None. No fuel surcharge, no handling fee, no COD fee']],
+      cta: 'Opt in now', destination: PORTAL,
+      stepsTitle: 'Good to know',
+      steps: [
+        ['Same city', 'means delivered in the city we collect from. Islamabad and Rawalpindi count as one city.'],
+        ['From your next booking.', 'Parcels already booked keep their price.'],
+        ['Nothing changes until you tap.', 'Your account stays on its current rates until you opt in.'],
+      ],
+      note: 'The booking form shows the price before you confirm, every time.',
       extraLink: ['Questions? WhatsApp us', HELP],
     };
   }
