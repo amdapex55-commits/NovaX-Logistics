@@ -68,7 +68,7 @@ COVERAGE
 
 PRICE (flat, per parcel)
 - New rates from 6 Nov 2026 (every new account gets them automatically):
-  SAME CITY (delivered in the city the parcel is collected from) Rs 170 for the first kg;
+  SAME CITY (delivered in the city the parcel is collected from; Islamabad and Rawalpindi count as one city) Rs 170 for the first kg;
   ANY OTHER CITY Rs 210 for the first kg.
 - Every additional kg: Rs 85, any city.
 - Worked examples — same city: 1kg Rs 170, 2kg Rs 255, 3kg Rs 340, 5kg Rs 510.

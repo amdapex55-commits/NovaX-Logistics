@@ -1516,11 +1516,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        merchant's own city, the same rule as nv_rate_zone() on the server:
        pickup city, else the account's city, else Karachi. */
     function nvSameCityHome(){
-      try{ var rc=state.client&&state.client.rateCard; if(!rc||!rc.sameCity) return ""; return String(state.client.homeCity||"Karachi").trim().toLowerCase(); }catch(e){ return ""; }
+      try{ var rc=state.client&&state.client.rateCard; if(!rc||!rc.sameCity) return ""; return nvCityKey(state.client.homeCity||"Karachi"); }catch(e){ return ""; }
     }
+    /* Islamabad and Rawalpindi are one city for the same-city rate (nv_city_key on the server). */
+    function nvCityKey(c){ c=String(c||"").trim().toLowerCase(); return c==="rawalpindi"?"islamabad":c; }
     function zoneForCity(city){
       var home=nvSameCityHome();
-      if(home) return String(city||"").trim().toLowerCase()===home?"A":"B";
+      if(home) return nvCityKey(city)===home?"A":"B";
       return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B";
     }
     function zoneLabel(zone){ if(nvSameCityHome()) return zone==="A"?"Same city":"Other cities"; return zone==="A"?"Zone A (Karachi)":"Zone B (all other stations)"; }
@@ -13717,7 +13719,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       host.innerHTML='<p class="nv-promo-tag"><i aria-hidden="true"></i>New offer for your account</p>'+
         '<h4>Ship for Rs 170 in your city. Rs 210 anywhere else.</h4>'+
         '<div class="nv-promo-prices"><div><s>Rs 225</s><b>Rs 170</b><span>Same city · first kg</span></div><div><s>Rs 250</s><b>Rs 210</b><span>Other cities · first kg</span></div></div>'+
-        '<p>"Same city" means delivered in '+escLabelText(home)+', where we collect from you. Each extra kg stays Rs 85. No hidden or extra charges. Applies from your next booking; parcels already booked keep their price.</p>'+
+        '<p>"Same city" means delivered in '+escLabelText(/^(islamabad|rawalpindi)$/i.test(home)?"Islamabad or Rawalpindi":home)+', where we collect from you. Each extra kg stays Rs 85. No hidden or extra charges. Applies from your next booking; parcels already booked keep their price.</p>'+
         '<div class="nv-promo-foot"><button type="button" class="nv-promo-go" id="nvPromoGo">Opt in now</button><button type="button" class="nv-promo-x" id="nvPromoLater">Not now</button><p class="nv-promo-msg" id="nvPromoMsg" role="status" hidden></p></div>';
       host.hidden=false;
       document.getElementById("nvPromoLater").addEventListener("click", function(){
@@ -13734,7 +13736,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           host.__nvDone=true;
           host.classList.add("nv-promo-done");
           host.innerHTML='<p class="nv-promo-tag"><i aria-hidden="true"></i>You are on the new rates</p>'+
-            '<h4>Done. Rs 170 in '+escLabelText(home)+', Rs 210 to every other city.</h4>'+
+            '<h4>Done. Rs 170 in '+escLabelText(/^(islamabad|rawalpindi)$/i.test(home)?"Islamabad and Rawalpindi":home)+', Rs 210 to every other city.</h4>'+
             '<p>From your next booking, for the first kg. Each extra kg stays Rs 85. Parcels already booked keep their price.</p>'+
             '<div class="nv-promo-foot"><button type="button" class="nv-promo-x" id="nvPromoClose">Close</button></div>';
           document.getElementById("nvPromoClose").addEventListener("click", function(){ host.hidden=true; });

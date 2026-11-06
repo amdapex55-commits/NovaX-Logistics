@@ -7957,8 +7957,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     function zoneForCity(city, client) {
       const rc = client && client.rateCard;
       if (rc && rc.sameCity) {
-        const home = String(client.pickupCity || client.city || "Karachi").trim().toLowerCase();
-        return String(city || "").trim().toLowerCase() === home ? "A" : "B";
+        const key = c => { c = String(c || "").trim().toLowerCase(); return c === "rawalpindi" ? "islamabad" : c; };   // twin cities = one city (nv_city_key)
+        return key(city) === key(client.pickupCity || client.city || "Karachi") ? "A" : "B";
       }
       return ZONE_CITY_MAP[String(city || "").trim().toLowerCase()] || "B";
     }
@@ -13690,7 +13690,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("This login email already exists.");
         return;
       }
-      const rateCard = { A: defaultRateCard(NV_ZONE_A_BASE), B: defaultRateCard(NV_ZONE_B_BASE) };
+      /* 6 Nov 2026 (owner): merchants created here start on the promotional
+         card like self sign-ups (nv_promo_card): Rs 170 same city, Rs 210
+         elsewhere, Rs 85 per extra kg. */
+      const rateCard = { A: defaultRateCard(170), B: defaultRateCard(210), sameCity: true, promo: "promo-2026-11" };
       state.clients = state.clients.filter(item => item.id !== "CL-0000");
       const id = nextId("CL", state.clients);
       const newClient = {

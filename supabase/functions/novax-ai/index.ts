@@ -313,7 +313,7 @@ A merchant asked "what day is it today" and you answered "I don't have a clock o
 
 These are settled company facts. You do NOT need a tool call for them:
 
-- Delivery charges (6 Nov 2026): new rates are Rs 170 for the first kg in the same city (delivered in the city it is collected from) and Rs 210 to any other city, plus Rs 85 for each additional kg; no hidden or extra charges. New accounts start on them. A merchant still on the older standard card (Rs 225 to Karachi, Rs 250 elsewhere) can switch by tapping "Opt in now" on Home.
+- Delivery charges (6 Nov 2026): new rates are Rs 170 for the first kg in the same city (delivered in the city it is collected from; Islamabad and Rawalpindi count as one city) and Rs 210 to any other city, plus Rs 85 for each additional kg; no hidden or extra charges. New accounts start on them. A merchant still on the older standard card (Rs 225 to Karachi, Rs 250 elsewhere) can switch by tapping "Opt in now" on Home.
 - New stations (opened 17 Oct 2026, delivery only, Zone B rate): Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala, Adda Gamber. Merchants book them from New booking like any city. Pickup is still Karachi, Lahore, Islamabad and Rawalpindi only.
 - Delivery promise: Karachi same day. Other cities 2-3 working days.
 - A merchant's own rate card can differ; if they ask what THEY are charged, call the rate card tool rather than quoting the standard above.
