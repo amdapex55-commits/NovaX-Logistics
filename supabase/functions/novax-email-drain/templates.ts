@@ -13,7 +13,8 @@ const WHATSAPP = 'https://wa.me/923123922558';
 const STOP = WEBSITE + 'unsubscribe.html?t=';
 const LOGO = 'https://novaxlogistics.com/assets/icon-192.png';
 // Word for word from the site and Decisions. Do not reword.
-const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.';
+// 6 Nov 2026: promotional rates (new sign-ups start on them; existing merchants opt in).
+const PRICE = 'Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges.';
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.
@@ -539,7 +540,7 @@ ${s.signoff ? `<p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:${
 </table></td></tr>
 <tr><td align="center" style="padding:18px 16px 4px;${font};font-size:12px;line-height:1.7;color:${C.muted}"><b style="color:${C.body}">NovaX Logistics</b> &middot; COD courier for Karachi, Lahore, Islamabad, Rawalpindi and 8 more cities &middot; <a href="${WEBSITE}" style="color:${C.muted};text-decoration:underline">novaxlogistics.com</a><br>${footerWhy}</td></tr>
 </table></td></tr></table></body></html>`;
-  // Keep "Rs 250" on one line in the reminders' prices.
+  // Keep "Rs 210" on one line in the reminders' prices.
   const html = (reminder || nudge) ? page.replace(/Rs (\d)/g, 'Rs&nbsp;$1') : page;
   const text = [s.title, s.intro, s.fact ? `${s.fact.label}: ${s.fact.value}${s.fact.caption ? ' (' + s.fact.caption + ')' : ''}` : '',
     ...(s.rows ?? []).map(([key, value]) => `${key}: ${value}`),

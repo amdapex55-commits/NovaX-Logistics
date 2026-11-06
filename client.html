@@ -76,7 +76,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=53876bf2">
+  <link rel="preload" as="script" href="client-app.min.js?v=9a24ab03">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2818,7 +2818,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=53876bf2" defer></script>
+  <script src="client-app.min.js?v=9a24ab03" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3015,6 +3015,8 @@ try{
                  on the first three sign-ins per workspace, then never again.
                  Deliberately outside every .client-module so it is seen on
                  whichever tab the merchant lands on. -->
+            <!-- 6 Nov 2026: promotional rates offer for merchants on the standard card. Rendered by nvPromoPaint() in client-app.js; Home only. -->
+            <div id="nvPromo" class="nv-promo" hidden></div>
             <div id="nvRateNotice" class="nv-rate-notice" style="display:none"></div>
             <!-- DASHBOARD -->
             <section class="client-module active" id="client-dashboard">
@@ -7102,6 +7104,31 @@ html.nvq-on body>*:not(#nvQueue):not(script):not(style){filter:blur(7px) saturat
 @media (max-width:380px){ .nvq-card{padding:22px 18px 18px} .nvq-steps li{font-size:11.5px} }
 @media print{ .nvq{display:none!important} html.nvq-on body>*{filter:none!important} }
 
+/* 6 Nov 2026: promotional rates offer (nvPromoPaint). Its own colours on
+   purpose, so it reads the same in light and dark: deep green card, white
+   text, lime prices. */
+.nv-promo{position:relative;overflow:hidden;margin:0 0 16px;padding:20px 20px 18px;border-radius:16px;background:#0b2a1e;color:#fff;
+  border:1px solid #1f5a40;box-shadow:0 10px 30px -18px rgba(5,40,25,.55)}
+.nv-promo::after{content:"";position:absolute;right:-60px;top:-80px;width:240px;height:240px;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(190,242,100,.22),rgba(190,242,100,0));pointer-events:none}
+.nv-promo-tag{display:inline-flex;align-items:center;gap:7px;margin:0 0 10px;padding:4px 10px;border-radius:999px;background:rgba(190,242,100,.14);
+  color:#d9f99d;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.nv-promo-tag i{width:7px;height:7px;border-radius:50%;background:#bef264}
+.nv-promo h4{margin:0 0 14px;font-size:19px;line-height:1.25;font-weight:850;letter-spacing:-.015em;color:#fff;max-width:30ch}
+.nv-promo-prices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+.nv-promo-prices div{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
+.nv-promo-prices s{display:block;font-size:12px;color:#9fbfae;text-decoration-thickness:1.5px}
+.nv-promo-prices b{display:block;font-size:28px;line-height:1.1;font-weight:900;letter-spacing:-.02em;color:#bef264;font-variant-numeric:tabular-nums}
+.nv-promo-prices span{display:block;margin-top:2px;font-size:12.5px;color:#d7e8de}
+.nv-promo p{margin:0 0 14px;font-size:13px;line-height:1.55;color:#c9ddd1;max-width:62ch}
+.nv-promo-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.nv-promo-go{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:#bef264;color:#0b2a1e;font:inherit;font-size:15px;font-weight:850;cursor:pointer}
+.nv-promo-go:hover{background:#d9f99d}.nv-promo-go:disabled{opacity:.6;cursor:wait}
+.nv-promo-x{min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.25);border-radius:10px;background:transparent;color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.nv-promo-msg{flex-basis:100%;margin:2px 0 0;font-size:13px;color:#fecaca}
+.nv-promo.nv-promo-done h4{margin-bottom:8px}
+@media (max-width:640px){ .nv-promo{padding:18px 16px 16px} .nv-promo h4{font-size:17px} .nv-promo-prices b{font-size:24px} .nv-promo-go{flex:1 1 auto} }
+.nv-promo.nv-off-tab{display:none!important}
 /* 4 Nov 2026: announcements show on Home only (nvRateNotice). */
 .nv-rate-notice.nv-off-tab{display:none!important}
 

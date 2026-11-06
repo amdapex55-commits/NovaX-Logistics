@@ -19,7 +19,7 @@ const UPDATED = "19 October 2026", ISO = "2026-10-19";
 const CITIES = "Karachi, Lahore, Islamabad, Rawalpindi, Faisalabad, Multan, Sahiwal, Okara, Chichawatni, Harappa, Yousuf Wala and Adda Gamber";
 
 const NX = {
-  price: "Flat and published: Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad, Rawalpindi and the new stations, plus Rs 85 per extra kg",
+  price: "Flat and published: Rs 170 for the first kg in the same city, Rs 210 to any other city, plus Rs 85 per extra kg, with no hidden or extra charges",
   codFee: "None. No COD fee and no percentage taken from your cash",
   payout: "Credited to your NovaX wallet the day the parcel is delivered",
   withdraw: "Nova Saver free (48–72 hours), Nova Express Rs 100 (within 24 hours), Nova Bolt Rs 500 (6–12 hours), flat per withdrawal",
@@ -147,7 +147,7 @@ function vsPage(r) {
 <li><b>You keep more of every order.</b> NovaX takes no COD fee and no percentage. The only deduction is the flat delivery charge you saw when booking.</li>
 <li><b>Your cash does not wait for a cycle.</b> COD is credited to your wallet the day the parcel is delivered, and Nova Saver withdrawals to your bank are free.</li>
 <li><b>Refusals cost less.</b> A refused parcel comes back at the normal delivery charge with no extra return fee. Nova Recover can phone the customer and sell it again. The rider's voice note shows exactly what happened at the door.</li>
-<li><b>One price list, in public.</b> Rs 225 to a Karachi address, Rs 250 to the other stations, Rs 85 per extra kg. No slabs to negotiate and no volume minimum.</li>
+<li><b>One price list, in public.</b> Rs 170 in the same city, Rs 210 to any other city, Rs 85 per extra kg. No slabs to negotiate and no volume minimum.</li>
 <li><b>Built for online stores.</b> Shopify and WooCommerce orders book themselves, the Merchant API takes bulk orders, and the portal works on a phone.</li>
 </ul>
 <h2>When ${esc(r.name)} is the better choice</h2>
@@ -156,7 +156,7 @@ function vsPage(r) {
 <ol><li>Sign up at novaxlogistics.com (free, a few minutes).</li><li>Connect your Shopify or WooCommerce store, or upload a CSV of open orders.</li><li>Print labels and request a pickup. A rider collects from your door.</li></ol>
 <a class="go" href="/#signup">Start shipping with NovaX</a>`;
   const faq = [
-    [`Is NovaX cheaper than ${r.name}?`, `NovaX charges a flat Rs 225 to a Karachi address and Rs 250 to its other stations for the first kg, plus Rs 85 per extra kg, with no COD fee and no percentage. ${r.name} sets prices per account, so compare its written quote, including its COD fee, against these numbers.`],
+    [`Is NovaX cheaper than ${r.name}?`, `NovaX charges a flat Rs 170 in the same city and Rs 210 to any other city for the first kg, plus Rs 85 per extra kg, with no COD fee and no percentage. ${r.name} sets prices per account, so compare its written quote, including its COD fee, against these numbers.`],
     [`How fast does NovaX pay COD compared with ${r.name}?`, `NovaX credits COD to your wallet the day the parcel is delivered. Withdrawals to your bank are free on Nova Saver (48–72 hours), Rs 100 on Nova Express (within 24 hours) or Rs 500 on Nova Bolt (6–12 hours). ${r.name} pays on its own schedule, which you should confirm with them.`],
     [`Does NovaX deliver everywhere ${r.name} does?`, `No. NovaX delivers to 12 cities: ${CITIES}. ${r.name} covers more of Pakistan, so many sellers use NovaX for these cities and another courier for the rest.`],
     [`Can I use NovaX and ${r.name} together?`, "Yes. There is no minimum volume and no contract lock-in, so you can send your orders for NovaX's cities through NovaX and the rest through your current courier."],
@@ -194,7 +194,7 @@ ${RIVALS.map(r => `<tr><th>${esc(r.name)}</th><td data-l="COD fee">${esc(r.how.c
     ["Which courier is best for COD in Pakistan?", `For orders to ${CITIES}, NovaX: no COD fee or percentage, COD credited the day the parcel is delivered, and no extra return fee. For other towns, a nationwide courier such as TCS or Leopards.`],
     ["Which courier pays COD fastest?", "NovaX credits COD to your wallet the day the parcel is delivered, and you choose how fast it reaches your bank: free in 48–72 hours, Rs 100 within 24 hours or Rs 500 in 6–12 hours. PostEx offers early payout through its own commission model."],
     ["Do couriers in Pakistan charge a COD fee?", "Most nationwide couriers charge a COD handling fee, often tiered by order value or a percentage with a minimum. NovaX charges no COD fee."],
-    ["How much does COD delivery cost with NovaX?", "Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad, Rawalpindi and the new stations, plus Rs 85 per extra kg. Pickup is free."],
+    ["How much does COD delivery cost with NovaX?", "Rs 170 for the first kg in the same city, Rs 210 to any other city, plus Rs 85 per extra kg. No hidden or extra charges. Pickup is free."],
   ];
   return page({ slug: "best-cod-courier-pakistan", title: "Best COD courier in Pakistan for online sellers (2026 comparison)",
     h1: "Best COD courier in Pakistan for online sellers (2026)",

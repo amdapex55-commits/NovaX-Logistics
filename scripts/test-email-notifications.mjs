@@ -81,7 +81,8 @@ assert.throws(() => buildEmail('first_booking', 'a@example.com', { ...fixtures.f
 assert.throws(() => buildEmail('untrusted', 'a@example.com', {}));
 
 // First-parcel reminders.
-const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.';
+// 6 Nov 2026: promotional rates (new sign-ups start on them; existing merchants opt in).
+const PRICE = 'Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges.';
 const STOP = 'https://novaxlogistics.com/unsubscribe.html?t=8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11';
 const reminders = Object.fromEntries(REMINDER_KINDS.map(kind => [kind, buildEmail(kind, 'owner@example.com', fixtures[kind])]));
 for (const [kind, m] of Object.entries(reminders)) {
@@ -104,8 +105,8 @@ for (const [kind, m] of Object.entries(reminders)) {
   assert.ok(!hostileReminder.html.includes('<b>x</b>'));
 }
 assert.equal(reminders.first_parcel_d1.subject, 'Your first NovaX parcel, in three steps');
-assert.ok(reminders.first_parcel_d1.html.includes('Rs&nbsp;250 to Lahore'));
-assert.ok(reminders.first_parcel_d1.text.includes('Rs 250 to Lahore'));
+assert.ok(reminders.first_parcel_d1.html.includes('Rs&nbsp;210 to any other city'));
+assert.ok(reminders.first_parcel_d1.text.includes('Rs 210 to any other city'));
 assert.ok(reminders.first_parcel_d1.html.replaceAll('&nbsp;', ' ').includes('Price: ' + PRICE));
 assert.ok(reminders.first_parcel_d1.html.includes('between 11 am and 9 pm on working days'));
 assert.ok(reminders.first_parcel_d1.html.includes('Paste order'));
@@ -270,7 +271,7 @@ if (previewFlag >= 0) {
     assert.ok(m.text.includes('We send this email once.'));
     assert.ok(!m.html.includes('three of these'), kind + ' does not claim to be one of three reminders');
     assert.throws(() => buildEmail(kind, 'owner@example.com', { ...fixtures[kind], token: '' }), /missing_token/);
-    assert.ok(m.html.replaceAll('&nbsp;', ' ').includes('Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.'));
+    assert.ok(m.html.replaceAll('&nbsp;', ' ').includes('Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges.'));
   }
   assert.throws(() => buildEmail('back_quiet', 'owner@example.com', { ...fixtures.back_quiet, parcels: 0 }), /invalid_parcel_count/);
   assert.throws(() => buildEmail('back_quiet', 'owner@example.com', { ...fixtures.back_quiet, last: 'x' }), /invalid_event_date/);

@@ -516,8 +516,8 @@ window.nvCount=function(n,one,many){
              '<div class="nvob-btns">'+m.chip("Try again","go")+m.chip("Bring it back")+'</div>' },
         { k:"Your money", t:"COD in your wallet the day it lands", nav:"money",
           b:"The delivery charge comes off on one invoice, and nothing is taken twice.",
-          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 225",""],["Into your wallet","Rs 3,225","ok"]]),
-          n:"Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg." },
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 170",""],["Into your wallet","Rs 3,280","ok"]]),
+          n:"Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges." },
         { k:"Your money", t:"Withdraw to your bank", nav:"money",
           b:"Send your balance to your own bank account whenever it suits you. Choose how fast; the fee is shown before you confirm.",
           v: m.rows([speed("24h","Nova Saver","48-72 hours","Free"), speed("12h","Nova Express","24 hours","Rs 100"), speed("instant","Nova Bolt","6-12 hours","Rs 500")]) },
@@ -1511,8 +1511,18 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
     function nvIsNewStation(city){ var n=nvStationName(city); return !!n && NV_STATIONS_NEW.indexOf(n)>-1; }
     try{ window.NV_STATIONS_ALL=NV_STATIONS_ALL; window.NV_STATIONS_NEW=NV_STATIONS_NEW; window.nvStationName=nvStationName; }catch(e){}
     const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
-    function zoneForCity(city){ return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B"; }
-    function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (all other stations)"; }
+    /* 6 Nov 2026: a promotional card ("sameCity") prices zone A as the
+       merchant's own city, the same rule as nv_rate_zone() on the server:
+       pickup city, else the account's city, else Karachi. */
+    function nvSameCityHome(){
+      try{ var rc=state.client&&state.client.rateCard; if(!rc||!rc.sameCity) return ""; return String(state.client.homeCity||"Karachi").trim().toLowerCase(); }catch(e){ return ""; }
+    }
+    function zoneForCity(city){
+      var home=nvSameCityHome();
+      if(home) return String(city||"").trim().toLowerCase()===home?"A":"B";
+      return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B";
+    }
+    function zoneLabel(zone){ if(nvSameCityHome()) return zone==="A"?"Same city":"Other cities"; return zone==="A"?"Zone A (Karachi)":"Zone B (all other stations)"; }
     /* NovaX Zone A base. This is the LAST-RESORT fallback used only when a
    client row has no rate and no rate card at all. It was 250 while the
    real Zone A rate in the database was 100, so a client with a missing
@@ -1522,7 +1532,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
     function normalizeRateCard(raw, rate){
       const fallback=defaultRateCard(rate);
       if(raw && raw.A && raw.B && typeof raw.A.overnight==="number" && typeof raw.B.overnight==="number"){
-        return { A:Object.assign({},fallback,raw.A), B:Object.assign({},fallback,raw.B) };
+        var out={ A:Object.assign({},fallback,raw.A), B:Object.assign({},fallback,raw.B) };
+        if(raw.sameCity===true) out.sameCity=true;   // 6 Nov 2026: zone A = the merchant's own city (nv_rate_zone)
+        return out;
       }
       const legacy=(raw && typeof raw.overnight==="number" && !isNaN(raw.overnight))?raw:fallback;
       /* Zone B is a different price, not a copy of Zone A. A legacy flat card
@@ -13679,9 +13691,74 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* The machinery below runs one announcement at a time: set
        NV_RATE_NOTICE_ACTIVE and bump the notice id. Now: none (6 Nov 2026). */
     var NV_RATE_NOTICE_ACTIVE = true;
+    /* 6 Nov 2026 (owner): promotional rates. A merchant on the standard card
+       (225 / 250, Rs 85 extra kg) sees this on Home until they opt in; "Not
+       now" hides it for this browser session. Special-rate merchants and new
+       sign-ups (already on the promotional card) never see it. The switch is
+       nv_promo_opt_in() on the server, which re-checks the card itself. */
+    function nvPromoEligible(){
+      try{
+        var rc=state.client&&state.client.rateCard;
+        if(!state.client||!state.client.id||!rc||rc.sameCity||!rc.A||!rc.B) return false;
+        return Number(rc.A.overnight)===225 && Number(rc.B.overnight)===250 && Number(rc.A.additionalKg)===85 && Number(rc.B.additionalKg)===85;
+      }catch(e){ return false; }
+    }
+    function nvPromoPaint(){
+      var host=document.getElementById("nvPromo"); if(!host) return;
+      host.classList.toggle("nv-off-tab", !!state.activeClientTab && state.activeClientTab!=="dashboard");
+      if(host.__nvDone) return;
+      var skip=false; try{ skip=sessionStorage.getItem("novaxPromoLater:"+state.client.id)==="1"; }catch(e){}
+      if(!nvPromoEligible() || skip){ host.hidden=true; host.innerHTML=""; host.__nvBuilt=false; return; }
+      if(host.__nvBuilt){ host.hidden=false; return; }
+      host.__nvBuilt=true;
+      var home=(state.client&&state.client.homeCity)||"Karachi";
+      host.className="nv-promo"+(host.classList.contains("nv-off-tab")?" nv-off-tab":"");
+      host.innerHTML='<p class="nv-promo-tag"><i aria-hidden="true"></i>New offer for your account</p>'+
+        '<h4>Ship for Rs 170 in your city. Rs 210 anywhere else.</h4>'+
+        '<div class="nv-promo-prices"><div><s>Rs 225</s><b>Rs 170</b><span>Same city · first kg</span></div><div><s>Rs 250</s><b>Rs 210</b><span>Other cities · first kg</span></div></div>'+
+        '<p>"Same city" means delivered in '+escLabelText(home)+', where we collect from you. Each extra kg stays Rs 85. No hidden or extra charges. Applies from your next booking; parcels already booked keep their price.</p>'+
+        '<div class="nv-promo-foot"><button type="button" class="nv-promo-go" id="nvPromoGo">Opt in now</button><button type="button" class="nv-promo-x" id="nvPromoLater">Not now</button><p class="nv-promo-msg" id="nvPromoMsg" role="status" hidden></p></div>';
+      host.hidden=false;
+      document.getElementById("nvPromoLater").addEventListener("click", function(){
+        try{ sessionStorage.setItem("novaxPromoLater:"+state.client.id,"1"); }catch(e){}
+        host.hidden=true;
+      });
+      document.getElementById("nvPromoGo").addEventListener("click", function(){
+        var btn=this, msg=document.getElementById("nvPromoMsg");
+        btn.disabled=true; btn.textContent="Switching\u2026"; msg.hidden=true;
+        var done=function(card){
+          var rc=normalizeRateCard(card, 170);
+          state.client.rate=170; state.client.rateCard=rc;
+          try{ (state.clients||[]).forEach(function(c){ if(c.id===state.client.id){ c.rate=170; c.rateCard=rc; } }); }catch(e){}
+          host.__nvDone=true;
+          host.classList.add("nv-promo-done");
+          host.innerHTML='<p class="nv-promo-tag"><i aria-hidden="true"></i>You are on the new rates</p>'+
+            '<h4>Done. Rs 170 in '+escLabelText(home)+', Rs 210 to every other city.</h4>'+
+            '<p>From your next booking, for the first kg. Each extra kg stays Rs 85. Parcels already booked keep their price.</p>'+
+            '<div class="nv-promo-foot"><button type="button" class="nv-promo-x" id="nvPromoClose">Close</button></div>';
+          document.getElementById("nvPromoClose").addEventListener("click", function(){ host.hidden=true; });
+          try{ updateZoneRateHint(); }catch(e){}
+        };
+        var fail=function(text){
+          btn.disabled=false; btn.textContent="Opt in now";
+          msg.textContent=text||"That did not go through. Check your internet and try again."; msg.hidden=false;
+        };
+        if(window.__NOVAX_DEMO){ var d=JSON.parse(JSON.stringify(state.client.rateCard)); d.A.overnight=170; d.B.overnight=210; d.sameCity=true; setTimeout(function(){ done(d); }, 300); return; }
+        if(!window.__nvSb||!window.__nvSb.rpc){ fail(); return; }
+        Promise.resolve(window.__nvSb.rpc("nv_promo_opt_in")).then(function(r){
+          if(!r || r.error || !r.data || !r.data.rate_card){
+            var m=r&&r.error&&r.error.message||"";
+            fail(/standard rate card|own rates/i.test(m) ? "Your account has its own rates, so this offer does not apply. Contact NovaX if you have questions." : "");
+            return;
+          }
+          done(r.data.rate_card);
+        }, function(){ fail(); });
+      });
+    }
     function nvRateNotice(){
       var host = document.getElementById("nvRateNotice");
       if(!host) return;
+      try{ nvPromoPaint(); }catch(e){ console.warn("NovaX promo", e); }
       host.classList.toggle("nv-off-tab", !!state.activeClientTab && state.activeClientTab!=="dashboard");
       if(!NV_RATE_NOTICE_ACTIVE){ host.style.display = "none"; host.innerHTML = ""; return; }
       /* Audit 17 Oct 2026: a new merchant got the nine-card tour and this
@@ -17762,7 +17839,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              them. Read-only here -- a merchant cannot move their own pickup
              city, only NovaX can. */
           var pickupCity=(c&&c.meta&&c.meta.pickupCity)||"Karachi";
-          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity, createdAt:(c&&c.created_at)||null };
+          var homeCity=(c&&c.meta&&c.meta.pickupCity)||(c&&c.city)||"Karachi";   // as nv_rate_zone() reads it
+          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity, homeCity:homeCity, createdAt:(c&&c.created_at)||null };
           /* Onboarding deck gate. Carried here because clients.created_at is
              the ONLY thing that can prove a merchant is brand new, and the
              deck must never appear for an existing one. */
