@@ -7983,7 +7983,14 @@ html,body{ background:var(--bg); color:var(--ink); }
     function normalizeRateCard(raw, rate) {
       const fallback = defaultRateCard(rate || NV_ZONE_A_BASE);
       if (raw && raw.A && raw.B && typeof raw.A.overnight === "number" && typeof raw.B.overnight === "number") {
-        return { A: { ...fallback, ...raw.A }, B: { ...fallback, ...raw.B } };
+        const out = { A: { ...fallback, ...raw.A }, B: { ...fallback, ...raw.B } };
+        /* 6 Nov 2026: keep the promotional card's markers. Every client save
+           writes this card back, and dropping "sameCity" would quietly move
+           an opted-in merchant from same-city pricing back to "zone A =
+           Karachi" (nv_rate_zone). */
+        if (raw.sameCity === true) out.sameCity = true;
+        if (raw.promo) out.promo = raw.promo;
+        return out;
       }
       const legacy = (raw && typeof raw.overnight === "number" && !isNaN(raw.overnight)) ? raw : fallback;
       /* Zone B is a different price, not a copy of Zone A. A legacy flat card
