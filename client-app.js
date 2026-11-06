@@ -280,8 +280,9 @@ window.nvCount=function(n,one,many){
           profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
           clients: [{ id:CID, name:"Sana's Closet", code:"SC", phone:"0300-0000000",
                       city:"Karachi", address:"Shop 14, Tariq Road, Karachi",
-                      wallet_balance:3425, rate:225, status:"Active",
-                      rate_card:{ A:{overnight:225, additionalKg:85}, B:{overnight:250, additionalKg:85} },
+                      wallet_balance:3425, rate:170, status:"Active",
+                      /* 6 Nov 2026: the demo is what a new account gets, so it books at the promotional rates. */
+                      rate_card:{ A:{overnight:170, additionalKg:85}, B:{overnight:210, additionalKg:85}, sameCity:true, promo:"promo-2026-11" },
                       meta:{ pickupCity:"Karachi" } }],
           parcels: [
             parcel({ awb:"N9000001", status:"Delivered", consignee:"Hina Raza",
@@ -14464,14 +14465,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var v=document.getElementById("nvShopifyCodeValue");
       var code=v?String(v.textContent||"").trim():"";
       if(!code||code==="\u2014") return;
+      /* 6 Nov 2026: writeText returns a promise. A browser that blocks the
+         copy rejects it (logged 22 Oct as "Write permission denied") while
+         the old code had already said "Code copied". Say so only once it is
+         true; otherwise try the old way, and if that fails too, show the
+         code to type. */
+      var fallback=function(){
+        var ok=false;
+        try{ var t=document.createElement("textarea"); t.value=code; t.setAttribute("readonly",""); t.style.position="fixed"; t.style.opacity="0";
+             document.body.appendChild(t); t.select(); ok=document.execCommand("copy"); t.remove(); }catch(e2){}
+        toast(ok ? "Code copied. Paste it into the NovaX app in Shopify." : "Your browser blocked copying. Type this code into the NovaX app in Shopify: "+code, ok ? "success" : "error");
+      };
       try{
-        navigator.clipboard.writeText(code);
-        toast("Code copied. Paste it into the NovaX app in Shopify.");
-      }catch(e){
-        try{ var t=document.createElement("textarea"); t.value=code; document.body.appendChild(t);
-             t.select(); document.execCommand("copy"); t.remove();
-             toast("Code copied."); }catch(e2){}
-      }
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(code).then(function(){ toast("Code copied. Paste it into the NovaX app in Shopify."); }, fallback);
+          return;
+        }
+      }catch(e){}
+      fallback();
     }
     window.nvCopyShopifyCode=nvCopyShopifyCode;
 
@@ -22182,7 +22193,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         +'<button class="nvfs-x" id="nvfsClose" aria-label="Close">\u00d7</button>'
         +'<div class="nvfs-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.6l5.2 5.2L20 7"/></svg></div>'
         +'<h3>'+(nvFirst?'Your first AWB is ready.':'AWB ready to print.')+'</h3>'
-        +'<div class="nvfs-awb"><span>'+awb+'</span><button type="button" class="nvfs-copy" onclick="(function(b){try{navigator.clipboard.writeText(\''+awb+'\');b.textContent=\'Copied\';setTimeout(function(){b.textContent=\'Copy\'},1400)}catch(e){}})(this)">Copy</button></div>'
+        +'<div class="nvfs-awb"><span>'+awb+'</span><button type="button" class="nvfs-copy" onclick="(function(b){try{navigator.clipboard.writeText(\''+awb+'\').then(function(){b.textContent=\'Copied\';setTimeout(function(){b.textContent=\'Copy\'},1400)},function(){b.textContent=\'Copy blocked\'})}catch(e){}})(this)">Copy</button></div>'
         /* The charge, COD and payout for THIS parcel, from the booked row. A
            success screen that hides the price is where "why was I charged
            Rs 335?" questions start. */
@@ -22753,8 +22764,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }, 2000);
   }
 
+  /* 6 Nov 2026: not ours, or not a fault. A browser extension's own crash
+     (its stack or file is chrome-extension:// / moz-extension://) and the
+     browser skipping a page transition (an AbortError when a second tap lands
+     mid-animation) filled the admin Error monitor with things nobody can fix. */
+  function noise(msg, src, err){
+    try {
+      var all = String(msg || "") + " " + String(src || "") + " " + String(err && err.stack || "");
+      if (/(chrome|moz|safari(-web)?)-extension:\/\//.test(all) && !/novaxlogistics\.com|client-app/.test(String(err && err.stack || src || ""))) return true;
+      if (/view transition|Transition was skipped|skipTransition\(\)/i.test(String(msg || ""))) return true;
+    } catch(e){}
+    return false;
+  }
+
   function report(kind, msg, src, line, col, err){
     try {
+      if (noise(msg, src, err)) return;
       var key = kind + "|" + String(msg).slice(0, 120) + "|" + line;
       if (seen[key] || sent >= MAX) return;
       seen[key] = 1; sent++;

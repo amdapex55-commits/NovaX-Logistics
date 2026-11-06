@@ -7952,7 +7952,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       return NV_STATION_ALIASES[k] || "";
     }
     const ZONE_CITY_MAP = { karachi: "A", lahore: "B", islamabad: "B", rawalpindi: "B" };
-    function zoneForCity(city) {
+    /* 6 Nov 2026: pass the merchant to price a promotional card ("sameCity")
+       the way nv_rate_zone() does: zone A is the merchant's own pickup city. */
+    function zoneForCity(city, client) {
+      const rc = client && client.rateCard;
+      if (rc && rc.sameCity) {
+        const home = String(client.pickupCity || client.city || "Karachi").trim().toLowerCase();
+        return String(city || "").trim().toLowerCase() === home ? "A" : "B";
+      }
       return ZONE_CITY_MAP[String(city || "").trim().toLowerCase()] || "B";
     }
     function zoneLabel(zone) {
@@ -8026,7 +8033,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const client = clientById(state.client && state.client.id);
       const rc = normalizeRateCard(client && client.rateCard, client && client.rate);
       if (!String(el.value || "").trim()) { hint.textContent = "Pick the destination city to see the rate."; return; }
-      const zone = zoneForCity(el.value);
+      const zone = zoneForCity(el.value, client);
       const weightEl = document.getElementById("bookingWeight");
       const breakdown = bookingChargeBreakdown(rc, zone, weightEl ? weightEl.value : "0.8 kg");
       /* A per-km merchant is not priced off this card at all. Printing a flat
@@ -13396,7 +13403,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const client = clientById(clientId);
       const awb = nextAwbForClient(clientId);
       const bookedCity = overrides.city || ["Lahore", "Karachi", "Islamabad", "Rawalpindi"][Math.floor(Math.random() * 4)];
-      const bookedZone = zoneForCity(bookedCity);
+      const bookedZone = zoneForCity(bookedCity, client);
       const bookedRc = normalizeRateCard(client && client.rateCard, client && client.rate);
       const bookedWeight = overrides.weight || "0.8 kg";
       const bookedCharge = bookingChargeBreakdown(bookedRc, bookedZone, bookedWeight);

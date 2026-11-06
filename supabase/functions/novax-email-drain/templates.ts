@@ -15,6 +15,8 @@ const LOGO = 'https://novaxlogistics.com/assets/icon-192.png';
 // Word for word from the site and Decisions. Do not reword.
 // 6 Nov 2026: promotional rates (new sign-ups start on them; existing merchants opt in).
 const PRICE = 'Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges.';
+// Reminders and win-backs also reach accounts opened before 6 Nov 2026, which stay on 225 / 250 until they opt in.
+const PRICE_OPT = PRICE + ' Account opened before 6 November? Tap Opt in now on Home in your portal to switch.';
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.
@@ -226,7 +228,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
         ['Print the label.', 'Print the AWB label from Labels and pickup, in the menu, and stick it on the parcel.'],
         ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
       ],
-      note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,
+      note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE_OPT}`,
     };
   }
   if (kind === 'first_parcel_d3') {
@@ -259,7 +261,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       extraLink: ['Or book it yourself in your portal', BOOK],
       stepsTitle: 'The quick answers',
       steps: [
-        ['Price', `${PRICE} Pickup is free in all four cities.`],
+        ['Price', `${PRICE_OPT} Pickup is free in all four cities.`],
         ['Delivery', 'Karachi same day or next day. Lahore, Islamabad and Rawalpindi in 2–3 working days.'],
         ['COD', 'COD in your wallet the day it lands. Withdraw it to your bank from your NovaX Wallet.'],
       ],
@@ -287,7 +289,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       extraLink: ['Or book a parcel in your portal', BOOK],
       stepsTitle: 'When you are ready to send again',
       steps: [
-        ['Price', `${PRICE} Pickup is free in all four cities.`],
+        ['Price', `${PRICE_OPT} Pickup is free in all four cities.`],
         ['Delivery', 'Karachi same day or next day. Lahore, Islamabad and Rawalpindi in 2–3 working days.'],
         ['COD', 'COD in your wallet the day it lands. Withdraw it to your bank from your NovaX Wallet.'],
       ],
@@ -309,7 +311,7 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
         ['Print the label.', 'Print the AWB label from Labels and pickup, in the menu, and stick it on the parcel.'],
         ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
       ],
-      note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,
+      note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE_OPT}`,
     };
   }
   // Nova Recover (8 Oct 2026). A parcel was refused and NovaX no longer calls
