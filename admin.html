@@ -7091,7 +7091,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     function nvAdminParcels(){
       if(NV_AP.busy) return NV_AP.busy;
       var p;
-      if(!NV_AP.rows || !NV_AP.cursor || Date.now() - NV_AP.fullAt > 20*60*1000){
+      if(!NV_AP.rows || !NV_AP.cursor || Date.now() - NV_AP.fullAt > 60*60*1000){   // 7 Nov 2026: hourly (was 20 min)
         p = nvAdminParcelsFull().then(function(r){ return (r && !r.error) ? { data: nvAdminParcelsList(), error: null } : r; });
       } else {
         var since = new Date(new Date(NV_AP.cursor).getTime() - 5*60*1000).toISOString(), w = NV_ADMIN_WINDOW();
@@ -7111,6 +7111,61 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       NV_AP.busy = p.then(function(r){ NV_AP.busy = null; return r; }, function(e){ NV_AP.busy = null; return { data: null, error: e }; });
       return NV_AP.busy;
+    }
+
+    /* ── Payment log and wallet ledger: read only what changed (7 Nov 2026) ─
+       Both were re-read whole (3,000 and 5,000 newest rows) on every realtime
+       change to any of their rows: 334,000 + 123,000 rows in 12 hours. Same
+       idea as nvAdminParcels: keep the rows, ask only for rows whose cursor
+       column moved (payment_logs.changed_at is stamped by a trigger on insert
+       and update; wallet_ledger is insert-only, so created_at), 5 minutes of
+       overlap, a count over the cached window to catch deletes, and a full
+       read every hour or whenever anything looks off. The result is the same
+       newest-N list the full query returned. Resolves to { data, error }. */
+    var NV_DT = {};
+    function nvAdminDelta(table, cursorCol, cap){
+      var c = NV_DT[table] || (NV_DT[table] = { rows:null, cursor:"", fullAt:0, busy:null });
+      if(c.busy) return c.busy;
+      function list(){
+        var out = Object.keys(c.rows).map(function(k){ return c.rows[k]; });
+        out.sort(function(a,b){ return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.id < b.id ? -1 : 1); });
+        if(out.length > cap){ out.slice(cap).forEach(function(r){ delete c.rows[r.id]; }); out = out.slice(0, cap); }
+        return out;
+      }
+      function full(){
+        return nvAllRows(nvApSb().from(table).select("*").order("created_at",{ascending:false}), cap).then(function(r){
+          if(r && !r.error && Array.isArray(r.data)){
+            var m = {}, cur = "";
+            r.data.forEach(function(row){ m[row.id] = row; var v = row[cursorCol]; if(v && v > cur) cur = v; });
+            c.rows = m; c.cursor = cur; c.fullAt = Date.now();
+            return { data: list(), error: null };
+          }
+          return r;
+        });
+      }
+      var p;
+      if(!c.rows || !c.cursor || Date.now() - c.fullAt > 60*60*1000) p = full();
+      else {
+        var since = new Date(new Date(c.cursor).getTime() - 5*60*1000).toISOString();
+        var cached = list(), oldest = cached.length ? cached[cached.length-1].created_at : null;
+        p = Promise.all([
+          nvAllRows(function(){ return nvApSb().from(table).select("*").gte(cursorCol, since).order(cursorCol,{ascending:true}); }, 5000),
+          oldest ? Promise.resolve(nvApSb().from(table).select("id",{ count:"exact", head:true }).gt("created_at", oldest)) : Promise.resolve({ count: 0 })
+        ]).then(function(res){
+          var d = res[0], h = res[1];
+          if(!d || d.error || !h || h.error) return full();
+          (d.data||[]).forEach(function(row){ c.rows[row.id] = row; var v = row[cursorCol]; if(v && v > c.cursor) c.cursor = v; });
+          var out = list();
+          /* Rows the database holds from the oldest cached one onward must
+             equal what is cached from there; a delete (or a row the delta
+             could not see) makes them differ, and then it is read whole. */
+          var inWindow = oldest ? out.filter(function(r){ return r.created_at > oldest; }).length : out.length;   // strictly newer: ties at the window edge cannot force a full read
+          if(typeof h.count === "number" && h.count !== inWindow) return full();
+          return { data: out, error: null };
+        });
+      }
+      c.busy = p.then(function(r){ c.busy = null; return r; }, function(e){ c.busy = null; return { data: null, error: e }; });
+      return c.busy;
     }
 
     /* Progress from the shared journey (nv-journey.js), the one client and
@@ -19482,7 +19537,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           nvAllRows(sb.from("invoices").select("*").order("created_at",{ascending:false}), 5000),
           nvAllRows(sb.from("expenses").select("*").order("created_at",{ascending:false}), 3000),
           nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000),
-          nvAllRows(sb.from("payment_logs").select("*").order("created_at",{ascending:false}), 3000),
+          nvAdminDelta("payment_logs", "changed_at", 3000),
           nvAllRows(sb.from("sales_leads").select("*").order("created_at",{ascending:false}), 2000),
           nvAllRows(sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}), 2000),
           /* Every OPEN issue, plus resolved ones from the last 30 days. Loading
@@ -19493,7 +19548,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           nvAllRows(sb.from("manifest_logs").select("*").order("created_at",{ascending:false}), 2000),
           nvAllRows(sb.from("staff_users").select("*").order("created_at",{ascending:false}), 2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
-          nvAllRows(sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}), 5000),
+          nvAdminDelta("wallet_ledger", "created_at", 5000),
           /* saved_address: the merchant's name for a saved pickup address
              ("Clifton shop"). Aliased so it can never shadow pickup_address. */
           nvAllRows(sb.from("pickup_requests").select("*,saved_address:pickup_addresses(label)").order("created_at",{ascending:false}), 3000),
@@ -19606,11 +19661,11 @@ html,body{ background:var(--bg); color:var(--ink); }
           set: function(d){ state.invoices = d.map(rInvoice); }
         },
         wallet_ledger: {
-          q: function(){ return nvAllRows(sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}), 5000); },
+          q: function(){ return nvAdminDelta("wallet_ledger", "created_at", 5000); },
           set: function(d){ state.walletLedger = d.map(rLedger); }
         },
         payment_logs: {
-          q: function(){ return nvAllRows(sb.from("payment_logs").select("*").order("created_at",{ascending:false}), 3000); },
+          q: function(){ return nvAdminDelta("payment_logs", "changed_at", 3000); },
           set: function(d){ state.paymentLogs = d.map(rPl); }
         },
         withdrawals: {
