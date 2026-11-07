@@ -2,6 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Visitor log, part 1 (7 Nov 2026). Runs first, before anything else
+     loads, so a visitor who taps the ad and gives up while the page is still
+     loading is counted too ("arrived" without "loaded"). Part 2, at the end
+     of the page, records what they do. Only on novaxlogistics.com. -->
+<script>
+(function(){
+  try{
+    if(!/(^|\.)novaxlogistics\.com$/.test(location.hostname)) return;
+    var ua=navigator.userAgent||"";
+    if(/bot|crawl|spider|slurp|headless|lighthouse|facebookexternalhit/i.test(ua) || navigator.webdriver) return;
+    var id=""; try{ id=sessionStorage.getItem("nvSiteVisit")||""; }catch(e){}
+    var fresh=!id;
+    if(!id){ id=Date.now().toString(36)+Math.random().toString(36).slice(2,10); try{ sessionStorage.setItem("nvSiteVisit",id); }catch(e){} }
+    var q=new URLSearchParams(location.search), ref="";
+    try{ ref=document.referrer?new URL(document.referrer).hostname.replace(/^www\./,""):""; }catch(e){}
+    if(ref===location.hostname) ref="";
+    var first={ ua:ua.slice(0,200), landing:(location.pathname+location.search).slice(0,200), source:(q.get("utm_source")||"").slice(0,60), medium:(q.get("utm_medium")||"").slice(0,60),
+      campaign:(q.get("utm_campaign")||"").slice(0,120), content:(q.get("utm_content")||"").slice(0,120), adClick:q.has("fbclid")?"facebook":(q.has("gclid")||q.has("gbraid")||q.has("wbraid"))?"google":"",
+      refHost:ref.slice(0,100), device:/iPad|Tablet/i.test(ua)?"tablet":/Mobi|Android|iPhone/i.test(ua)?"mobile":"desktop",
+      os:/Android/i.test(ua)?"Android":/iPhone|iPad|iPod/i.test(ua)?"iOS":/Windows/i.test(ua)?"Windows":/Mac OS X/i.test(ua)?"Mac":/CrOS/i.test(ua)?"ChromeOS":/Linux/i.test(ua)?"Linux":"",
+      app:/Instagram/i.test(ua)?"Instagram":/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)?"Facebook":/TikTok|musical_ly|Bytedance/i.test(ua)?"TikTok":/WhatsApp/i.test(ua)?"WhatsApp":"",
+      sw:String(Math.round(window.innerWidth||0)) };
+    window.nvSiteVisitId=id; window.__nvSiteFirst=first;
+    if(fresh) fetch("https://rhzunbzbdzicajqtohwp.supabase.co/rest/v1/rpc/site_visit",{ method:"POST", keepalive:true,
+      headers:{ "content-type":"application/json", apikey:"sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA", authorization:"Bearer sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA", prefer:"return=minimal" },
+      body:JSON.stringify({ p_visit:id, p_data:Object.assign({ events:["arrived"] }, first) }) }).then(function(){},function(){});
+  }catch(e){}
+})();
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>COD Courier for Pakistani Online Sellers | NovaX Logistics</title>
 <meta name="description" content="COD courier for Pakistani e-commerce sellers. Same-day or next-day delivery in Karachi, 2–3 working days to Lahore, Islamabad and Rawalpindi, and your cash-on-delivery settled the day it lands. From Rs 170 per parcel.">
@@ -36,9 +65,13 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <link rel="manifest" href="/assets/site.webmanifest">
 <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<!-- 7 Nov 2026: the fonts come from this site, not Google. The Google Fonts
+     stylesheet blocked the first screen until two other domains answered;
+     inside the Facebook app on a phone network that took 4-30 s for about
+     a third of ad visitors (visitor log). Same files the portal uses; text
+     shows at once in the phone's own font and switches when they arrive. -->
+<link rel="preload" href="/assets/vendor/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/vendor/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
 
 <script type="application/ld+json">
 {
@@ -273,6 +306,8 @@
 (function(){ try{ if(document.visibilityState!=="visible"||matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("no-intro"); }catch(e){} })();
 </script>
 <style>
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:400 700;font-display:swap;src:url(/assets/vendor/fonts/dm-sans-latin.woff2) format("woff2")}
+@font-face{font-family:"Manrope";font-style:normal;font-weight:700 800;font-display:swap;src:url(/assets/vendor/fonts/manrope-latin.woff2) format("woff2")}
 /* ═════ NovaX homepage v3 (1 Oct 2026) ═════
    Built on Aisha's light concept (prototypes/index-light-concept.html):
    same paper, ink, green, lime and navy, same DM Sans + Manrope. The look
@@ -3544,7 +3579,8 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
     var C=window.NOVAX_CONFIG||{}, SB=C.SB_URL||"https://rhzunbzbdzicajqtohwp.supabase.co", KEY=C.SB_KEY||"sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
     var ua=navigator.userAgent||"";
     if(/bot|crawl|spider|slurp|headless|lighthouse|facebookexternalhit/i.test(ua) || navigator.webdriver) return;
-    var id=""; try{ id=sessionStorage.getItem("nvSiteVisit")||""; }catch(e){}
+    if(!/(^|\.)novaxlogistics\.com$/.test(location.hostname)) return;   // a local copy or preview is never logged
+    var id=window.nvSiteVisitId||""; try{ if(!id) id=sessionStorage.getItem("nvSiteVisit")||""; }catch(e){}
     if(!id){ id=Date.now().toString(36)+Math.random().toString(36).slice(2,10); try{ sessionStorage.setItem("nvSiteVisit",id); }catch(e){} }
     window.nvSiteVisitId=id;
     var q=new URLSearchParams(location.search), ref="";
@@ -3559,7 +3595,8 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
     /* How long the page took to appear: first paint since they tapped the ad
        (falls back to "now", when this script runs at the end of the page). */
     function loadMs(){ try{ var f=performance.getEntriesByName("first-contentful-paint")[0]; return String(Math.round(f?f.startTime:performance.now())); }catch(e){ return ""; } }
-    var st={ scroll:0, secs:0, seen:{}, taps:{}, path:[], events:{} }, dirty=true, visibleSince=document.hidden?0:Date.now(), base=0;
+    if(window.__nvSiteFirst) first=window.__nvSiteFirst;   // part 1 (in <head>) already worked these out
+    var st={ scroll:0, secs:0, seen:{}, taps:{}, path:[], events:{ loaded:1 } }, dirty=true, visibleSince=document.hidden?0:Date.now(), base=0;
     function area(el){
       var s=el.closest("section[id]"); if(s) return s.id;
       if(el.closest("header")) return "menu"; if(el.closest("#mbar")) return "phone bar"; if(el.closest("footer")) return "footer";
