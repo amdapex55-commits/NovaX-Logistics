@@ -2334,6 +2334,7 @@ var OV={signup:$("ovSignup"),sales:$("ovSales"),signin:$("ovSignin")};
 var lastFocus=null;
 function openM(k){
   var o=OV[k]; if(!o) return;
+  try{ if(window.nvSiteEvent) nvSiteEvent("open_"+k); }catch(e){}
   lastFocus=document.activeElement;
   Object.keys(OV).forEach(function(x){OV[x].classList.remove("on");});
   o.classList.add("on"); document.body.style.overflow="hidden";
@@ -2703,12 +2704,14 @@ $("fSignup").addEventListener("submit",function(e){
   clearMsg("mSignup");
   var btn=$("merchantSubmit"), oldTxt=btn.textContent;
   btn.disabled=true; btn.textContent="Creating your workspace…";
+  try{ if(window.nvSiteEvent) nvSiteEvent("signup_submit"); }catch(e){}
 
   __nvSb.auth.signUp({
     email:email, password:password,
     options:{ data:{ business_name:storeName, owner_name:name, full_name:name, role:"client",
       phone:phone, city:city, address:address, business_type:product, website:website||"",
       terms_version:NV_TERMS_VERSION, terms_accepted_at:termsAt,
+      nv_visit:(window.nvSiteVisitId||""),
       sales_ref:(function(){ var v=String(val("merchantRef")||"").toUpperCase().replace(/[^A-Z0-9]/g,""); return /^[A-Z0-9]{3,12}$/.test(v)?v:""; })() } }
   }).then(function(r){
     if(r&&r.error){ btn.disabled=false; btn.textContent=oldTxt;
@@ -2764,6 +2767,7 @@ $("fSignup").addEventListener("submit",function(e){
           return;
         }
         if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"workspace_created"})).catch(function(){});
+        try{ if(window.nvSiteEvent) nvSiteEvent("signup_done", true); }catch(e){}
         Promise.resolve(__nvSb.rpc("nv_accept_terms",{p_version:NV_TERMS_VERSION,p_source:"signup",p_user_agent:String(navigator.userAgent||"").slice(0,300)}))
           .then(function(t){ if(t&&t.error) console.warn("NovaX terms acceptance:",t.error.message); })
           .catch(function(){});
@@ -3526,5 +3530,90 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
 })();
 </script>
 
+<!-- ═════ VISITOR LOG (7 Nov 2026) ═════
+     For the ad campaigns: one anonymous row per visit (site_visit RPC).
+     Where they came from (utm_*, fbclid/gclid present, referrer), device,
+     how far they scrolled, which sections they saw, what they tapped in
+     order, and the signup steps they reached. No name, no IP, no form
+     contents; the click ids are recorded only as "came from an ad".
+     Admin -> Website visitors. nvSiteKey must match the copy in admin.html,
+     which uses it to list every button nobody tapped. -->
+<script>
+(function(){
+  try{
+    var C=window.NOVAX_CONFIG||{}, SB=C.SB_URL||"https://rhzunbzbdzicajqtohwp.supabase.co", KEY=C.SB_KEY||"sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+    var ua=navigator.userAgent||"";
+    if(/bot|crawl|spider|slurp|headless|lighthouse|facebookexternalhit/i.test(ua) || navigator.webdriver) return;
+    var id=""; try{ id=sessionStorage.getItem("nvSiteVisit")||""; }catch(e){}
+    if(!id){ id=Date.now().toString(36)+Math.random().toString(36).slice(2,10); try{ sessionStorage.setItem("nvSiteVisit",id); }catch(e){} }
+    window.nvSiteVisitId=id;
+    var q=new URLSearchParams(location.search), ref="";
+    try{ ref=document.referrer?new URL(document.referrer).hostname.replace(/^www\./,""):""; }catch(e){}
+    if(ref===location.hostname) ref="";
+    var app=/Instagram/i.test(ua)?"Instagram":/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)?"Facebook":/TikTok|musical_ly|Bytedance/i.test(ua)?"TikTok":/WhatsApp/i.test(ua)?"WhatsApp":"";
+    var os=/Android/i.test(ua)?"Android":/iPhone|iPad|iPod/i.test(ua)?"iOS":/Windows/i.test(ua)?"Windows":/Mac OS X/i.test(ua)?"Mac":/CrOS/i.test(ua)?"ChromeOS":/Linux/i.test(ua)?"Linux":"";
+    var device=/iPad|Tablet/i.test(ua)?"tablet":/Mobi|Android|iPhone/i.test(ua)?"mobile":"desktop";
+    var first={ ua:ua.slice(0,200), landing:(location.pathname+location.search).slice(0,200), source:(q.get("utm_source")||"").slice(0,60), medium:(q.get("utm_medium")||"").slice(0,60),
+      campaign:(q.get("utm_campaign")||"").slice(0,120), content:(q.get("utm_content")||"").slice(0,120), adClick:q.has("fbclid")?"facebook":(q.has("gclid")||q.has("gbraid")||q.has("wbraid"))?"google":"",
+      refHost:ref.slice(0,100), device:device, os:os, app:app, sw:String(Math.round(window.innerWidth||0)) };
+    var st={ scroll:0, secs:0, seen:{}, taps:{}, path:[], events:{} }, dirty=true, visibleSince=document.hidden?0:Date.now(), base=0;
+    function area(el){
+      var s=el.closest("section[id]"); if(s) return s.id;
+      if(el.closest("header")) return "menu"; if(el.closest("#mbar")) return "phone bar"; if(el.closest("footer")) return "footer";
+      if(el.closest(".facts")) return "facts"; var d=el.closest('[role="dialog"]'); if(d) return (d.id||"dialog").replace(/^ov/,"").toLowerCase()+" window";
+      return "page";
+    }
+    function nvSiteKey(el){
+      var t;
+      if(/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){   /* a field is named by its label, never by its options */
+        var lb=el.id&&document.querySelector('label[for="'+el.id+'"]');
+        t=el.getAttribute("aria-label")||(lb&&lb.textContent.replace(/\s+/g," ").trim())||el.getAttribute("placeholder")||el.name||el.id||el.tagName.toLowerCase();
+        return (area(el)+" \u203a "+String(t).slice(0,48)).slice(0,80);
+      }
+      t=el.getAttribute("data-track")||el.getAttribute("aria-label")||(el.textContent||"").replace(/\s+/g," ").trim()||el.getAttribute("title")||el.getAttribute("placeholder")||el.getAttribute("href")||el.id||el.tagName.toLowerCase();
+      return (area(el)+" › "+String(t).slice(0,48)).slice(0,80);
+    }
+    window.nvSiteKey=nvSiteKey;
+    function send(final){
+      if(!dirty && !final) return; dirty=false;
+      var now=Date.now(), secs=base+(visibleSince?Math.round((now-visibleSince)/1000):0);
+      /* The landing facts ride on every send (a few hundred bytes); the server only uses them for the first row. */
+      var body={ p_visit:id, p_data:Object.assign({}, first, { scroll:st.scroll, secs:secs, seen:Object.keys(st.seen), taps:st.taps, path:st.path.slice(0,40), events:Object.keys(st.events) }) };
+      try{
+        fetch(SB+"/rest/v1/rpc/site_visit",{ method:"POST", keepalive:true, headers:{ "content-type":"application/json", apikey:KEY, authorization:"Bearer "+KEY, prefer:"return=minimal" }, body:JSON.stringify(body) }).then(function(){},function(){});
+      }catch(e){}
+    }
+    window.nvSiteEvent=function(name, now){ st.events[String(name).slice(0,40)]=1; dirty=true; if(now) send(true); };
+    document.addEventListener("click",function(e){
+      var el=e.target&&e.target.closest&&e.target.closest("a,button,summary,label,[data-mdl],[role=button]"); if(!el) return;
+      var k=nvSiteKey(el); st.taps[k]=(st.taps[k]||0)+1; if(st.path.length<40) st.path.push(k); dirty=true;
+      var h=el.getAttribute("href")||"";
+      if(/wa\.me|whatsapp/i.test(h)) st.events.whatsapp=1;
+      if(/demo=1/.test(h)||el.hasAttribute("data-demo-cta")){ st.events.demo=1; send(true); }
+      if(/^tel:/.test(h)) st.events.call=1;
+    },true);
+    ["change","focusin"].forEach(function(t){ document.addEventListener(t,function(e){
+      var el=e.target; if(!el||!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+      var k=nvSiteKey(el)+(t==="change"?" (changed)":""); if(st.taps[k]) return; st.taps[k]=1; if(st.path.length<40) st.path.push(k); dirty=true;
+      if(el.id==="trackInput") st.events.track=1; if(/^c(From|To|Weight)$/.test(el.id)) st.events.calculator=1;
+    },true); });
+    window.addEventListener("scroll",function(){
+      var h=document.documentElement, p=Math.round((window.scrollY+window.innerHeight)/Math.max(1,h.scrollHeight)*100);
+      if(p>st.scroll){ st.scroll=Math.min(100,p); dirty=true; }
+    },{ passive:true });
+    if("IntersectionObserver" in window){
+      var io=new IntersectionObserver(function(es){ es.forEach(function(x){ if(x.isIntersecting && !st.seen[x.target.id]){ st.seen[x.target.id]=1; dirty=true; } }); },{ threshold:0.35 });
+      [].forEach.call(document.querySelectorAll("section[id]"),function(s){ io.observe(s); });
+    }
+    document.addEventListener("visibilitychange",function(){
+      if(document.hidden){ if(visibleSince){ base+=Math.round((Date.now()-visibleSince)/1000); visibleSince=0; } dirty=true; send(true); }
+      else visibleSince=Date.now();
+    });
+    window.addEventListener("pagehide",function(){ send(true); });
+    setTimeout(function(){ send(true); },1500);
+    setInterval(function(){ if(!document.hidden) send(false); },20000);
+  }catch(e){}
+})();
+</script>
 </body>
 </html>

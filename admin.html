@@ -2066,6 +2066,23 @@
 
     /* 22 Oct 2026: folded by default; the summary line carries the counts. */
     #nvQueuePanel[hidden]{display:none!important}
+    /* Website visitors (7 Nov 2026) */
+    .nvs-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin:4px 0 14px}
+    .nvs-tile{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--nvu-bg-2,transparent);min-width:0}
+    .nvs-tile b{display:block;font-size:22px;font-weight:850;line-height:1.1;font-variant-numeric:tabular-nums}
+    .nvs-tile span{display:block;font-size:12px;color:var(--nvu-ink-2);margin-top:2px}
+    .nvs-h{margin:16px 0 6px;font-size:13px;font-weight:850;letter-spacing:.04em;text-transform:uppercase;color:var(--nvu-ink-2)}
+    .nvs-bar{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2fr) 52px;gap:8px;align-items:center;font-size:13px;padding:3px 0}
+    .nvs-bar i{display:block;height:10px;border-radius:6px;background:var(--nvu-good-fg,#0c7c59);min-width:2px}
+    .nvs-bar em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums;color:var(--nvu-ink-2)}
+    .nvs-bar.zero span{color:var(--nvu-bad-fg)} .nvs-bar.zero i{background:var(--nvu-bad-fg);opacity:.35}
+    .nvs-tbl{width:100%;border-collapse:collapse;font-size:13px}
+    .nvs-tbl th,.nvs-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    .nvs-tbl td.n,.nvs-tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+    .nvs-visit{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+    .nvs-visit .top{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px}
+    .nvs-path{margin-top:6px;font-size:12px;color:var(--nvu-ink-2);line-height:1.5;overflow-wrap:anywhere}
+    .nvs-scroll{overflow-x:auto}
     .nv-calls-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:28px}
     .nv-calls-fold>summary::-webkit-details-marker{display:none}
     .nv-calls-fold>summary b{font-size:16px;margin-right:4px}
@@ -5744,6 +5761,22 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div><h4 class="nv-calls-h">Rider problems today <span class="chip" id="nvRiderProbCount">0</span></h4><div class="ops-list" id="nvRiderProblems"><p class="footer-note">Loading…</p></div></div>
                   <div><h4 class="nv-calls-h">Merchants gone quiet <span class="chip warn" id="nvQuietCount">0</span></h4><div class="ops-list" id="nvGoneQuiet"><p class="footer-note">Loading…</p></div><button class="ghost-btn mt-6" type="button" id="nvQuietMore" hidden onclick="nvCallsAll=!nvCallsAll;nvCallsPaint()">Show all</button></div>
                 </div>
+              </details>
+
+              <!-- 7 Nov 2026: homepage visitor log for the ad campaigns (site_visit on
+                   index.html, admin_site_report here). Who landed from where, how far
+                   they got, what they tapped, and every button nobody tapped. -->
+              <details class="panel mt-14 nv-calls-fold" id="nvSitePanel" open>
+                <summary class="nv-calls-sum"><b>Website visitors</b><span class="chip" id="nvSiteCountS">…</span><span class="nv-calls-tap">Tap to open</span></summary>
+                <div class="section-head" style="margin-top:12px">
+                  <div><p>Everyone who opens the homepage, one row per visit. No names or IP addresses; a visitor who opens an account shows their business name.</p></div>
+                  <div class="inline-actions">
+                    <select id="nvSiteDays" aria-label="Period"><option value="1">Today</option><option value="2">Since yesterday</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+                    <select id="nvSiteOnly" aria-label="Visitors"><option value="all">All visitors</option><option value="ads">From ads</option><option value="other">Not from ads</option></select>
+                    <button class="action-btn ghost" type="button" onclick="nvSiteLoad()">Refresh</button>
+                  </div>
+                </div>
+                <div id="nvSiteBody"><p class="footer-note">Loading…</p></div>
               </details>
 
               <!-- 4 Nov 2026: signup queue. New merchants wait here until an admin
@@ -13225,6 +13258,90 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).join(""):'<p class="footer-note">Nobody has opted in yet.</p>';
       return true;
     }
+    /* ── Website visitors (7 Nov 2026) ─────────────────────────────────── */
+    /* MUST match nvSiteKey in index.html: it turns every button on the live
+       homepage into the same name the visitor log uses, so buttons nobody
+       tapped can be listed with a zero. */
+    function nvSiteArea(el){
+      var s=el.closest("section[id]"); if(s) return s.id;
+      if(el.closest("header")) return "menu"; if(el.closest("#mbar")) return "phone bar"; if(el.closest("footer")) return "footer";
+      if(el.closest(".facts")) return "facts"; var d=el.closest('[role="dialog"]'); if(d) return (d.id||"dialog").replace(/^ov/,"").toLowerCase()+" window";
+      return "page";
+    }
+    function nvSiteKeyOf(el){
+      var t=el.getAttribute("data-track")||el.getAttribute("aria-label")||(el.textContent||"").replace(/\s+/g," ").trim()||el.getAttribute("title")||el.getAttribute("placeholder")||el.getAttribute("href")||el.id||el.tagName.toLowerCase();
+      return (nvSiteArea(el)+" \u203a "+String(t).slice(0,48)).slice(0,80);
+    }
+    var NV_SITE_ORDER=["hero","offer","track","how","payouts","rates","portal","autopilot","reviews","faq"];
+    var NV_SITE_NAMES={hero:"Top of page",offer:"New rates band",track:"Track a parcel",how:"How it works",payouts:"COD payouts",rates:"Rates + calculator",portal:"Portal",autopilot:"Autopilot AI",reviews:"Reviews",faq:"FAQ"};
+    var nvSitePage=null;
+    function nvSiteTappables(){
+      if(nvSitePage) return Promise.resolve(nvSitePage);
+      return fetch("/index.html?nvs="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.text(); }).then(function(h){
+        var doc=new DOMParser().parseFromString(h,"text/html"), keys={};
+        [].forEach.call(doc.querySelectorAll("a,button,summary,[data-mdl],[role=button]"),function(el){ if(el.closest("#nvai-panel,noscript,template")) return; keys[nvSiteKeyOf(el)]=1; });
+        nvSitePage=Object.keys(keys); return nvSitePage;
+      }).catch(function(){ return []; });
+    }
+    function nvSitePct(a,b){ return b?Math.round(a/b*100):0; }
+    function nvSiteSecs(n){ n=Math.round(Number(n)||0); return n<60?n+" s":Math.floor(n/60)+" min "+(n%60)+" s"; }
+    async function nvSiteLoad(){
+      var sb=window.__nvSb, body=document.getElementById("nvSiteBody"); if(!sb||!sb.rpc||!body) return false;
+      var days=+(document.getElementById("nvSiteDays")||{}).value||1, only=(document.getElementById("nvSiteOnly")||{}).value||"all";
+      var r, keys;
+      try{ var res=await Promise.all([sb.rpc("admin_site_report",{ p_days:days, p_only:only }), nvSiteTappables()]); r=res[0]; keys=res[1]; if(r.error) throw new Error(r.error.message); }
+      catch(e){
+        if(/Admins only/i.test(String(e.message||e))){ var pn=document.getElementById("nvSitePanel"); if(pn) pn.hidden=true; return true; }
+        body.innerHTML='<p class="footer-note">Could not load: '+nvEscAdmin(e.message||e)+'</p>'; return false;
+      }
+      var d=r.data||{}, t=d.totals||{}, n=Number(t.visits||0), E=nvEscAdmin;
+      var cs=document.getElementById("nvSiteCountS"); if(cs){ cs.textContent=n+" visits"+(t.ads?" \u00b7 "+t.ads+" from ads":""); cs.className="chip"+(n?" good":""); }
+      if(!n){ body.innerHTML='<p class="footer-note">No visits in this period yet. The log started on 7 Nov 2026.</p>'; return true; }
+      var tiles=[[n,"visits"],[t.ads||0,"from ads"],[nvSitePct(t.mobile,n)+"%","on a phone"],[nvSiteSecs(t.medianSecs),"typical time on page"],
+        [nvSitePct(t.bounced,n)+"%","left within 10 s, no tap"],[t.openedSignup||0,"opened Sign up"],[t.submittedSignup||0,"pressed Create account"],[t.signedUp||0,"opened an account"],[t.whatsapp||0,"tapped WhatsApp"],[t.demo||0,"opened the demo"]];
+      var html='<div class="nvs-tiles">'+tiles.map(function(x){ return '<div class="nvs-tile"><b>'+E(String(x[0]))+'</b><span>'+E(x[1])+'</span></div>'; }).join("")+'</div>';
+      /* how far down they get */
+      var sec=d.sections||{};
+      html+='<div class="nvs-h">How far down the page they got</div>'+NV_SITE_ORDER.map(function(k){ var c=Number(sec[k]||0), p=nvSitePct(c,n);
+        return '<div class="nvs-bar'+(c?'':' zero')+'"><span>'+E(NV_SITE_NAMES[k]||k)+'</span><i style="width:'+Math.max(p,1)+'%"></i><em>'+p+'%</em></div>'; }).join("");
+      /* where they came from */
+      var src=d.sources||[];
+      html+='<div class="nvs-h">Where they came from</div><div class="nvs-scroll"><table class="nvs-tbl"><thead><tr><th>Source</th><th>Campaign</th><th class="n">Visits</th><th class="n">Typical time</th><th class="n">Left at once</th><th class="n">Opened Sign up</th><th class="n">Accounts</th></tr></thead><tbody>'+
+        src.map(function(x){ return '<tr><td>'+E(x.source)+(x.ad?' <span class="chip warn">ad</span>':'')+'</td><td>'+E(x.campaign||"\u2014")+'</td><td class="n">'+x.visits+'</td><td class="n">'+E(nvSiteSecs(x.medianSecs))+'</td><td class="n">'+nvSitePct(x.bounced,x.visits)+'%</td><td class="n">'+x.openedSignup+'</td><td class="n">'+x.signedUp+'</td></tr>'; }).join("")+'</tbody></table></div>';
+      /* what they tap, and what nobody taps */
+      var taps=d.taps||{}, all={}; (keys||[]).forEach(function(k){ all[k]=0; }); Object.keys(taps).forEach(function(k){ all[k]=Number(taps[k].people||0); });
+      var rows=Object.keys(all).map(function(k){ return { k:k, p:all[k], t:taps[k]?Number(taps[k].taps||0):0 }; });
+      var tapped=rows.filter(function(x){ return x.p>0; }).sort(function(a,b){ return b.p-a.p||b.t-a.t; });
+      var never=rows.filter(function(x){ return x.p===0; }).sort(function(a,b){ return a.k<b.k?-1:1; });
+      var mx=tapped.length?tapped[0].p:1;
+      html+='<div class="nvs-h">What they tap ('+tapped.length+')</div>'+(tapped.length?tapped.slice(0,40).map(function(x){ return '<div class="nvs-bar"><span>'+E(x.k)+'</span><i style="width:'+Math.max(2,Math.round(x.p/mx*100))+'%"></i><em>'+x.p+' ('+nvSitePct(x.p,n)+'%)</em></div>'; }).join(""):'<p class="footer-note">No taps yet.</p>');
+      html+='<details style="margin-top:10px"'+(never.length?' open':'')+'><summary class="nvs-h" style="cursor:pointer;display:list-item">Never tapped ('+never.length+')</summary><p class="footer-note">Buttons and links on the homepage that nobody in this period tapped.</p>'+
+        never.map(function(x){ return '<div class="nvs-bar zero"><span>'+E(x.k)+'</span><i style="width:1%"></i><em>0</em></div>'; }).join("")+'</details>';
+      /* device and city */
+      function chips(o){ return Object.keys(o||{}).sort(function(a,b){ return o[b]-o[a]; }).map(function(k){ return '<span class="chip">'+E(k)+' \u00b7 '+o[k]+'</span>'; }).join(" "); }
+      html+='<div class="nvs-h">Phones and apps</div><p>'+chips(d.devices)+'</p><div class="nvs-h">Cities</div><p>'+chips(d.cities)+'</p>';
+      /* each visit */
+      var ev={ open_signup:"opened Sign up", signup_submit:"pressed Create account", signup_done:"opened an account", open_signin:"opened Sign in", open_sales:"opened Talk to sales", whatsapp:"tapped WhatsApp", demo:"opened the demo", track:"used tracking", calculator:"used the calculator", call:"tapped Call" };
+      html+='<div class="nvs-h">Latest visits</div>'+(d.recent||[]).map(function(v){
+        var seen=(v.seen||[]).slice().sort(function(a,b){ return NV_SITE_ORDER.indexOf(a)-NV_SITE_ORDER.indexOf(b); });
+        var deepest=seen.length?NV_SITE_NAMES[seen[seen.length-1]]||seen[seen.length-1]:"top only";
+        return '<div class="nvs-visit"><div class="top"><b>'+E(nvQueueDay(v.at))+'</b><span class="chip'+(v.ad?' warn':'')+'">'+E(v.source)+(v.campaign?' \u00b7 '+E(v.campaign):'')+'</span>'+
+          '<span>'+E([v.app||v.os, v.device, v.city].filter(Boolean).join(" \u00b7 "))+'</span><span>'+E(nvSiteSecs(v.secs))+' \u00b7 scrolled '+Number(v.scroll||0)+'% \u00b7 reached '+E(deepest)+'</span>'+
+          (v.signedUpAs?'<span class="chip good">Opened an account: '+E(v.signedUpAs)+'</span>':'')+'</div>'+
+          ((v.events||[]).length?'<div class="nvs-path"><b>Did:</b> '+E((v.events||[]).map(function(x){ return ev[x]||x; }).join(", "))+'</div>':'')+
+          '<div class="nvs-path"><b>Tapped:</b> '+((v.path||[]).length?E((v.path||[]).join("  \u2192  ")):'nothing')+'</div></div>';
+      }).join("");
+      body.innerHTML=html; return true;
+    }
+    document.addEventListener("change",function(e){ if(e.target && (e.target.id==="nvSiteDays"||e.target.id==="nvSiteOnly")) nvSiteLoad(); });
+    setInterval(function(){ var pn=document.getElementById("nvSitePanel"); if(!document.hidden && pn && pn.open && window.__nvSb) nvSiteLoad(); }, 2*60*1000);
+    (function nvSiteBoot(){
+      var tries=0, t=setInterval(function(){
+        tries++; if(tries>60){ clearInterval(t); return; }
+        if(!window.__nvSb||!document.getElementById("nvSitePanel")) return;
+        nvSiteLoad().then(function(ok){ if(ok) clearInterval(t); });
+      }, 3000);
+    })();
     (function nvPromoBoot(){
       var tries=0, t=setInterval(function(){
         tries++; if(tries>60){ clearInterval(t); return; }
