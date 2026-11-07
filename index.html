@@ -3565,6 +3565,93 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
 })();
 </script>
 
+<!-- ═════ WHATSAPP BUBBLE (7 Nov 2026) ═════
+     Bottom left (NovaX AI sits bottom right). Opens a chat with 0312 3922558
+     with the greeting filled in. On a phone it goes straight to the WhatsApp
+     app: Android through an intent (Android itself falls back to wa.me if the
+     app is missing), iOS inside the Facebook / Instagram app through
+     whatsapp:// with a wa.me fallback; Safari, Chrome and desktop use wa.me,
+     which opens the app or WhatsApp Web without a prompt. While it hands
+     over, the bubble says "Opening WhatsApp" so the tap never feels dead.
+     Above the phone bar, under the NovaX AI panel and every dialog, and it
+     steps aside when it would cover a button (as NovaX AI does). -->
+<style>
+#nv-wa{position:fixed;left:max(18px,var(--sa-l));bottom:calc(18px + var(--sa-b));z-index:925;display:flex;align-items:center;gap:10px;
+  text-decoration:none;color:#fff;-webkit-tap-highlight-color:transparent;transition:opacity .2s ease,transform .2s ease,bottom .22s ease}
+#nv-wa .nv-wa-b{width:60px;height:60px;border-radius:50%;flex:none;display:grid;place-items:center;position:relative;
+  background:#25d366;box-shadow:0 14px 36px -10px rgba(18,140,74,.75),inset 0 1px 0 rgba(255,255,255,.3);transition:transform .18s ease,box-shadow .18s ease}
+#nv-wa .nv-wa-b svg{width:32px;height:32px;display:block}
+#nv-wa:hover .nv-wa-b{transform:translateY(-2px);box-shadow:0 18px 40px -10px rgba(18,140,74,.85),inset 0 1px 0 rgba(255,255,255,.3)}
+#nv-wa:active .nv-wa-b{transform:scale(.93)}
+#nv-wa:focus-visible{outline:none}
+#nv-wa:focus-visible .nv-wa-b{outline:3px solid #0d2920;outline-offset:3px}
+#nv-wa .nv-wa-t{padding:9px 14px;border-radius:999px;background:#0d2920;color:#fff;font:700 14px/1.2 var(--body);white-space:nowrap;
+  box-shadow:0 10px 26px -12px rgba(13,41,32,.6);opacity:0;transform:translateX(-6px);pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+@media (hover:hover){ #nv-wa:hover .nv-wa-t{opacity:1;transform:none} }
+/* Handing over to WhatsApp: a ring turns and the label says what is happening. */
+#nv-wa.is-going .nv-wa-t{opacity:1;transform:none}
+#nv-wa.is-going .nv-wa-b::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:3px solid rgba(37,211,102,.25);border-top-color:#25d366;animation:nvWaSpin .8s linear infinite}
+@keyframes nvWaSpin{to{transform:rotate(360deg)}}
+#nv-wa.nv-wa-stand-back{opacity:0;pointer-events:none;transform:scale(.86)}
+@media (max-width:899px){ body.mbar-on #nv-wa{bottom:calc(84px + var(--sa-b))} }
+body.menu-open #nv-wa{display:none}
+@media (prefers-reduced-motion:reduce){ #nv-wa,#nv-wa .nv-wa-b,#nv-wa .nv-wa-t{transition:none} #nv-wa.is-going .nv-wa-b::after{animation:none;border-color:#25d366} }
+@media print{ #nv-wa{display:none} }
+</style>
+<a id="nv-wa" href="https://wa.me/923123922558?text=Assalam%20o%20Alaikum%20NovaX%2C%20I%20want%20to%20start%20shipping%20with%20you." target="_blank" rel="noopener" data-track="WhatsApp bubble" aria-label="Chat with NovaX on WhatsApp, 0312 3922558">
+  <span class="nv-wa-b"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path fill="#fff" d="M16.04 3.2C9 3.2 3.27 8.9 3.27 15.94c0 2.25.59 4.45 1.71 6.39L3.2 28.8l6.63-1.74a12.7 12.7 0 0 0 6.2 1.6h.01c7.03 0 12.76-5.72 12.76-12.76 0-3.41-1.33-6.61-3.74-9.02A12.66 12.66 0 0 0 16.04 3.2Zm0 23.31h-.01a10.6 10.6 0 0 1-5.4-1.48l-.39-.23-3.93 1.03 1.05-3.83-.25-.4a10.56 10.56 0 0 1-1.62-5.65c0-5.85 4.76-10.6 10.61-10.6 2.83 0 5.49 1.1 7.49 3.11a10.53 10.53 0 0 1 3.1 7.5c0 5.85-4.76 10.6-10.6 10.6Zm5.81-7.94c-.32-.16-1.89-.93-2.18-1.04-.29-.11-.5-.16-.71.16-.21.32-.82 1.04-1 1.25-.18.21-.37.24-.69.08-.32-.16-1.35-.5-2.57-1.59-.95-.85-1.59-1.9-1.78-2.22-.19-.32-.02-.49.14-.65.14-.14.32-.37.48-.56.16-.19.21-.32.32-.53.11-.21.05-.4-.03-.56-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.53-.71-.54h-.61c-.21 0-.56.08-.85.4-.29.32-1.12 1.09-1.12 2.66 0 1.57 1.14 3.08 1.3 3.29.16.21 2.25 3.43 5.44 4.81.76.33 1.35.52 1.81.67.76.24 1.46.21 2.01.13.61-.09 1.89-.77 2.15-1.52.27-.75.27-1.39.19-1.52-.08-.13-.29-.21-.61-.37Z"/></svg></span>
+  <span class="nv-wa-t" id="nvWaT">Chat on WhatsApp</span>
+</a>
+<script>
+(function(){
+  var a=document.getElementById("nv-wa"); if(!a) return;
+  var NUM="923123922558", MSG="Assalam o Alaikum NovaX, I want to start shipping with you.";
+  var enc=encodeURIComponent, WEB="https://wa.me/"+NUM+"?text="+enc(MSG), t=document.getElementById("nvWaT");
+  var ua=navigator.userAgent||"", android=/Android/i.test(ua), ios=/iPhone|iPad|iPod/i.test(ua), inApp=/FBAN|FBAV|FB_IAB|FBIOS|Instagram/i.test(ua);
+  function reset(){ a.classList.remove("is-going"); if(t) t.textContent="Chat on WhatsApp"; }
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden) reset(); });
+  window.addEventListener("pageshow",reset);
+  a.addEventListener("click",function(e){
+    try{ if(window.nvSiteEvent) nvSiteEvent("whatsapp", true); }catch(x){}
+    /* Desktop, and Safari / Chrome on iPhone: wa.me itself opens the app or WhatsApp Web. */
+    if(!android && !(ios && inApp)) return;
+    e.preventDefault();
+    a.classList.add("is-going"); if(t) t.textContent="Opening WhatsApp…";
+    var app = android
+      ? "intent://send?phone="+NUM+"&text="+enc(MSG)+"#Intent;scheme=whatsapp;S.browser_fallback_url="+enc(WEB)+";end"
+      : "whatsapp://send?phone="+NUM+"&text="+enc(MSG);
+    var left=false, onHide=function(){ if(document.hidden) left=true; };
+    document.addEventListener("visibilitychange",onHide);
+    setTimeout(function(){ location.href=app; },90);          /* one frame for "Opening WhatsApp" to show */
+    setTimeout(function(){                                     /* the app did not take over: the web link does */
+      document.removeEventListener("visibilitychange",onHide);
+      if(!left && !document.hidden) location.href=WEB;
+    },1800);
+  });
+  /* Step aside when it would cover a button, like NovaX AI. */
+  var pending=false, ctas=null, box=null;
+  function check(){
+    pending=false;
+    if(a.classList.contains("is-going")){ a.classList.remove("nv-wa-stand-back"); return; }
+    if(!ctas) ctas=document.querySelectorAll(".btn,.tlink,.track-in,[data-carry-quote],.offer-link");
+    if(!box){ a.classList.remove("nv-wa-stand-back"); var b=a.querySelector(".nv-wa-b"); box=b.getBoundingClientRect(); }
+    var vh=window.innerHeight, clash=false;
+    for(var i=0;i<ctas.length;i++){
+      var r=ctas[i].getBoundingClientRect();
+      if(!r.width||!r.height||r.bottom<0||r.top>vh) continue;
+      if(!(r.right<box.left||r.left>box.right||r.bottom<box.top||r.top>box.bottom)){ clash=true; break; }
+    }
+    a.classList.toggle("nv-wa-stand-back",clash);
+  }
+  function ping(){ if(pending) return; pending=true; setTimeout(function(){ requestAnimationFrame(check); },120); }
+  addEventListener("scroll",ping,{ passive:true });
+  addEventListener("resize",function(){ ctas=null; box=null; ping(); });
+  /* the phone bar moves the bubble up: measure again after it slides */
+  try{ new MutationObserver(function(){ box=null; setTimeout(ping,260); }).observe(document.body,{ attributes:true, attributeFilter:["class"] }); }catch(x){}
+  setTimeout(check,400);
+})();
+</script>
+
 <!-- ═════ VISITOR LOG (7 Nov 2026) ═════
      For the ad campaigns: one anonymous row per visit (site_visit RPC).
      Where they came from (utm_*, fbclid/gclid present, referrer), device,
