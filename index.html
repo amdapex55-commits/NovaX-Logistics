@@ -3556,6 +3556,9 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
     var first={ ua:ua.slice(0,200), landing:(location.pathname+location.search).slice(0,200), source:(q.get("utm_source")||"").slice(0,60), medium:(q.get("utm_medium")||"").slice(0,60),
       campaign:(q.get("utm_campaign")||"").slice(0,120), content:(q.get("utm_content")||"").slice(0,120), adClick:q.has("fbclid")?"facebook":(q.has("gclid")||q.has("gbraid")||q.has("wbraid"))?"google":"",
       refHost:ref.slice(0,100), device:device, os:os, app:app, sw:String(Math.round(window.innerWidth||0)) };
+    /* How long the page took to appear: first paint since they tapped the ad
+       (falls back to "now", when this script runs at the end of the page). */
+    function loadMs(){ try{ var f=performance.getEntriesByName("first-contentful-paint")[0]; return String(Math.round(f?f.startTime:performance.now())); }catch(e){ return ""; } }
     var st={ scroll:0, secs:0, seen:{}, taps:{}, path:[], events:{} }, dirty=true, visibleSince=document.hidden?0:Date.now(), base=0;
     function area(el){
       var s=el.closest("section[id]"); if(s) return s.id;
@@ -3578,7 +3581,7 @@ body.menu-open #nvai-fab,body.menu-open #nvai-pill,body.menu-open .mbar{display:
       if(!dirty && !final) return; dirty=false;
       var now=Date.now(), secs=base+(visibleSince?Math.round((now-visibleSince)/1000):0);
       /* The landing facts ride on every send (a few hundred bytes); the server only uses them for the first row. */
-      var body={ p_visit:id, p_data:Object.assign({}, first, { scroll:st.scroll, secs:secs, seen:Object.keys(st.seen), taps:st.taps, path:st.path.slice(0,40), events:Object.keys(st.events) }) };
+      var body={ p_visit:id, p_data:Object.assign({}, first, { loadMs:loadMs(), scroll:st.scroll, secs:secs, seen:Object.keys(st.seen), taps:st.taps, path:st.path.slice(0,40), events:Object.keys(st.events) }) };
       try{
         fetch(SB+"/rest/v1/rpc/site_visit",{ method:"POST", keepalive:true, headers:{ "content-type":"application/json", apikey:KEY, authorization:"Bearer "+KEY, prefer:"return=minimal" }, body:JSON.stringify(body) }).then(function(){},function(){});
       }catch(e){}

@@ -13301,7 +13301,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       var d=r.data||{}, t=d.totals||{}, n=Number(t.visits||0), E=nvEscAdmin;
       var cs=document.getElementById("nvSiteCountS"); if(cs){ cs.textContent=n+" visits"+(t.ads?" \u00b7 "+t.ads+" from ads":""); cs.className="chip"+(n?" good":""); }
       if(!n){ body.innerHTML='<p class="footer-note">No visits in this period yet. The log started on 7 Nov 2026.</p>'; return true; }
-      var tiles=[[n,"visits"],[t.ads||0,"from ads"],[nvSitePct(t.mobile,n)+"%","on a phone"],[nvSiteSecs(t.medianSecs),"typical time on page"],
+      var tiles=[[n,"visits"],[t.ads||0,"from ads"],[nvSitePct(t.mobile,n)+"%","on a phone"],[t.medianLoadMs!=null?(Math.round(t.medianLoadMs/100)/10)+" s":"\u2014","typical time for the page to appear"],[t.slowLoads||0,"waited over 4 s for the page"],[nvSiteSecs(t.medianSecs),"typical time on page"],
         [nvSitePct(t.bounced,n)+"%","left within 10 s, no tap"],[t.openedSignup||0,"opened Sign up"],[t.submittedSignup||0,"pressed Create account"],[t.signedUp||0,"opened an account"],[t.whatsapp||0,"tapped WhatsApp"],[t.demo||0,"opened the demo"]];
       var html='<div class="nvs-tiles">'+tiles.map(function(x){ return '<div class="nvs-tile"><b>'+E(String(x[0]))+'</b><span>'+E(x[1])+'</span></div>'; }).join("")+'</div>';
       /* how far down they get */
@@ -13330,7 +13330,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         var seen=(v.seen||[]).slice().sort(function(a,b){ return NV_SITE_ORDER.indexOf(a)-NV_SITE_ORDER.indexOf(b); });
         var deepest=seen.length?NV_SITE_NAMES[seen[seen.length-1]]||seen[seen.length-1]:"top only";
         return '<div class="nvs-visit"><div class="top"><b>'+E(nvQueueDay(v.at))+'</b><span class="chip'+(v.ad?' warn':'')+'">'+E(v.source)+(v.campaign?' \u00b7 '+E(v.campaign):'')+'</span>'+
-          '<span>'+E([v.app||v.os, v.device, v.city].filter(Boolean).join(" \u00b7 "))+'</span><span>'+E(nvSiteSecs(v.secs))+' \u00b7 scrolled '+Number(v.scroll||0)+'% \u00b7 reached '+E(deepest)+'</span>'+
+          '<span>'+E([v.app||v.os, v.device, v.city].filter(Boolean).join(" \u00b7 "))+'</span><span>'+(v.loadMs!=null?'page appeared in '+E(String(Math.round(v.loadMs/100)/10))+' s \u00b7 ':'')+E(nvSiteSecs(v.secs))+' on page \u00b7 scrolled '+Number(v.scroll||0)+'% \u00b7 reached '+E(deepest)+'</span>'+
           (v.signedUpAs?'<span class="chip good">Opened an account: '+E(v.signedUpAs)+'</span>':'')+'</div>'+
           ((v.events||[]).length?'<div class="nvs-path"><b>Did:</b> '+E((v.events||[]).map(function(x){ return ev[x]||x; }).join(", "))+'</div>':'')+
           '<div class="nvs-path"><b>Tapped:</b> '+((v.path||[]).length?E((v.path||[]).join("  \u2192  ")):'nothing')+'</div></div>';
