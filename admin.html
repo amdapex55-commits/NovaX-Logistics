@@ -5642,6 +5642,8 @@ html,body{ background:var(--bg); color:var(--ink); }
               <button type="button" class="admin-nav-main" data-admin-tab="flyer-orders">FLYER ORDERS <span class="nv-pickup-badge" id="flyerOpenBadge" hidden>0</span></button>
 
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
+
+              <button type="button" class="admin-nav-main" data-admin-tab="website-visitors">WEBSITE VISITORS</button>
               <a class="admin-nav-main" href="sales.html" style="text-decoration:none"><span>SALES TEAM</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
               <a class="admin-nav-main" href="care.html" style="text-decoration:none"><span>SUPPORT DESK</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
               <!-- Nova Instant shelved 9 Oct 2026: link kept in shelved/nova-instant/ -->
@@ -5761,22 +5763,6 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div><h4 class="nv-calls-h">Rider problems today <span class="chip" id="nvRiderProbCount">0</span></h4><div class="ops-list" id="nvRiderProblems"><p class="footer-note">Loading…</p></div></div>
                   <div><h4 class="nv-calls-h">Merchants gone quiet <span class="chip warn" id="nvQuietCount">0</span></h4><div class="ops-list" id="nvGoneQuiet"><p class="footer-note">Loading…</p></div><button class="ghost-btn mt-6" type="button" id="nvQuietMore" hidden onclick="nvCallsAll=!nvCallsAll;nvCallsPaint()">Show all</button></div>
                 </div>
-              </details>
-
-              <!-- 7 Nov 2026: homepage visitor log for the ad campaigns (site_visit on
-                   index.html, admin_site_report here). Who landed from where, how far
-                   they got, what they tapped, and every button nobody tapped. -->
-              <details class="panel mt-14 nv-calls-fold" id="nvSitePanel" open>
-                <summary class="nv-calls-sum"><b>Website visitors</b><span class="chip" id="nvSiteCountS">…</span><span class="nv-calls-tap">Tap to open</span></summary>
-                <div class="section-head" style="margin-top:12px">
-                  <div><p>Everyone who opens the homepage, one row per visit. No names or IP addresses; a visitor who opens an account shows their business name.</p></div>
-                  <div class="inline-actions">
-                    <select id="nvSiteDays" aria-label="Period"><option value="1">Today</option><option value="2">Since yesterday</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
-                    <select id="nvSiteOnly" aria-label="Visitors"><option value="all">All visitors</option><option value="ads">From ads</option><option value="other">Not from ads</option></select>
-                    <button class="action-btn ghost" type="button" onclick="nvSiteLoad()">Refresh</button>
-                  </div>
-                </div>
-                <div id="nvSiteBody"><p class="footer-note">Loading…</p></div>
               </details>
 
               <!-- 4 Nov 2026: signup queue. New merchants wait here until an admin
@@ -6371,6 +6357,23 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <tbody id="adminReviewQueue"><tr><td colspan="7" class="footer-note">Loading reviews…</td></tr></tbody>
                   </table>
                 </div>
+              </div>
+            </section>
+
+            <!-- 7 Nov 2026: homepage visitor log for the ad campaigns (site_visit on
+                 index.html, admin_site_report here). Its own tab, admin only (not
+                 in NV_STAFF_TABS, so limited staff never see it). -->
+            <section class="admin-module" id="admin-website-visitors">
+              <div class="panel" id="nvSitePanel">
+                <div class="section-head">
+                  <div><h3>Website visitors <span class="chip" id="nvSiteCountS">…</span></h3><p>Everyone who opens the homepage, one row per visit: where they came from, how far they got, what they tapped and what nobody taps. No names or IP addresses; a visitor who opens an account shows their business name.</p></div>
+                  <div class="inline-actions">
+                    <select id="nvSiteDays" aria-label="Period"><option value="1">Today</option><option value="2">Since yesterday</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+                    <select id="nvSiteOnly" aria-label="Visitors"><option value="all">All visitors</option><option value="ads">From ads</option><option value="other">Not from ads</option></select>
+                    <button class="action-btn ghost" type="button" onclick="nvSiteLoad()">Refresh</button>
+                  </div>
+                </div>
+                <div id="nvSiteBody"><p class="footer-note">Loading…</p></div>
               </div>
             </section>
 
@@ -12316,6 +12319,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "dashboard") { try { nvCallsLoad(false); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
       if (state.activeAdminTab === "flyer-orders") { try { nvFlyAdminLoad(); } catch(e){} }
+      if (state.activeAdminTab === "website-visitors") { try { nvSiteLoad(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
@@ -13291,7 +13295,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       var r, keys;
       try{ var res=await Promise.all([sb.rpc("admin_site_report",{ p_days:days, p_only:only }), nvSiteTappables()]); r=res[0]; keys=res[1]; if(r.error) throw new Error(r.error.message); }
       catch(e){
-        if(/Admins only/i.test(String(e.message||e))){ var pn=document.getElementById("nvSitePanel"); if(pn) pn.hidden=true; return true; }
+        if(/Admins only/i.test(String(e.message||e))){ body.innerHTML='<p class="footer-note">Admins only.</p>'; return true; }
         body.innerHTML='<p class="footer-note">Could not load: '+nvEscAdmin(e.message||e)+'</p>'; return false;
       }
       var d=r.data||{}, t=d.totals||{}, n=Number(t.visits||0), E=nvEscAdmin;
@@ -13334,12 +13338,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       body.innerHTML=html; return true;
     }
     document.addEventListener("change",function(e){ if(e.target && (e.target.id==="nvSiteDays"||e.target.id==="nvSiteOnly")) nvSiteLoad(); });
-    setInterval(function(){ var pn=document.getElementById("nvSitePanel"); if(!document.hidden && pn && pn.open && window.__nvSb) nvSiteLoad(); }, 2*60*1000);
-    (function nvSiteBoot(){
+    function nvSiteOpen(){ var m=document.getElementById("admin-website-visitors"); return !!(m && m.classList.contains("active")); }
+    setInterval(function(){ if(!document.hidden && nvSiteOpen() && window.__nvSb) nvSiteLoad(); }, 2*60*1000);
+    (function nvSiteBoot(){   // the page reopened on this tab
       var tries=0, t=setInterval(function(){
         tries++; if(tries>60){ clearInterval(t); return; }
-        if(!window.__nvSb||!document.getElementById("nvSitePanel")) return;
-        nvSiteLoad().then(function(ok){ if(ok) clearInterval(t); });
+        if(!window.__nvSb) return;
+        clearInterval(t); if(nvSiteOpen()) nvSiteLoad();
       }, 3000);
     })();
     (function nvPromoBoot(){
@@ -21508,6 +21513,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["flyer-orders","Flyer Orders","Flyers merchants bought, to send with the rider"],
+      ["website-visitors","Website Visitors","Who lands on the homepage from the ads, and what they tap"],
       ["reviews","Reviews","Approve merchant testimonials"],
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
       ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],
