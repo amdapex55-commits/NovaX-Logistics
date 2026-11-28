@@ -24955,3 +24955,69 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
   };
 })();
+
+/* ═══ Account deletion (28 Nov 2026) ═══════════════════════════════════
+   Google Play and Apple require that a person can start deleting their
+   account from inside the app. The owner asks here; the server
+   (client_request_account_deletion) checks it is the owner, records a
+   30-day request and opens an operations issue. The panel stays hidden for
+   team logins and when the status cannot be read -- nothing is shown that
+   the server would refuse. sql_novax_account_deletion_20261128.sql. */
+(function(){
+  "use strict";
+  function el(id){ return document.getElementById(id); }
+  function day(iso){
+    try{ return new Date(iso).toLocaleDateString("en-PK",{ day:"numeric", month:"long", year:"numeric" }); }
+    catch(e){ return String(iso||"").slice(0,10); }
+  }
+  function say(t, bad){ var m=el("nvDelAcctMsg"); if(m){ m.textContent=t||""; m.style.color=bad?"#c0392b":""; } }
+  function paint(d){
+    var box=el("nvDelAcct"); if(!box) return;
+    if(!d || (!d.can_request && !d.pending)){ box.hidden=true; return; }
+    box.hidden=false;
+    el("nvDelAcctAsk").hidden=!!d.pending;
+    el("nvDelAcctPending").hidden=!d.pending;
+    if(d.pending){
+      el("nvDelAcctPendingMsg").textContent="You asked to delete this account on "+day(d.requested_at)+
+        ". NovaX will close it by "+day(d.due_at)+" and email you when it is done. Changed your mind? Keep your account below.";
+    }
+  }
+  function load(){
+    var sb=window.__nvSb; if(!sb || window.__NOVAX_DEMO) return;
+    sb.rpc("client_account_deletion_status",{}).then(function(r){
+      if(!r || r.error){ paint(null); return; }
+      var d=r.data; if(typeof d==="string"){ try{ d=JSON.parse(d); }catch(e){ d=null; } }
+      paint(d);
+    });
+  }
+  async function ask(){
+    var sb=window.__nvSb; if(!sb) return;
+    var ok=await window.nvAsk({ title:"Delete your NovaX account?",
+      body:"We close it within 30 days, after parcels on the road are finished and your wallet is paid out. Your login, profile and CNIC photos are then deleted. You can cancel until then.",
+      match:"DELETE", ok:"Ask to delete", cancel:"Keep my account", danger:true });
+    if(!ok) return;
+    var btn=el("nvDelAcctBtn"); if(btn) btn.disabled=true;
+    say("Sending…");
+    var r=await sb.rpc("client_request_account_deletion",{ p_reason:(el("nvDelAcctReason").value||"").trim() });
+    if(btn) btn.disabled=false;
+    if(r.error){ say("Could not send that — "+r.error.message, true); return; }
+    say("");
+    load();
+  }
+  async function cancel(){
+    var sb=window.__nvSb; if(!sb) return;
+    var r=await sb.rpc("client_cancel_account_deletion",{});
+    if(r.error){ say("Could not cancel — "+r.error.message, true); return; }
+    say("Your account stays open.");
+    load();
+  }
+  function boot(){
+    var b=el("nvDelAcctBtn"); if(!b) return;
+    b.addEventListener("click", ask);
+    el("nvDelAcctCancel").addEventListener("click", cancel);
+    var tries=0;
+    (function wait(){ if(window.__nvSb && window.__novaxGateSession) return load(); if(++tries<60) setTimeout(wait,500); })();
+  }
+  window.nvAccountDeletionLoad=load;
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+})();

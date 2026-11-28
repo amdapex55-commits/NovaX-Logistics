@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v305";
+var CACHE = "novax-v306";
 /* Nova Instant is paused (19 Oct 2026), so its pages are no longer kept offline. */
 var SHELLS = ["/client.html", "/rider.html"];
 var PRECACHE = SHELLS.concat(["/assets/favicon.svg", "/offline.html"]);
@@ -83,6 +83,10 @@ self.addEventListener("fetch", function (event) {
 
   /* Never touch anything that is not ours: Supabase, the CDN, analytics. */
   if (url.origin !== self.location.origin) return;
+  /* 28 Nov 2026: the Shopify app (/shopify/*) is served by a Worker and
+     returns live JSON. Cache-first below would hand it stale state, and the
+     homepage now registers this worker too. Not ours to cache. */
+  if (url.pathname.indexOf("/shopify/") === 0 || url.pathname.indexOf("/cdn-cgi/") === 0) return;
 
   /* The kill switch. */
   if (url.searchParams.has("nosw")) {

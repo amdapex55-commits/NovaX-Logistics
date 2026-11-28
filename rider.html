@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- 28 Nov 2026: Content Security Policy. The page holds CNIC, customer and wallet data, so
+       scripts, connections and images may only come from NovaX, our Supabase project and the two
+       CDNs listed. 'unsafe-inline' stays until the inline handlers are moved out. Clickjacking is
+       covered by the X-Frame-Options header (frame-ancestors cannot be set from a meta tag). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://rhzunbzbdzicajqtohwp.supabase.co https://api.qrserver.com https://barcode.tec-it.com; media-src 'self' blob: https://rhzunbzbdzicajqtohwp.supabase.co; connect-src 'self' https://rhzunbzbdzicajqtohwp.supabase.co wss://rhzunbzbdzicajqtohwp.supabase.co https://cdn.jsdelivr.net; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; upgrade-insecure-requests">
   <!-- Opens the connection to the database while the page loads, so the
        first lookup does not pay for it. crossorigin: supabase-js fetches
        without credentials, which uses a separate connection pool. -->

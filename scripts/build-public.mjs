@@ -27,6 +27,7 @@ const publicFiles = [
   "new-password.html",
   "offline.html",
   "privacy.html",
+  "delete-account.html",
   "rider.html",
   "sales.html",
   "shopify-orders-to-novax-bookings.html",

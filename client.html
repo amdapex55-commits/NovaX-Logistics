@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- 28 Nov 2026: Content Security Policy. The page holds CNIC, customer and wallet data, so
+       scripts, connections and images may only come from NovaX, our Supabase project and the two
+       CDNs listed. 'unsafe-inline' stays until the inline handlers are moved out. Clickjacking is
+       covered by the X-Frame-Options header (frame-ancestors cannot be set from a meta tag). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://rhzunbzbdzicajqtohwp.supabase.co https://api.qrserver.com https://barcode.tec-it.com; media-src 'self' blob: https://rhzunbzbdzicajqtohwp.supabase.co; connect-src 'self' https://rhzunbzbdzicajqtohwp.supabase.co wss://rhzunbzbdzicajqtohwp.supabase.co https://cdn.jsdelivr.net; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; upgrade-insecure-requests">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <!-- Clickjacking guard (1 Oct 2026). GitHub Pages cannot send
@@ -101,11 +106,19 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=b8cdbcb9">
+  <link rel="preload" as="script" href="client-app.min.js?v=f80d9cb0">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<!-- 28 Nov 2026: the portal is the installable app, so it carries the manifest too
+     (it was only on the homepage). start_url opens the portal. -->
+<link rel="manifest" href="/assets/site.webmanifest">
+<meta name="theme-color" content="#04100b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NovaX">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <style>
     :root{
@@ -2384,6 +2397,10 @@ try{
   ::view-transition-group(nv-who){animation-duration:.6s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
   ::view-transition-old(root),::view-transition-new(root){animation-duration:.38s}
 }
+  /* 28 Nov 2026: Delete account panel (Profile). */
+  .nv-del-acct{ border-color:rgba(192,57,43,.35); }
+  .action-btn.danger{ background:#c0392b; border-color:#c0392b; color:#fff; }
+  .action-btn.danger:hover{ background:#a93226; }
 </style>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
@@ -2843,7 +2860,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=b8cdbcb9" defer></script>
+  <script src="client-app.min.js?v=f80d9cb0" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3702,6 +3719,24 @@ try{
                     <div class="nv-pf-label"><span>CLIENT / SHIPPER</span><b id="nvPfPvLabel">Your shop</b></div>
                   </details>
                 </aside>
+              </div>
+
+              <!-- 28 Nov 2026: account deletion the owner can start in the app
+                   (Google Play and Apple require it). client-app.js "Account
+                   deletion" block drives it; the server decides who may. -->
+              <div class="panel nv-del-acct" id="nvDelAcct" hidden>
+                <div class="section-head"><div><h3>Delete your NovaX account</h3>
+                  <p>We close the account within 30 days. Parcels already on the road are delivered or returned first and your wallet balance is paid out. Then your login, profile and CNIC photos are deleted. Booking and payment records the law requires us to keep stay, without your login.</p></div></div>
+                <div id="nvDelAcctAsk">
+                  <label class="footer-note" for="nvDelAcctReason">Why are you leaving? (optional)</label>
+                  <textarea id="nvDelAcctReason" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;margin-top:6px"></textarea>
+                  <div class="inline-actions" style="margin-top:10px"><button type="button" class="action-btn danger" id="nvDelAcctBtn">Ask to delete my account</button></div>
+                </div>
+                <div id="nvDelAcctPending" hidden>
+                  <p class="footer-note" id="nvDelAcctPendingMsg" role="status"></p>
+                  <div class="inline-actions" style="margin-top:10px"><button type="button" class="ghost-btn" id="nvDelAcctCancel">Keep my account</button></div>
+                </div>
+                <p class="footer-note" id="nvDelAcctMsg" role="status" aria-live="polite"></p>
               </div>
 
               <div class="nv-pf-savebar" id="nvPfSaveBar" hidden>

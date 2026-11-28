@@ -1093,6 +1093,16 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
   ::view-transition-old(root),::view-transition-new(root){animation-duration:.38s}
 }
 </style>
+<script>
+  /* 28 Nov 2026: the homepage carried the manifest but never registered the
+     service worker, so installing from here gave an app with no offline
+     fallback. Same worker as the portal (HTML network-first), registered
+     after load so it never competes with first paint. ?nosw=1 is the kill
+     switch, handled inside sw.js and in client.html. */
+  try{ if("serviceWorker" in navigator && location.protocol==="https:" && !/[?&]nosw=/.test(location.search)){
+    window.addEventListener("load",function(){ navigator.serviceWorker.register("/sw.js").catch(function(){}); });
+  } }catch(e){}
+</script>
 </head>
 <body>
 <span id="topSentinel" aria-hidden="true"></span>
