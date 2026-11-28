@@ -1251,10 +1251,11 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
 <script>
 (function(){
   var h=document.documentElement; if(!h.classList.contains("nv-app-cold")) return;
-  /* Carries on the portal's launch screen: up for 1.5 s from the app's start in all, at least 0.3 s here. */
-  var el=document.getElementById("nvAppBoot"), t0=Date.now(), start=window.__nvAppBootAt||t0;
+  /* Carries on the portal's launch screen, which was barely painted before the portal
+     sent a signed-out phone here: it stays 1.2 s on this page, then the front page shows. */
+  var el=document.getElementById("nvAppBoot"), t0=Date.now();
   function out(){ if(!el) return; el.classList.add("out"); setTimeout(function(){ try{ el.remove(); }catch(e){} },400); }
-  function ready(){ setTimeout(out, Math.max(300-(Date.now()-t0), 1500-(Date.now()-start), 0)); }
+  function ready(){ setTimeout(out, Math.max(1200-(Date.now()-t0), 0)); }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",ready); else ready();
 })();
 </script>
