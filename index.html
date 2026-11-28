@@ -753,6 +753,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .fld textarea{min-height:84px;padding:12px 14px;resize:vertical;line-height:1.5}
 .fld input:not([type=range]):focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 .fld input::placeholder,.fld textarea::placeholder{color:#7d8a83}
+.fld-opt{margin-left:6px;font-weight:600;font-size:11.5px;color:var(--muted)}
 .fld-hint{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.45}
 .fld-hint.fld-warn{color:#8a4b00;background:#fff4d6;border:1px solid #ecd28a;border-radius:8px;padding:8px 10px;font-weight:600}
 .fld-hint[hidden]{display:none}
@@ -1106,223 +1107,244 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
    Inside the NovaX app this page is reached only signed out. The website
    is not shown there: html.nv-app hides every section of it and shows
    #appHome instead. The sign-in, sign-up, forgot-password and workspace
-   launch screens are the website's own (same code, same database). */
+   launch screens are the website's own (same code, same database).
+   Polish pass (design review, 28 Nov): every colour, border, shadow and
+   timing below comes from the tokens on html.nv-app, so the front page, the
+   sheets and the scanner stay one system. Nothing waits on an animation to
+   be visible; all motion sits under prefers-reduced-motion: no-preference. */
 #appHome{display:none}
 html.nv-app,html.nv-app body{background:#04100b !important}
 html.nv-app body>*:not(#appHome):not(.ov):not(#launch):not(#nvAppBoot):not(.ah-scanov):not(script):not(style){display:none !important}
-html.nv-app #appHome{--ah-lime:#dcf54b;--ah-lime-ink:#0b1f14;--ah-green:#1fd283;--ah-deep:#0f2d1f;--ah-paper:#f7f6f1;--ah-ink:#0d1a13;--ah-mute:#58635c;--ah-line:#e2e2da;
-  position:relative;display:flex;flex-direction:column;min-height:100vh;min-height:100svh;box-sizing:border-box;isolation:isolate;
-  padding:calc(env(safe-area-inset-top) + 10px) 16px calc(env(safe-area-inset-bottom) + 14px);
-  background:#04100b;color:#fff;font-family:var(--body);-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+html.nv-app{
+  --ah-night:#04100b;--ah-green:#1fd283;--ah-deep:#123a27;--ah-lime:#dcf54b;--ah-lime-rest:#cde14e;--ah-lime-ink:#0b1f14;
+  --ah-lime-wash:rgba(220,245,75,.30);--ah-green-wash:rgba(31,210,131,.13);
+  --ah-paper:#f7f6f1;--ah-sunk:#efeee8;--ah-ink:#0d1a13;--ah-mute:#58635c;--ah-faint:#9aa29c;
+  --ah-line:rgba(13,26,19,.11);--ah-line-night:rgba(234,255,245,.24);--ah-on-night:#eafff5;--ah-on-night-2:rgba(234,255,245,.64);
+  --ah-red:#c0412f;--ah-red-line:#e3958a;
+  --ah-sh-1:0 1px 2px rgba(13,26,19,.10),0 0 0 1px rgba(13,26,19,.04);
+  --ah-sh-2:0 1px 0 rgba(255,255,255,.6) inset,0 18px 40px -24px rgba(0,0,0,.55);
+  --ah-sh-3:0 -10px 40px rgba(0,0,0,.25);
+  --ah-ease:cubic-bezier(.22,.9,.28,1);--ah-t:.2s}
+html.nv-app #appHome{position:relative;display:flex;flex-direction:column;min-height:100vh;min-height:100svh;box-sizing:border-box;isolation:isolate;
+  padding:calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 6px);
+  background:var(--ah-night);color:#fff;font-family:var(--body);-webkit-tap-highlight-color:transparent;overflow-x:hidden}
 #appHome *{box-sizing:border-box}
-.ah-glow{position:absolute;inset:0 0 auto 0;height:520px;z-index:-1;pointer-events:none;
-  background:radial-gradient(70% 60% at 88% 8%,rgba(31,210,131,.22),transparent 70%),radial-gradient(60% 50% at 0% 40%,rgba(220,245,75,.07),transparent 70%),
-  linear-gradient(rgba(20,199,123,.06) 1px,transparent 1px) 0 0/36px 36px,linear-gradient(90deg,rgba(20,199,123,.06) 1px,transparent 1px) 0 0/36px 36px;
-  -webkit-mask-image:linear-gradient(#000 40%,transparent);mask-image:linear-gradient(#000 40%,transparent)}
-/* header */
-.ah-top{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px}
-.ah-brand{display:flex;align-items:center;gap:10px;min-width:0;color:#fff}
-.ah-brand img{width:36px;height:36px;border-radius:10px;background:#fff;flex:0 0 auto;box-shadow:0 4px 14px rgba(0,0,0,.35)}
-.ah-brand .ah-div{width:1px;height:26px;background:rgba(255,255,255,.22)}
-.ah-brand b{display:block;font:800 18px/1 var(--display);letter-spacing:-.015em}
-.ah-brand small{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:rgba(234,255,245,.6);margin-top:5px}
-.ah-acts{display:flex;align-items:center;gap:4px;flex:0 0 auto}
-.ah-acts{gap:8px}
-.ah-login{color:#eafff5;font-weight:800;font-size:14.5px;text-decoration:none;padding:0 16px;min-height:44px;display:inline-flex;align-items:center;border-radius:999px;
-  border:1.5px solid rgba(234,255,245,.38);background:rgba(255,255,255,.04);white-space:nowrap}
-.ah-create{background:var(--ah-lime);color:var(--ah-lime-ink);font-weight:800;font-size:13.5px;text-decoration:none;padding:0 14px;min-height:44px;border-radius:999px;display:inline-flex;align-items:center;white-space:nowrap;
-  box-shadow:0 0 0 1px rgba(255,255,255,.25) inset,0 6px 18px rgba(220,245,75,.18)}
+#appHome svg{stroke-width:1.9}
+/* The grid sits behind the header and hero only and is gone before the card. */
+.ah-glow{position:absolute;inset:0 0 auto 0;height:300px;z-index:-1;pointer-events:none;
+  background:radial-gradient(70% 60% at 88% 8%,rgba(31,210,131,.20),transparent 70%),
+  linear-gradient(rgba(31,210,131,.045) 1px,transparent 1px) 0 0/44px 44px,linear-gradient(90deg,rgba(31,210,131,.045) 1px,transparent 1px) 0 0/44px 44px;
+  -webkit-mask-image:linear-gradient(#000 35%,transparent 92%);mask-image:linear-gradient(#000 35%,transparent 92%)}
+/* header: mark, wordmark and both buttons share one centre line */
+.ah-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px}
+.ah-brand{display:flex;align-items:center;gap:9px;min-width:0;color:#fff}
+.ah-brand img{width:34px;height:34px;border-radius:9px;background:#fff;flex:none;box-shadow:var(--ah-sh-1)}
+.ah-brand b{display:block;font:700 18px/1 var(--display);letter-spacing:-.015em}
+.ah-brand small{display:block;font:600 9.5px/1 var(--mono);letter-spacing:.13em;color:var(--ah-on-night-2);margin-top:3px}
+.ah-acts{display:flex;align-items:center;gap:8px;flex:none}
+.ah-login,.ah-create{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:999px;font:600 14px/1 var(--body);text-decoration:none;white-space:nowrap;border:1px solid transparent}
+.ah-login{color:var(--ah-on-night);border-color:var(--ah-line-night);background:rgba(255,255,255,.04);font-weight:700}
+.ah-create{background:var(--ah-lime-rest);color:var(--ah-lime-ink)}
+.ah-create:active,.ah-create:focus-visible{background:var(--ah-lime)}
 /* hero */
-.ah-hero{padding:14px 2px 0}
-.ah-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0;padding:6px 11px 6px 9px;border-radius:999px;border:1px solid rgba(126,224,175,.22);background:rgba(10,35,24,.6);
-  font-size:12px;font-weight:600;color:#bfe3d0;letter-spacing:.01em}
-.ah-eyebrow i{width:7px;height:7px;border-radius:50%;background:var(--ah-green);box-shadow:0 0 0 3px rgba(31,210,131,.2)}
-.ah-h{font:800 clamp(30px,8.8vw,40px)/1.14 var(--display);letter-spacing:-.035em;margin:6px 0 0;color:#fff}
-.ah-h mark{background:var(--ah-lime);color:var(--ah-lime-ink);padding:0 .12em;border-radius:6px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
-.ah-route{display:block;width:calc(100% + 32px);margin:8px -16px -6px;height:auto;overflow:visible}
-.ah-route .ah-rail{fill:none;stroke:rgba(31,210,131,.22);stroke-width:7;stroke-linecap:round}
-.ah-route .ah-line{fill:none;stroke:var(--ah-green);stroke-width:2.2;stroke-linecap:round}
-.ah-route .ah-node{fill:#04100b;stroke:var(--ah-green);stroke-width:2.2}
+.ah-hero{padding:6px 2px 0}
+.ah-h{font:700 clamp(26px,7.8vw,35px)/1.16 var(--display);letter-spacing:-.028em;margin:0;color:#fff}
+.ah-h mark{display:inline-block;line-height:1;padding:.05em .1em .09em;margin-left:-.05em;border-radius:.16em;background:var(--ah-lime);color:var(--ah-lime-ink)}
+/* route drawing: one stroke width, equal nodes, faded ends */
+.ah-route{display:block;width:calc(100% + 32px);margin:12px -16px 0;height:auto;overflow:visible}
+.ah-route .ah-line{fill:none;stroke:url(#ahFade);stroke-width:2;stroke-linecap:round}
+.ah-route .ah-chev{fill:none;stroke:var(--ah-green);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.55}
+.ah-route .ah-node{fill:var(--ah-night);stroke:var(--ah-green);stroke-width:2}
 .ah-route .ah-node-done{fill:var(--ah-green)}
-.ah-route text{fill:#eafff5;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;font-weight:700}
-.ah-route .ah-chev{fill:none;stroke:var(--ah-green);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
-.ah-route .ah-bc{fill:rgba(234,255,245,.85)}
-.ah-route .ah-pkg-halo{fill:rgba(220,245,75,.25)}
-.ah-route .ah-pkg{fill:var(--ah-lime)}
-/* card */
-.ah-card{position:relative;margin-top:24px;background:var(--ah-paper);color:var(--ah-ink);border-radius:22px;padding:8px 16px 4px;
-  box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 30px 60px -20px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.06)}
-.ah-tag{position:absolute;right:18px;top:-22px;height:24px;padding:6px 12px 0 18px;background:var(--ah-paper);border-radius:8px 8px 0 0;display:flex;gap:8px;align-items:flex-start;
+.ah-route .ah-node-next{stroke:rgba(31,210,131,.45)}
+.ah-route text{fill:var(--ah-on-night-2);font-family:var(--mono);font-size:8px;letter-spacing:.16em;font-weight:600}
+.ah-route .ah-pkg{fill:var(--ah-lime);stroke:var(--ah-night);stroke-width:2}
+/* card: a sheet that runs to the bottom, footer pinned to its foot, so the
+   footer stays put whichever of Track, Ship or Ride is open */
+.ah-card{position:relative;flex:1 0 auto;display:flex;flex-direction:column;margin-top:20px;background:var(--ah-paper);color:var(--ah-ink);border-radius:22px;padding:6px 14px 0;box-shadow:var(--ah-sh-2)}
+.ah-tag{position:absolute;right:18px;top:-20px;height:22px;padding:6px 12px 0 18px;background:var(--ah-paper);border-radius:8px 8px 0 0;display:flex;gap:8px;align-items:flex-start;
   clip-path:polygon(12px 0,100% 0,100% 100%,0 100%)}
-.ah-tag i{display:block;width:70px;height:12px;background:repeating-linear-gradient(90deg,var(--ah-ink) 0 2px,transparent 2px 3px,var(--ah-ink) 3px 4px,transparent 4px 6px,var(--ah-ink) 6px 8px,transparent 8px 9px)}
-.ah-tag span{font-family:var(--mono);font-size:8px;letter-spacing:.14em;font-weight:800;line-height:12px;color:var(--ah-ink)}
-/* segmented tabs */
-.ah-tabs{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px;padding:4px;border-radius:14px;background:#ebeae3}
-.ah-tabs button{position:relative;z-index:1;background:none;border:0;border-radius:11px;padding:7px 4px 8px;color:#47524b;font:inherit;cursor:pointer;min-height:52px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:color .2s}
-.ah-tabs b{display:flex;align-items:center;gap:6px;font:800 17px/1.1 var(--display);letter-spacing:-.01em}
-.ah-tabs b svg{width:17px;height:17px;flex:0 0 auto}
-.ah-tabs small{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.06em;font-weight:800}
-.ah-tabs button[aria-selected="true"]{color:var(--ah-ink)}
-.ah-ink{position:absolute;z-index:0;left:4px;top:4px;bottom:4px;width:calc((100% - 16px)/3);border-radius:11px;background:#fff;
-  box-shadow:0 0 0 1px rgba(13,26,19,.08),0 1px 2px rgba(13,26,19,.08);transition:transform .28s cubic-bezier(.3,.7,.2,1)}
-.ah-ink::after{content:"";position:absolute;left:50%;bottom:5px;width:18px;height:3px;margin-left:-9px;border-radius:2px;background:#14a866}
+.ah-tag i{display:block;width:62px;height:10px;opacity:.5;background:repeating-linear-gradient(90deg,var(--ah-ink) 0 2px,transparent 2px 3px,var(--ah-ink) 3px 4px,transparent 4px 5px,var(--ah-ink) 5px 7px,transparent 7px 8px,var(--ah-ink) 8px 9px,transparent 9px 11px)}
+.ah-tag span{font:600 8px/10px var(--mono);letter-spacing:.14em;color:var(--ah-mute)}
+/* segmented control */
+.ah-tabs{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:8px;padding:4px;border-radius:14px;background:var(--ah-sunk)}
+.ah-tabs button{position:relative;z-index:1;background:none;border:0;border-radius:11px;padding:6px 4px 9px;color:var(--ah-mute);font:inherit;cursor:pointer;min-height:50px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.ah-tabs b{display:flex;align-items:center;justify-content:center;gap:6px;font:700 16px/1.1 var(--display);letter-spacing:-.01em}
+.ah-tabs b svg{width:16px;height:16px;flex:none}
+.ah-tabs small{display:block;font:600 11.5px/1 var(--body);color:var(--ah-mute)}
+.ah-tabs button[aria-selected="true"],.ah-tabs button[aria-selected="true"] small{color:var(--ah-ink)}
+.ah-ink{position:absolute;z-index:0;left:4px;top:4px;bottom:4px;width:calc((100% - 16px)/3);border-radius:11px;background:#fff;box-shadow:var(--ah-sh-1)}
+.ah-ink::after{content:"";position:absolute;left:50%;bottom:4px;width:var(--ah-ul,24px);height:2px;transform:translateX(-50%);border-radius:2px;background:var(--ah-green)}
 /* panes */
-.ah-pane{padding:14px 2px 0}
+.ah-panes{flex:1 0 auto;display:flex;flex-direction:column}
+.ah-pane{flex:1 0 auto;display:flex;flex-direction:column;padding:12px 2px 0;min-width:0}
 .ah-pane[hidden]{display:none}
-@media (prefers-reduced-motion:no-preference){.ah-pane:not([hidden]){animation:ahIn .26s cubic-bezier(.3,.7,.2,1)}}
-@keyframes ahIn{from{transform:translateY(6px)}to{transform:none}}
-.ah-k{font-family:var(--mono);font-size:12px;letter-spacing:.16em;font-weight:800;margin:0;color:#14a866}
-.ah-h2{font:800 clamp(25px,7.4vw,31px)/1.08 var(--display);letter-spacing:-.025em;margin:6px 0 0;color:var(--ah-ink)}
-.ah-p{font-size:14.5px;line-height:1.5;color:var(--ah-mute);margin:8px 0 0}
-.ah-field{display:flex;align-items:center;margin-top:12px;border:1.5px solid #d3d8d3;border-radius:14px;background:#fff;min-height:58px;padding-left:14px;transition:border-color .15s,box-shadow .15s}
-.ah-field:focus-within{border-color:#14a866;box-shadow:0 0 0 4px rgba(20,168,102,.14)}
-.ah-field>svg{width:20px;height:20px;color:#8a938d;flex:0 0 auto}
-.ah-field input{flex:1;min-width:0;border:0;background:none;font:600 17px var(--body);padding:0 10px;color:var(--ah-ink);height:54px;outline:0;text-transform:uppercase;letter-spacing:.02em}
-.ah-field input::placeholder{text-transform:none;color:#8a938d;font-weight:500;letter-spacing:0}
-.ah-scan{display:inline-flex;align-items:center;gap:6px;margin:6px;border:0;border-radius:10px;background:#eef6d0;font:800 14px var(--display);color:var(--ah-ink);padding:0 12px;height:44px;cursor:pointer}
-.ah-scan svg{width:20px;height:20px}
-.ah-go{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:12px;min-height:56px;border:0;border-radius:14px;
-  background:linear-gradient(180deg,#14402b,#0d2a1c);color:#fff;font:800 17.5px var(--display);letter-spacing:-.01em;text-decoration:none;cursor:pointer;
-  box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 10px 22px -10px rgba(13,42,28,.8)}
-.ah-go svg{width:20px;height:20px;transition:transform .2s}
-.ah-go:active svg{transform:translateX(3px)}
-.ah-go:active,.ah-alt:active,.ah-create:active,.ah-tile:active,.ah-scan:active{transform:scale(.985)}
-.ah-alt{display:flex;align-items:center;justify-content:center;width:100%;margin-top:10px;min-height:52px;border-radius:14px;background:var(--ah-lime);color:var(--ah-lime-ink);font:800 16px var(--display);text-decoration:none}
-.ah-live{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ah-mute);margin:12px 0 0}
-.ah-live i{position:relative;width:8px;height:8px;border-radius:50%;background:#1fbf72}
-@media (prefers-reduced-motion:no-preference){.ah-live i::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid #1fbf72;opacity:0;animation:ahPing 2.4s ease-out infinite}}
-@keyframes ahPing{0%{transform:scale(.5);opacity:.7}100%{transform:scale(1.6);opacity:0}}
-.ah-msg{font-size:13.5px;font-weight:600;color:#b4321f;margin:12px 0 0;display:flex;align-items:center;min-height:20px}
-/* The hint and the error share one line, so an error never pushes the page down. */
-.ah-slot{margin-top:12px;min-height:20px}
-.ah-slot>.ah-live,.ah-slot>.ah-msg{margin:0;min-height:20px;line-height:20px}
-@media (max-height:900px){.ah-slot{margin-top:8px}}
-.ah-clr{flex:0 0 auto;border:0;background:none;color:#47524b;font:800 13px var(--display);min-width:44px;height:44px;padding:0 6px;cursor:pointer;border-radius:10px}
-.ah-clr.x{font-size:22px;font-weight:500;line-height:1}
-.ah-field.bad{border-color:#d9776a;box-shadow:0 0 0 3px rgba(217,119,106,.18)}
-.ah-hr{border:0;border-top:1px solid var(--ah-line);margin:12px 0}
-.ah-tile{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:1px solid var(--ah-line);border-radius:16px;background:#fff;text-align:left;font:inherit;color:inherit;cursor:pointer;text-decoration:none}
-.ah-tile .ah-ic{flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:#eef6d0;display:flex;align-items:center;justify-content:center;color:var(--ah-ink)}
-.ah-tile .ah-ic svg{width:22px;height:22px}
-.ah-tile b{display:block;font:800 16px/1.2 var(--display);color:var(--ah-ink)}
-.ah-tile span{display:block;font-size:13px;line-height:1.35;color:var(--ah-mute);margin-top:2px}
-.ah-tile .ah-arr{margin-left:auto;flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:var(--ah-lime);display:flex;align-items:center;justify-content:center;color:var(--ah-lime-ink)}
+.ah-h2{font:700 clamp(21px,6.6vw,27px)/1.1 var(--display);letter-spacing:-.02em;margin:0;color:var(--ah-ink);white-space:nowrap}
+.ah-p{font-size:14px;line-height:1.45;color:var(--ah-mute);margin:8px 0 0;max-width:34ch;text-wrap:pretty}
+.ah-field{display:flex;align-items:center;gap:4px;margin-top:10px;border:1px solid var(--ah-line);border-radius:14px;background:#fff;min-height:56px;padding-left:14px}
+.ah-field:focus-within{border-color:var(--ah-green);box-shadow:inset 0 0 0 1px var(--ah-green),0 0 0 3px var(--ah-green-wash)}
+.ah-field>svg{width:19px;height:19px;color:var(--ah-faint);flex:none}
+.ah-field input{flex:1;min-width:0;border:0;background:none;font:600 17px/1 var(--body);padding:0 6px;color:var(--ah-ink);height:52px;outline:0;text-transform:uppercase;letter-spacing:.02em;
+  font-variant-numeric:tabular-nums slashed-zero;font-feature-settings:"tnum" 1,"zero" 1}
+.ah-field input::placeholder{text-transform:none;color:var(--ah-faint);font-weight:500;letter-spacing:0}
+.ah-scan{display:inline-flex;align-items:center;gap:6px;margin:5px 5px 5px 4px;border:0;border-radius:10px;background:var(--ah-sunk);font:700 14px/1 var(--display);color:var(--ah-ink);padding:0 12px;height:44px;cursor:pointer;white-space:nowrap}
+.ah-scan svg{width:19px;height:19px}
+.ah-scan[aria-busy="true"]{color:var(--ah-mute)}
+.ah-go{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:10px;min-height:52px;border:0;border-radius:14px;
+  background:var(--ah-deep);color:#fff;font:700 17px/1 var(--display);letter-spacing:-.01em;text-decoration:none;cursor:pointer;box-shadow:var(--ah-sh-1)}
+.ah-go svg,.ah-go .ah-spin{width:20px;height:20px;flex:none}
+.ah-go .ah-spin{display:none}
+.ah-go.is-busy svg{display:none}
+.ah-go.is-busy .ah-spin{display:block}
+.ah-spin{border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85}
+@media (prefers-reduced-motion:no-preference){.ah-spin{animation:ahSpin .7s linear infinite}}
+@keyframes ahSpin{to{transform:rotate(360deg)}}
+.ah-alt{display:flex;align-items:center;justify-content:center;width:100%;margin-top:6px;min-height:48px;border-radius:14px;border:1px solid var(--ah-line);background:#fff;color:var(--ah-ink);font:600 16px/1 var(--display);text-decoration:none}
+.ah-demo{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;font-size:13.5px;font-weight:600;color:var(--ah-mute);text-decoration:none}
+.ah-demo span{font:600 11px/1 var(--body);padding:4px 7px;border-radius:999px;background:var(--ah-sunk);color:var(--ah-mute)}
+/* The hint and the error share one fixed line, so an error never moves anything. */
+.ah-slot{margin-top:8px;min-height:20px}
+.ah-slot>.ah-live,.ah-slot>.ah-msg{margin:0;min-height:20px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ah-live{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ah-mute)}
+.ah-live i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--ah-green)}
+.ah-msg{display:block;font-size:13.5px;font-weight:600;color:var(--ah-red)}
+.ah-msg[hidden],.ah-live[hidden]{display:none}
+.ah-clr{flex:none;border:0;background:none;color:var(--ah-mute);font:700 13px/1 var(--display);min-width:44px;height:44px;padding:0 6px;cursor:pointer;border-radius:10px}
+.ah-clr.x{font-size:22px;font-weight:500}
+.ah-field.bad{border-color:var(--ah-red-line);box-shadow:inset 0 0 0 1px var(--ah-red-line)}
+.ah-hr{border:0;border-top:1px solid rgba(13,26,19,.07);margin:10px 0;flex:none}
+.ah-tile{display:flex;align-items:center;gap:12px;width:100%;padding:10px 10px 10px 12px;border:1px solid var(--ah-line);border-radius:16px;background:#fff;text-align:left;font:inherit;color:inherit;cursor:pointer;text-decoration:none}
+.ah-ic,.ah-feats li i{flex:none;width:32px;height:32px;border-radius:10px;background:var(--ah-lime-wash);display:flex;align-items:center;justify-content:center;color:var(--ah-ink)}
+.ah-ic svg,.ah-feats li svg{width:18px;height:18px}
+.ah-tile b{display:block;font:700 15.5px/1.2 var(--display);color:var(--ah-ink)}
+.ah-tile span span{display:block;font-size:13px;line-height:1.3;color:var(--ah-mute);margin-top:2px}
+.ah-tile .ah-arr{margin-left:auto;flex:none;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--ah-faint)}
 .ah-tile .ah-arr svg{width:18px;height:18px}
-.ah-links{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:0 12px;margin:0;font-size:13.5px}
-.ah-links a{color:var(--ah-ink);font-weight:700;text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:4px;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
-.ah-links span{color:#b8beb9}
-.ah-feats{list-style:none;margin:14px 0 4px;padding:0;display:grid;gap:10px}
-.ah-feats li{display:flex;align-items:center;gap:12px;font-size:14.5px;font-weight:600;color:var(--ah-ink)}
-.ah-feats li i{flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:#eef6d0;display:flex;align-items:center;justify-content:center}
-.ah-feats li svg{width:18px;height:18px}
-.ah-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 0 12px}
-.ah-foot button,.ah-foot a{display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:1px solid var(--ah-line);border-radius:14px;background:transparent;
-  font:800 14.5px var(--display);color:var(--ah-ink);text-decoration:none;cursor:pointer}
-.ah-foot svg{width:18px;height:18px}
-.ah-foot button[aria-expanded="true"]{background:#fff;border-color:#c9cfc9}
-.ah-recent{display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px}
+.ah-links{display:flex;align-items:center;justify-content:center;gap:0 22px;margin:2px 0 0;font-size:13px}
+.ah-links a{color:var(--ah-mute);font-weight:600;text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:rgba(13,26,19,.25);text-underline-offset:4px;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap}
+.ah-feats{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:5px}
+.ah-feats li{display:flex;align-items:flex-start;gap:12px;font-size:14.5px;font-weight:600;color:var(--ah-ink);line-height:1.3}
+.ah-feats li>span{padding-top:6px}
+#ahPaneRide .ah-feats li i{background:var(--ah-green-wash)}
+.ah-cities{font-size:13px;line-height:1.4;color:var(--ah-mute);margin:8px 0 0;text-wrap:pretty}
+.ah-pane-end{margin-top:auto;padding-top:10px}
+.ah-pane-end.ah-more{padding-top:0}
+.ah-pane-end .ah-go{margin-top:0}
+/* footer of the card */
+.ah-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 0 12px;margin-top:auto}
+.ah-foot button,.ah-foot a{display:flex;align-items:center;justify-content:center;gap:7px;min-height:46px;padding:0 8px;white-space:nowrap;border:1px solid var(--ah-line);border-radius:14px;background:transparent;
+  font:600 13.5px/1 var(--display);color:var(--ah-ink);text-decoration:none;cursor:pointer}
+.ah-foot svg{width:18px;height:18px;flex:none;color:var(--ah-mute)}
+.ah-foot button[aria-expanded="true"]{background:#fff}
+.ah-recent{display:flex;flex-wrap:wrap;gap:8px;padding:0 0 12px}
 .ah-recent[hidden]{display:none}
-.ah-recent a{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ah-ink);background:#fff;border:1px solid #d6dbd7;border-radius:10px;padding:9px 11px;text-decoration:none}
+.ah-recent a{font:700 13px/1 var(--mono);color:var(--ah-ink);background:#fff;border:1px solid var(--ah-line);border-radius:10px;padding:10px 11px;text-decoration:none;font-variant-numeric:tabular-nums slashed-zero}
 .ah-recent p{margin:0;font-size:13.5px;color:var(--ah-mute)}
-.ah-legal{margin:8px 0 0;display:flex;justify-content:center;align-items:center;gap:4px;font-size:13px;color:rgba(234,255,245,.55)}
-.ah-legal a{color:rgba(234,255,245,.78);text-decoration:none;min-height:44px;min-width:44px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center}
+.ah-recent .ah-paste{border:1px dashed rgba(13,26,19,.25);border-radius:10px;background:#fff;font:700 13.5px var(--display);color:var(--ah-ink);min-height:44px;padding:0 14px;cursor:pointer}
+.ah-legal{margin:2px 0 0;display:flex;justify-content:center;align-items:center;gap:2px;font-size:13px;color:var(--ah-on-night-2)}
+.ah-legal a{color:var(--ah-on-night-2);text-decoration:none;min-height:44px;min-width:44px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center}
 /* scanner */
 .ah-scanov{position:fixed;inset:0;z-index:5000;background:#000;display:flex;flex-direction:column}
 .ah-scanov video{flex:1;width:100%;object-fit:cover;min-height:0}
-.ah-scanov .ah-frame{position:absolute;left:12%;right:12%;top:32%;height:22%;border:3px solid #dcf54b;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
+.ah-scanov .ah-frame{position:absolute;left:12%;right:12%;top:32%;height:22%;border:3px solid var(--ah-lime);border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35)}
 .ah-scanov .ah-scanbar{position:relative;z-index:1;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px);background:#06170f;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ah-scanov .ah-scanbar p{margin:0;font-size:14.5px}
-.ah-why{align-items:center;justify-content:flex-end;background:rgba(3,12,8,.72)}
-.ah-whybox{width:100%;max-width:520px;background:#fff;color:var(--ah-ink);border-radius:20px 20px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom) + 18px)}
-.ah-whybox h3{margin:0 0 8px;font:800 20px var(--display)}
+.ah-why{align-items:center;justify-content:flex-end;background:rgba(3,12,8,.6)}
+.ah-whybox{width:100%;max-width:520px;background:var(--ah-paper);color:var(--ah-ink);border-radius:22px 22px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom) + 18px);box-shadow:var(--ah-sh-3)}
+.ah-whybox h3{margin:0 0 8px;font:700 20px var(--display)}
 .ah-whybox p{margin:0 0 8px;font-size:15px;line-height:1.45;color:#2b352f}
-.ah-whybox .ah-whysub{font-size:13.5px;color:#56615a}
-.ah-whygo{display:block;width:100%;min-height:52px;margin-top:12px;border:0;border-radius:14px;background:#0d2a1c;color:#fff;font:800 16px var(--display)}
-.ah-whyno{display:block;width:100%;min-height:48px;margin-top:6px;border:0;background:none;color:#2b352f;font:700 15px var(--display)}
+.ah-whybox .ah-whysub{font-size:13.5px;color:var(--ah-mute)}
+.ah-whygo{display:block;width:100%;min-height:52px;margin-top:12px;border:0;border-radius:14px;background:var(--ah-deep);color:#fff;font:700 16px var(--display)}
+.ah-whyno{display:block;width:100%;min-height:48px;margin-top:6px;border:0;background:none;color:#2b352f;font:600 15px var(--display)}
+.ah-scanov .ah-scanbar button{border:0;border-radius:10px;background:var(--ah-lime);color:var(--ah-lime-ink);font:700 15px var(--display);min-height:44px;padding:0 18px}
 .ah-scanov .ah-scanbar .ah-torch{background:#1d3a2b;color:#fff}
-.ah-scanov .ah-scanbar .ah-torch[aria-pressed="true"]{background:#fff3b0;color:#0b1f14}
-.ah-scanov .ah-scanbar button{border:0;border-radius:10px;background:#dcf54b;color:#0b1f14;font:800 15px var(--display);min-height:44px;padding:0 18px}
-@media (min-width:600px){html.nv-app #appHome{max-width:560px;margin:0 auto}}
-/* Compact phones (review 28 Nov): under 360px the header keeps the brand and
-   one account action (Create account is in the card too); short or narrow
-   screens get a smaller hero and no route drawing, so tracking comes first. */
-@media (max-width:359px){
-  .ah-create{display:none}
-  .ah-brand .ah-div,.ah-brand small{display:none}
-  .ah-hx{display:none}
-  .ah-clr:not(.x){display:none}
-}
-@media (max-width:359px),(max-height:700px){
-  .ah-h{font-size:clamp(25px,7.6vw,30px)}
-  .ah-route{display:none}
-  .ah-card{margin-top:30px}
-}
-/* The 44px legal links must not push the page into a scroll on ordinary
-   phones (~812pt): take the room from the card's inner spacing instead. */
-@media (max-height:900px){
-  .ah-legal{margin-top:0}
-  .ah-tabs{margin-top:4px}
-  .ah-pane .ah-field,.ah-pane .ah-go,.ah-pane .ah-live{margin-top:8px}
-  .ah-card .ah-hr{margin-top:6px;margin-bottom:6px}
-}
-.ah-recent .ah-paste{border:1px dashed #b9c2bb;border-radius:10px;background:#fff;font:800 13.5px var(--display);color:var(--ah-ink);min-height:44px;padding:0 14px;cursor:pointer}
+.ah-scanov .ah-scanbar .ah-torch[aria-pressed="true"]{background:#fff3b0;color:var(--ah-lime-ink)}
 .ah-net{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:4000;display:none;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;
-  background:#2a1f05;color:#ffe9a8;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  background:#2a1f05;color:#ffe9a8;font-size:14px;font-weight:600;box-shadow:var(--ah-sh-2)}
 .ah-net.show{display:flex}
 .ah-net.ok{background:#0e3a24;color:#c9f7df}
-.ah-net i{width:9px;height:9px;border-radius:50%;background:currentColor;flex:0 0 auto}
-/* ═════ Lighter, smoother (28 Nov 2026, "everything feels heavy") ═════
-   Fewer extra-bold weights, softer shadows and borders, and motion that
-   eases instead of snapping: presses shrink and spring back, the chosen
-   tab's pane fades up, and the sign-in / sign-up boxes slide up from the
-   bottom like a phone sheet. Nothing waits on an animation to be visible. */
-html.nv-app .ah-brand b{font-weight:700}
-html.nv-app .ah-brand img{box-shadow:0 2px 8px rgba(0,0,0,.25)}
-html.nv-app .ah-login{font-weight:700;border-color:rgba(234,255,245,.28)}
-html.nv-app .ah-create{font-weight:700;box-shadow:none}
-html.nv-app .ah-h{font-weight:700;font-size:clamp(28px,7.8vw,35px);line-height:1.16;letter-spacing:-.028em}
-html.nv-app .ah-route .ah-rail{stroke:rgba(31,210,131,.14);stroke-width:5}
-html.nv-app .ah-card{box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 18px 40px -24px rgba(0,0,0,.55)}
-html.nv-app .ah-tabs{background:#efeee8}
-html.nv-app .ah-tabs b{font-weight:700;font-size:16px}
-html.nv-app .ah-tabs small{font-weight:600;font-size:11.5px;letter-spacing:.05em;color:#5c665f}
-html.nv-app .ah-tabs button[aria-selected="true"] small{color:#2b352f}
-html.nv-app .ah-ink{box-shadow:0 1px 3px rgba(13,26,19,.10);transition:transform .34s cubic-bezier(.22,.9,.28,1)}
-html.nv-app .ah-k{font-weight:700;color:#159a5f}
-html.nv-app .ah-h2{font-weight:700;font-size:clamp(24px,6.8vw,28px);letter-spacing:-.02em}
-html.nv-app .ah-field{border:1px solid #d9ddd8}
-html.nv-app .ah-field input{font-weight:600}
-html.nv-app .ah-scan,html.nv-app .ah-clr{font-weight:700}
-html.nv-app .ah-go{font-weight:700;font-size:17px;background:#123a27;box-shadow:0 6px 16px -10px rgba(13,42,28,.7)}
-html.nv-app .ah-tile b{font-weight:700}
-html.nv-app .ah-tile{border-color:#e7e7e0}
-html.nv-app .ah-links a{font-weight:600;text-decoration-thickness:1px;text-decoration-color:rgba(13,26,19,.35)}
-html.nv-app .ah-foot button,html.nv-app .ah-foot a{font-weight:700;border-color:#e4e4dc}
+.ah-net i{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
+@media (min-width:600px){html.nv-app #appHome{max-width:560px;margin:0 auto}}
+/* Compact phones: under 360px the header keeps the brand and one account
+   action (Create account is in the card too); short or narrow screens get a
+   smaller hero and no route drawing, so tracking comes first. */
+@media (max-width:359px){
+  .ah-create{display:none}
+  .ah-brand small{display:none}
+  .ah-hx{display:none}
+  .ah-clr:not(.x){display:none}
+  .ah-scan{margin-left:8px}
+  .ah-links{gap:0 14px;font-size:12.5px}
+  .ah-foot svg,.ah-tile .ah-ic{display:none}
+  .ah-foot button,.ah-foot a{font-size:13px}
+}
+#appHome.ah-tight .ah-route{display:none}
+#appHome.ah-tight .ah-card{margin-top:30px}
+/* Short phones (about 650pt and less): if it still does not fit, the tab
+   captions go, the headline is smaller and the spacing tighter. */
+#appHome.ah-tight2 .ah-h{font-size:clamp(23px,6.6vw,26px)}
+#appHome.ah-tight2 .ah-top{min-height:44px}
+#appHome.ah-tight2 .ah-card{margin-top:26px}
+#appHome.ah-tight2 .ah-tabs small{display:none}
+#appHome.ah-tight2 .ah-tabs button{min-height:44px;padding:4px}
+#appHome.ah-tight2 .ah-ink::after{bottom:3px}
+#appHome.ah-tight2 .ah-pane{padding-top:10px}
+#appHome.ah-tight2 .ah-feats{gap:3px;margin-top:8px}
+#appHome.ah-tight2 .ah-feats li i{width:28px;height:28px}
+#appHome.ah-tight2 .ah-feats li>span{padding-top:4px}
+#appHome.ah-tight2 .ah-cities{display:none}
+#appHome.ah-tight2 .ah-hr{margin:8px 0}
+#appHome.ah-tight2 .ah-foot{padding-bottom:10px}
+/* Measuring (one synchronous pass, never painted): panes at their own height. */
+html.nv-app #appHome.ah-measure,#appHome.ah-measure .ah-card,#appHome.ah-measure .ah-panes,#appHome.ah-measure .ah-pane{min-height:0;flex:none}
+#appHome.ah-measure .ah-pane-end,#appHome.ah-measure .ah-foot{margin-top:0}
+@media (max-height:700px){.ah-h{font-size:clamp(24px,7vw,28px)}}
+/* Motion: short, eased, one thing at a time. A press goes down in 100 ms and
+   comes back at once; the tab thumb slides in 180 ms; a new pane fades in
+   with a small sideways shift after the thumb has moved; sheets slide up. */
 @media (prefers-reduced-motion:no-preference){
-  html.nv-app .ah-go,html.nv-app .ah-alt,html.nv-app .ah-create,html.nv-app .ah-login,html.nv-app .ah-tile,html.nv-app .ah-scan,html.nv-app .ah-clr,
-  html.nv-app .ah-foot button,html.nv-app .ah-foot a,html.nv-app .ah-tabs button{transition:transform .18s cubic-bezier(.22,.9,.28,1),background-color .18s,color .18s,border-color .18s}
-  html.nv-app .ah-go:active,html.nv-app .ah-alt:active,html.nv-app .ah-create:active,html.nv-app .ah-login:active,html.nv-app .ah-tile:active,
-  html.nv-app .ah-foot button:active,html.nv-app .ah-foot a:active,html.nv-app .ah-tabs button:active{transform:scale(.97);transition-duration:.08s}
-  html.nv-app .ah-pane:not([hidden]){animation:ahUp .3s cubic-bezier(.22,.9,.28,1)}
-  @keyframes ahUp{from{opacity:.25;transform:translateY(8px)}to{opacity:1;transform:none}}
-  html.nv-app .ah-recent:not([hidden]){animation:ahUp .24s cubic-bezier(.22,.9,.28,1)}
-  html.nv-app .ov.on{animation:ovIn .22s ease}
-  html.nv-app .ov.on .mdl{animation:ahSheet .34s cubic-bezier(.22,.9,.28,1)}
+  .ah-go,.ah-alt,.ah-create,.ah-login,.ah-tile,.ah-scan,.ah-clr,.ah-foot button,.ah-foot a,.ah-tabs button,.ah-demo{transition:transform 0s,background-color var(--ah-t),color var(--ah-t),border-color var(--ah-t)}
+  .ah-go:active,.ah-alt:active,.ah-create:active,.ah-login:active,.ah-tile:active,.ah-scan:active,.ah-foot button:active,.ah-foot a:active,.ah-tabs button:active,.ah-demo:active{transform:scale(.97);transition:transform .1s var(--ah-ease)}
+  .ah-field{transition:border-color .15s,box-shadow .15s}
+  .ah-ink{transition:transform .18s var(--ah-ease)}
+  .ah-ink::after{transition:width .18s var(--ah-ease)}
+  #appHome.ah-moved .ah-pane:not([hidden]){animation:ahSide .22s var(--ah-ease) .06s backwards}
+  #appHome.ah-moved.ah-back .ah-pane:not([hidden]){animation-name:ahSideBack}
+  @keyframes ahSide{from{opacity:.3;transform:translateX(10px)}to{opacity:1;transform:none}}
+  @keyframes ahSideBack{from{opacity:.3;transform:translateX(-10px)}to{opacity:1;transform:none}}
+  .ah-recent:not([hidden]){animation:ahFade .2s var(--ah-ease)}
+  @keyframes ahFade{from{opacity:.3}to{opacity:1}}
+  html.nv-app .ov.on{animation:ovIn .2s ease}
+  html.nv-app .ov.on .mdl{animation:ahSheet .25s var(--ah-ease)}
   @keyframes ahSheet{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 }
-/* In the app the boxes are bottom sheets: thumb-reach, and they feel native. */
+.ah-tabs button:active{background:rgba(13,26,19,.05)}
+/* In the app the boxes are bottom sheets: thumb-reach, one paper colour, a
+   grabber that really drags them closed. */
 html.nv-app .ov{align-items:flex-end;padding:0;padding-top:max(24px,env(safe-area-inset-top));background:rgba(3,12,8,.55)}
-html.nv-app .mdl{max-width:560px;border-radius:22px 22px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
-html.nv-app .mdl-top h3{font-weight:700}
+html.nv-app .mdl{max-width:560px;background:var(--ah-paper);border-radius:22px 22px 0 0;padding-top:10px;padding-bottom:calc(env(safe-area-inset-bottom) + 18px);box-shadow:var(--ah-sh-3)}
+html.nv-app .mdl.ah-dragging{transition:none}
+html.nv-app .ah-grab{display:flex;justify-content:center;align-items:center;height:26px;margin:-4px -20px 2px;touch-action:none;cursor:grab}
+html.nv-app .ah-grab::before{content:"";width:38px;height:5px;border-radius:3px;background:rgba(13,26,19,.2)}
+html.nv-app .mdl-top{align-items:flex-start;margin-bottom:16px}
+html.nv-app .mdl-top h3{font:700 22px/1.2 var(--display);letter-spacing:-.02em;text-wrap:balance}
+html.nv-app .mdl-x{margin-top:-9px;background:#fff;border-color:var(--ah-line);color:var(--ah-mute)}
+html.nv-app .fld label{margin-bottom:6px}
+html.nv-app .fld-hint{margin-top:4px}
+html.nv-app .fld-opt{margin-left:6px;font-weight:600;font-size:11.5px;color:var(--ah-mute);padding:2px 7px;border-radius:999px;background:var(--ah-sunk)}
+html.nv-app .fld input:not([type=range]),html.nv-app .fld select,html.nv-app .fld textarea{border-width:1px;border-color:rgba(13,26,19,.16)}
+html.nv-app .fld input:not([type=range]):focus,html.nv-app .fld select:focus,html.nv-app .fld textarea:focus{border-color:var(--ah-green);box-shadow:inset 0 0 0 1px var(--ah-green),0 0 0 3px var(--ah-green-wash)}
+html.nv-app .mdl .btn-primary{background:var(--ah-deep);color:#fff;border-color:var(--ah-deep);box-shadow:var(--ah-sh-1);font-weight:700}
+html.nv-app .mdl .btn-primary:disabled{opacity:.7}
+html.nv-app .form-msg.err{background:#fbeeec;border-color:#f1cfc9;color:var(--ah-red);font-weight:600}
 html.nv-app body{overscroll-behavior-y:none}
-html.nv-app .ah-legal{margin-top:auto;padding-top:8px}
 /* Large text (review 28 Nov). Android scales every font with the phone's
    font size (up to 200%) while the layout keeps its width, so the header
    collided and the tabs ran off the card. With big text the page may scroll;
    the header keeps one action, the tab captions and route drawing go, and
    the headline stays moderate so the tracking field comes first. */
-html.nv-bigtext .ah-create,html.nv-bigtext .ah-brand .ah-div,html.nv-bigtext .ah-brand small,html.nv-bigtext .ah-route,html.nv-bigtext .ah-tabs small,html.nv-bigtext .ah-hx,html.nv-bigtext .ah-tag{display:none}
+html.nv-bigtext .ah-create,html.nv-bigtext .ah-brand small,html.nv-bigtext .ah-route,html.nv-bigtext .ah-tabs small,html.nv-bigtext .ah-hx,html.nv-bigtext .ah-tag{display:none}
 html.nv-bigtext .ah-brand b{font-size:16px}
 html.nv-bigtext .ah-login{padding:0 12px;font-size:13px}
 html.nv-bigtext .ah-h{font-size:17px;line-height:1.2}
@@ -1333,10 +1355,9 @@ html.nv-bigtext .ah-field{flex-wrap:wrap}
 html.nv-bigtext .ah-field input{flex:1 1 60%;font-size:15px}
 html.nv-bigtext .ah-scan{font-size:13px}
 html.nv-bigtext .ah-links{flex-direction:column;gap:0}
-html.nv-bigtext .ah-links span{display:none}
 html.nv-bigtext .ah-links a{white-space:normal;text-align:center}
-html.nv-bigtext .ah-h2{font-size:22px}
-html.nv-bigtext .ah-slot,html.nv-bigtext .ah-slot>*{min-height:0;line-height:1.35}
+html.nv-bigtext .ah-h2{font-size:22px;white-space:normal}
+html.nv-bigtext .ah-slot,html.nv-bigtext .ah-slot>*{min-height:0;line-height:1.35;white-space:normal}
 html.nv-bigtext .ah-foot{flex-direction:column}
 </style>
 <script>/* How much the phone enlarges text: a 16px probe reads back larger when the
@@ -1444,7 +1465,7 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
 <main id="appHome" aria-label="NovaX">
   <div class="ah-glow" aria-hidden="true"></div>
   <header class="ah-top">
-    <span class="ah-brand"><img src="/assets/icon-192.png" alt="" width="36" height="36"><span class="ah-div" aria-hidden="true"></span><span><b>NovaX</b><small>LOGISTICS</small></span></span>
+    <span class="ah-brand"><img src="/assets/icon-192.png" alt="" width="34" height="34"><span><b>NovaX</b><small>LOGISTICS</small></span></span>
     <nav class="ah-acts" aria-label="Account">
       <a class="ah-login" href="#signin" data-mdl="signin" data-ah-merchant>Log in</a>
       <a class="ah-create" href="#signup" data-mdl="signup">Create account</a>
@@ -1452,86 +1473,90 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
   </header>
   <section class="ah-hero">
     <h1 class="ah-h">Move smarter.<br>Every parcel, <mark>visible.</mark></h1>
-    <svg class="ah-route" viewBox="0 0 400 68" aria-hidden="true" focusable="false">
-      <path class="ah-rail" d="M-20 18H74C110 18 128 44 160 44H222C262 44 286 10 318 10H420"/>
-      <path class="ah-line" id="ahRoutePath" d="M-20 18H74C110 18 128 44 160 44H222C262 44 286 10 318 10H420"/>
-      <path class="ah-chev" d="M30 3l5 5-5 5M38 3l5 5-5 5M266 16l5 5-5 5M274 16l5 5-5 5"/>
-      <circle class="ah-node ah-node-done" cx="74" cy="18" r="5"/><circle class="ah-node" cx="200" cy="44" r="5"/><circle class="ah-node" cx="348" cy="10" r="5"/>
-      <text x="74" y="36" text-anchor="middle">PICKUP</text><g transform="translate(61.4,41)"><g class="ah-bc"><rect x="0.0" y="0" width="1.8" height="8"/><rect x="2.7" y="0" width="0.9" height="8"/><rect x="4.5" y="0" width="1.8" height="8"/><rect x="8.1" y="0" width="0.9" height="8"/><rect x="9.9" y="0" width="2.7" height="8"/><rect x="13.5" y="0" width="0.9" height="8"/><rect x="16.2" y="0" width="0.9" height="8"/><rect x="18.0" y="0" width="1.8" height="8"/><rect x="20.7" y="0" width="0.9" height="8"/><rect x="22.5" y="0" width="1.8" height="8"/></g></g>
-      <text x="200" y="62" text-anchor="middle">TRANSIT</text>
-      <text x="348" y="28" text-anchor="middle">DELIVERED</text><g transform="translate(335.4,33)"><g class="ah-bc"><rect x="0.0" y="0" width="1.8" height="8"/><rect x="2.7" y="0" width="0.9" height="8"/><rect x="4.5" y="0" width="1.8" height="8"/><rect x="8.1" y="0" width="0.9" height="8"/><rect x="9.9" y="0" width="2.7" height="8"/><rect x="13.5" y="0" width="0.9" height="8"/><rect x="16.2" y="0" width="0.9" height="8"/><rect x="18.0" y="0" width="1.8" height="8"/><rect x="20.7" y="0" width="0.9" height="8"/><rect x="22.5" y="0" width="1.8" height="8"/></g></g>
-      <g class="ah-runner"><circle class="ah-pkg-halo" r="9"/><circle class="ah-pkg" r="4.5"/>
-        <animateMotion dur="6.5s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="spline" keySplines=".45 0 .55 1"><mpath href="#ahRoutePath"/></animateMotion></g>
+    <svg class="ah-route" viewBox="0 0 400 48" aria-hidden="true" focusable="false">
+      <defs><linearGradient id="ahFade" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="400" y2="0"><stop offset="0" stop-color="#1fd283" stop-opacity="0"/><stop offset=".13" stop-color="#1fd283"/><stop offset=".87" stop-color="#1fd283"/><stop offset="1" stop-color="#1fd283" stop-opacity="0"/></linearGradient></defs>
+      <path class="ah-line" id="ahRoutePath" d="M-20 10H78C112 10 130 26 162 26H232C266 26 286 10 316 10H420"/>
+      <path class="ah-chev" d="M36 5l5 5-5 5M44 5l5 5-5 5"/>
+      <circle class="ah-node ah-node-done" cx="78" cy="10" r="4.5"/><circle class="ah-node" cx="197" cy="26" r="4.5"/><circle class="ah-node ah-node-next" cx="342" cy="10" r="4.5"/>
+      <text x="78" y="45" text-anchor="middle">PICKUP</text><text x="197" y="45" text-anchor="middle">TRANSIT</text><text x="342" y="45" text-anchor="middle">DELIVERED</text>
+      <g class="ah-runner" opacity="0"><circle class="ah-pkg" r="4"/>
+        <animateMotion dur="9s" repeatCount="indefinite" calcMode="linear" keyPoints="0;1" keyTimes="0;1"><mpath href="#ahRoutePath"/></animateMotion>
+        <animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;1;1;0;0" keyTimes="0;.05;.9;.96;1"/></g>
     </svg>
   </section>
   <section class="ah-card">
     <div class="ah-tag" aria-hidden="true"><i></i><span>AWB</span></div>
     <div class="ah-tabs" role="tablist" aria-label="Who are you?">
       <span class="ah-ink" aria-hidden="true"></span>
-      <button type="button" role="tab" id="ahTabTrack" aria-controls="ahPaneTrack" aria-selected="true" data-ah-tab="track"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Track</b><small>CUSTOMER</small></button>
-      <button type="button" role="tab" id="ahTabShip" aria-controls="ahPaneShip" aria-selected="false" tabindex="-1" data-ah-tab="ship"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Ship</b><small>MERCHANT</small></button>
-      <button type="button" role="tab" id="ahTabRide" aria-controls="ahPaneRide" aria-selected="false" tabindex="-1" data-ah-tab="ride"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M5.5 17h6l3-7h-4M14.5 10l4 7M9 7h3"/></svg>Ride</b><small>RIDER</small></button>
+      <button type="button" role="tab" id="ahTabTrack" aria-controls="ahPaneTrack" aria-selected="true" data-ah-tab="track"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Track</b><small>Customer</small></button>
+      <button type="button" role="tab" id="ahTabShip" aria-controls="ahPaneShip" aria-selected="false" tabindex="-1" data-ah-tab="ship"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Ship</b><small>Merchant</small></button>
+      <button type="button" role="tab" id="ahTabRide" aria-controls="ahPaneRide" aria-selected="false" tabindex="-1" data-ah-tab="ride"><b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M5.5 17h6l3-7h-4M14.5 10l4 7M9 7h3"/></svg>Ride</b><small>Rider</small></button>
     </div>
 
+    <div class="ah-panes">
     <div class="ah-pane" id="ahPaneTrack" role="tabpanel" aria-labelledby="ahTabTrack" data-ah-pane="track">
-      <p class="ah-k">TRACK A PARCEL</p>
       <h2 class="ah-h2">Find it instantly.</h2>
       <form class="ah-field" id="ahTrack" novalidate>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="ahAwb" type="text" inputmode="text" placeholder="Tracking ID" aria-label="Tracking ID or AWB" aria-describedby="ahHint" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search" maxlength="24">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="ahAwb" type="text" inputmode="text" placeholder="Tracking ID" aria-label="Tracking ID (the AWB on your label)" aria-describedby="ahHint" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search" maxlength="24">
         <button type="button" class="ah-clr" id="ahClr" aria-label="Paste a copied tracking ID">Paste</button>
-        <button type="button" class="ah-scan" id="ahScan" aria-label="Scan the barcode on the label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 8v8M10.5 8v8M14 8v8M17 8v8"/></svg>Scan</button>
+        <button type="button" class="ah-scan" id="ahScan" aria-label="Scan the barcode on the label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 8v8M10.5 8v8M14 8v8M17 8v8"/></svg><span>Scan</span></button>
         <input type="file" id="ahScanFile" accept="image/*" capture="environment" hidden>
       </form>
-      <button type="submit" form="ahTrack" class="ah-go" id="ahTrackGo">Track parcel <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      <button type="submit" form="ahTrack" class="ah-go" id="ahTrackGo"><span>Track parcel</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg><span class="ah-spin" aria-hidden="true"></span></button>
       <div class="ah-slot">
-        <p class="ah-live" id="ahHint"><i aria-hidden="true"></i>Looks like N0010023<span class="ah-hx" style="margin-left:-4px">&middot; No account needed</span></p>
+        <p class="ah-live" id="ahHint"><i aria-hidden="true"></i><span>Looks like N0010023<span class="ah-hx"> &middot; No account needed</span></span></p>
         <p class="ah-msg" id="ahMsg" role="alert" hidden></p>
       </div>
+      <div class="ah-pane-end ah-more">
       <hr class="ah-hr">
       <button type="button" class="ah-tile" data-ah-tab="ship">
-        <span class="ah-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+        <span class="ah-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
         <span><b>Shipping with NovaX?</b><span>Pickups, COD and payouts.</span></span>
-        <span class="ah-arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        <span class="ah-arr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
       </button>
-      <p class="ah-links"><a href="#signup" data-mdl="signup">Create free merchant account</a><span aria-hidden="true">|</span><a href="#signin" data-ah-rider>Rider log in</a></p>
+      <p class="ah-links"><a href="#signup" data-mdl="signup">Create free merchant account</a><a href="#signin" data-ah-rider>Rider log in</a></p>
+      </div>
     </div>
 
     <div class="ah-pane" id="ahPaneShip" role="tabpanel" aria-labelledby="ahTabShip" data-ah-pane="ship" hidden>
-      <p class="ah-k">FOR MERCHANTS</p>
       <h2 class="ah-h2">Ship with NovaX.</h2>
       <ul class="ah-feats">
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z"/></svg></i>Book parcels and print labels</li>
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg></i>Follow every delivery live</li>
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l12-4v4M16 13.5h2"/></svg></i>COD paid into your NovaX wallet</li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z"/></svg></i><span>Book parcels and print labels</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg></i><span>Follow every delivery live</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l12-4v4M16 13.5h2"/></svg></i><span>COD lands in your wallet</span></li>
       </ul>
-      <p class="ah-p">Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi.</p>
-      <a class="ah-go" href="#signin" data-mdl="signin" data-ah-merchant>Log in to your portal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      <a class="ah-alt" href="#signup" data-mdl="signup">Create free merchant account</a>
-      <p class="ah-links"><a href="client.html?demo=1">See the portal first, no signup</a></p>
+      <p class="ah-cities">Free pickup in Karachi, Lahore, Islamabad and Rawalpindi.</p>
+      <div class="ah-pane-end">
+        <a class="ah-go" href="#signin" data-mdl="signin" data-ah-merchant><span>Log in to your portal</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="ah-alt" href="#signup" data-mdl="signup">Create free merchant account</a>
+        <a class="ah-demo" href="client.html?demo=1">See the portal first <span>Demo</span></a>
+      </div>
     </div>
 
     <div class="ah-pane" id="ahPaneRide" role="tabpanel" aria-labelledby="ahTabRide" data-ah-pane="ride" hidden>
-      <p class="ah-k">FOR RIDERS</p>
       <h2 class="ah-h2">Your day, in one app.</h2>
       <ul class="ah-feats">
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></i>Your pickups and deliveries</li>
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 8v8M10.5 8v8M14 8v8M17 8v8"/></svg></i>Scan AWBs as you go</li>
-        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></i>COD cash you collected, kept straight</li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></i><span>See pickups and deliveries</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 8v8M10.5 8v8M14 8v8M17 8v8"/></svg></i><span>Scan AWBs as you go</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></i><span>Reconcile your COD cash</span></li>
       </ul>
-      <p class="ah-p">Sign in with the email and password the NovaX office gave you.</p>
-      <a class="ah-go" href="#signin" data-ah-rider>Rider log in <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <p class="ah-p">Log in with the email and password the NovaX office gave you.</p>
+      <div class="ah-pane-end">
+        <a class="ah-go" href="#signin" data-ah-rider><span>Open rider workspace</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+    </div>
     </div>
 
     <hr class="ah-hr">
     <div class="ah-foot">
-      <button type="button" id="ahRecentBtn" aria-expanded="false" aria-controls="ahRecent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Recent tracking</button>
-      <a href="support.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Help &amp; support</a>
+      <button type="button" id="ahRecentBtn" aria-expanded="false" aria-controls="ahRecent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Recent tracking</button>
+      <a href="support.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Help &amp; support</a>
     </div>
     <div class="ah-recent" id="ahRecent" hidden></div>
   </section>
   <p class="ah-legal"><a href="privacy.html">Privacy</a><span aria-hidden="true">&middot;</span><a href="terms.html">Terms</a></p>
-  <div class="ah-net" id="ahNet" role="status" aria-live="polite"><i aria-hidden="true"></i><span>No internet. Tracking and sign-in will work again as soon as you reconnect.</span></div>
+  <div class="ah-net" id="ahNet" role="status" aria-live="polite"><i aria-hidden="true"></i><span>No internet. Tracking and log in work again once you reconnect.</span></div>
 </main>
 <span id="topSentinel" aria-hidden="true"></span>
 
@@ -2308,8 +2333,8 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
     <div class="fld"><label for="merchantEmail">Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com" autocomplete="email" inputmode="email" maxlength="254"></div>
     <div class="fld"><label for="merchantPassword">Create password</label><input id="merchantPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password" minlength="8" maxlength="72" aria-describedby="merchantPasswordHint"><div class="form-msg" id="merchantPasswordHint" style="min-height:0"></div></div>
     <div class="fld"><label for="merchantPasswordConfirm">Confirm password</label><input id="merchantPasswordConfirm" type="password" placeholder="Type it again" autocomplete="new-password" minlength="8" maxlength="72"></div>
-    <div class="fld"><label for="merchantWebsite">Website link if any</label><input id="merchantWebsite" type="url" placeholder="yourstore.com" inputmode="url" autocomplete="url" maxlength="200"></div>
-    <div class="fld"><label for="merchantRef">Referral code (optional)</label><input id="merchantRef" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="If someone from NovaX called you"><p class="fld-hint">The code of the NovaX person who helped you sign up, if any.</p></div>
+    <div class="fld"><label for="merchantWebsite">Website <span class="fld-opt">Optional</span></label><input id="merchantWebsite" type="url" placeholder="yourstore.com" inputmode="url" autocomplete="url" maxlength="200"></div>
+    <div class="fld"><label for="merchantRef">Referral code <span class="fld-opt">Optional</span></label><input id="merchantRef" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="If someone from NovaX called you"><p class="fld-hint">The code of the NovaX person who helped you sign up, if any.</p></div>
     <label class="nv-accept" for="merchantAccept"><input id="merchantAccept" type="checkbox" required><span>I have read and accept the <a href="/terms.html" target="_blank" rel="noopener">Merchant Agreement</a>.</span></label>
     <button class="btn btn-primary" type="submit" id="merchantSubmit">Create my workspace</button>
     <div class="form-msg" id="mSignup" role="alert"></div>
@@ -2671,7 +2696,8 @@ function nvSigninPaint(){
     var go=$("signinAlreadyGo"); go.setAttribute("href",NV_SIGNED.target); go.textContent=NV_PORTAL_WORDS[NV_SIGNED.target]||"Open your portal";
     return;
   }
-  title.textContent=rider?"Rider sign in":"Sign in";
+  var APPW=document.documentElement.classList.contains("nv-app");
+  title.textContent=rider?(APPW?"Rider log in":"Rider sign in"):(APPW?"Log in":"Sign in");
   sub.textContent=rider?"Use the email and password the NovaX office gave you.":"Use the email and password linked to your NovaX workspace.";
   var em=$("signinEmail"); if(em) em.setAttribute("placeholder", rider?"Your email":"you@store.com");
   var note=$("signinNote"); if(note) note.hidden=rider;
@@ -2939,6 +2965,9 @@ function carryQuote(){
   var ORDER=["track","ship","ride"];
   var tabs=[].slice.call(home.querySelectorAll(".ah-tabs [data-ah-tab]")), ink=home.querySelector(".ah-ink");
   function show(k, focus){
+    var from=ORDER.indexOf(home.getAttribute("data-mode")||"track"), to=ORDER.indexOf(k);
+    if(from!==to){ home.classList.remove("ah-moved"); void home.offsetWidth; home.classList.add("ah-moved"); home.classList.toggle("ah-back",to<from); }
+    home.setAttribute("data-mode",k);
     tabs.forEach(function(b){ var on=b.getAttribute("data-ah-tab")===k; b.setAttribute("aria-selected",on?"true":"false"); b.tabIndex=on?0:-1; if(on&&focus) try{ b.focus(); }catch(e){} });
     [].forEach.call(home.querySelectorAll("[data-ah-pane]"),function(p){ p.hidden=p.getAttribute("data-ah-pane")!==k; });
     placeInk();
@@ -2949,10 +2978,56 @@ function carryQuote(){
   function placeInk(){
     var i=ORDER.indexOf((home.querySelector('.ah-tabs [aria-selected="true"]')||{getAttribute:function(){return "track";}}).getAttribute("data-ah-tab"));
     if(ink) ink.style.transform="translateX(calc("+(i*100)+"% + "+(i*4)+"px))";
+    /* The green line under the chosen tab is as wide as its label. */
+    var lb=tabs[i]&&tabs[i].querySelector("b"); if(ink&&lb&&lb.offsetWidth) ink.style.setProperty("--ah-ul",Math.round(lb.offsetWidth*.8)+"px");
   }
-  try{ var savedTab=localStorage.getItem("nvAhTab"); if(savedTab && ORDER.indexOf(savedTab)>0) show(savedTab); else placeInk(); }catch(e){ placeInk(); }
+  /* The route drawing shows only when the tallest of the three panes still
+     fits the screen with it, so the footer and Privacy/Terms never move
+     between Track, Ship and Ride and nothing scrolls on an ordinary phone. */
+  function fit(){
+    home.classList.add("ah-measure"); home.classList.remove("ah-tight","ah-tight2");
+    var panes=[].slice.call(home.querySelectorAll("[data-ah-pane]")), was=panes.map(function(p){ return p.hidden; });
+    function need(){ var n=0; panes.forEach(function(p,i){ panes.forEach(function(q,j){ q.hidden=j!==i; }); n=Math.max(n,home.offsetHeight); }); return n; }
+    var H=window.innerHeight;
+    if(need()>H){ home.classList.add("ah-tight"); if(need()>H) home.classList.add("ah-tight2"); }
+    panes.forEach(function(p,i){ p.hidden=was[i]; });
+    home.classList.remove("ah-measure");
+  }
+  fit();
+  try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fit); }catch(e){}
+  var fitT=null;
+  window.addEventListener("resize",function(){ placeInk(); clearTimeout(fitT); fitT=setTimeout(fit,120); });
+  home.setAttribute("data-mode","track");
+  try{ var savedTab=localStorage.getItem("nvAhTab"); if(savedTab && ORDER.indexOf(savedTab)>0){ show(savedTab); home.classList.remove("ah-moved"); } else placeInk(); }catch(e){ placeInk(); }
+  try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(placeInk); }catch(e){}
   /* The parcel on the route line stands still for people who turned motion off. */
   try{ if(matchMedia("(prefers-reduced-motion: reduce)").matches){ var rn=home.querySelector(".ah-runner"); if(rn) rn.remove(); } }catch(e){}
+  /* The parcel rides from Pickup to Delivered and rests a moment at each stop.
+     SMIL never pauses on its own, so it is paused while the app is in the
+     background, the drawing is off screen or a sheet is open (one motion at
+     a time). */
+  (function(){
+    var svg=home.querySelector(".ah-route"), path=$("ahRoutePath"), mo=svg&&svg.querySelector("animateMotion");
+    if(!svg||!path||!mo||!svg.pauseAnimations) return;
+    try{
+      var L=path.getTotalLength();
+      var at=function(x){ var lo=0, hi=L; for(var n=0;n<30;n++){ var m=(lo+hi)/2; if(path.getPointAtLength(m).x<x) lo=m; else hi=m; } return (lo/L).toFixed(4); };
+      var a=at(78), b=at(197), c=at(342);
+      mo.setAttribute("keyPoints",[a,a,b,b,c,c].join(";"));
+      mo.setAttribute("keyTimes","0;.12;.45;.57;.88;1");
+      mo.setAttribute("calcMode","spline");
+      mo.setAttribute("keySplines","0 0 1 1;.45 0 .4 1;0 0 1 1;.45 0 .4 1;0 0 1 1");
+    }catch(e){}
+    var seen=true;
+    function sync(){
+      var run=seen && !document.hidden && !document.querySelector(".ov.on") && getComputedStyle(svg).display!=="none";
+      try{ if(run) svg.unpauseAnimations(); else svg.pauseAnimations(); }catch(e){}
+    }
+    document.addEventListener("visibilitychange",sync);
+    if(window.IntersectionObserver){ new IntersectionObserver(function(en){ seen=en[0].isIntersecting; sync(); }).observe(svg); }
+    if(window.MutationObserver){ var mo2=new MutationObserver(sync); [].forEach.call(document.querySelectorAll(".ov"),function(o){ mo2.observe(o,{attributes:true,attributeFilter:["class"]}); }); }
+    sync();
+  })();
   home.addEventListener("click",function(e){
     var t=e.target.closest("[data-ah-tab]");
     if(t){ e.preventDefault(); show(t.getAttribute("data-ah-tab"), !t.closest(".ah-tabs")); return; }
@@ -2996,12 +3071,15 @@ function carryQuote(){
   function go(raw){
     var id=clean(raw);
     if(!id){ say("Type the tracking ID from your label."); try{ input.focus(); }catch(e){} return; }
-    if(!NV_AWB.ok(id)){ input.value=id; paintClr(); say("Not a tracking ID \u2014 it looks like N0010023."); try{ input.focus(); }catch(e){} return; }
+    if(!NV_AWB.ok(id)){ input.value=id; paintClr(); say("Not a tracking ID. It looks like N0010023."); try{ input.focus(); }catch(e){} return; }
     say(""); remember(id);
     try{ if(window.nvSiteEvent) nvSiteEvent("app_track"); }catch(e){}
+    var gb=$("ahTrackGo"); if(gb){ gb.classList.add("is-busy"); gb.setAttribute("aria-busy","true"); }
     location.href="tracking.html?awb="+encodeURIComponent(id);
   }
   $("ahTrack").addEventListener("submit",function(e){ e.preventDefault(); go(input.value); });
+  /* Coming back from the tracking page (back gesture) shows the page as it was left. */
+  window.addEventListener("pageshow",function(){ var gb=$("ahTrackGo"); if(gb){ gb.classList.remove("is-busy"); gb.removeAttribute("aria-busy"); } scanBusy(false); });
   /* Clear when there is text, Paste when there is none. Paste reads the
      clipboard only when tapped, and only fills the field with a tracking ID. */
   function paintClr(){
@@ -3015,7 +3093,7 @@ function carryQuote(){
     var done=function(t){
       var v=clean(t||"");
       if(NV_AWB.ok(v)){ input.value=v; say(""); paintClr(); try{ input.focus(); }catch(e){} }
-      else say(t?"What you copied isn\u2019t a tracking ID.":"Copy the tracking ID first, or type it.");
+      else say(t?"That isn\u2019t a tracking ID.":"Copy the tracking ID first, or type it.");
     };
     try{ navigator.clipboard.readText().then(done,function(){ done(""); }); }catch(e){ done(""); }
   });
@@ -3032,7 +3110,7 @@ function carryQuote(){
       var p=document.createElement("p"); p.textContent="Nothing tracked on this phone yet. Parcels you track here are kept for next time."; rl.appendChild(p);
       var pb=document.createElement("button"); pb.type="button"; pb.className="ah-paste"; pb.textContent="Paste a tracking ID";
       pb.addEventListener("click",function(){
-        var done=function(t){ var v=clean(t||""); if(NV_AWB.ok(v)){ input.value=v; go(v); } else { say("Copy the tracking ID from your message first, or type it above."); try{ input.focus(); }catch(e){} } };
+        var done=function(t){ var v=clean(t||""); if(NV_AWB.ok(v)){ input.value=v; go(v); } else { say("Copy the tracking ID first, or type it."); try{ input.focus(); }catch(e){} } };
         try{ if(navigator.clipboard && navigator.clipboard.readText){ navigator.clipboard.readText().then(done,function(){ done(""); }); return; } }catch(e){}
         done("");
       });
@@ -3099,26 +3177,33 @@ function carryQuote(){
   function cameraAllowed(){ try{ var fp=document.permissionsPolicy||document.featurePolicy; return !fp||!fp.allowsFeature||fp.allowsFeature("camera"); }catch(e){ return true; } }
   function cameraDenied(){
     var ios=/iPhone|iPad|iPod/.test(navigator.userAgent);
-    say(ios?"Camera is off for NovaX. Turn it on in Settings \u2192 NovaX \u2192 Camera, or type the tracking ID."
-           :"Camera is off for NovaX. Turn it on in Settings \u2192 Apps \u2192 NovaX \u2192 Permissions \u2192 Camera, or type the tracking ID.");
+    say(ios?"Camera is off. Allow it in Settings \u2192 NovaX."
+           :"Camera is off. Allow it in Settings \u2192 Apps \u2192 NovaX.");
     try{ input.focus(); }catch(e){}
   }
+  var scanT=null;
+  function scanBusy(on){
+    var b=$("ahScan"), l=b&&b.querySelector("span"); if(!l) return;
+    clearTimeout(scanT); l.textContent=on?"Scanning\u2026":"Scan"; if(on) b.setAttribute("aria-busy","true"); else b.removeAttribute("aria-busy");
+    if(on) scanT=setTimeout(function(){ scanBusy(false); },8000);
+  }
+  function pickPhoto(){ $("ahScanFile").click(); setTimeout(function(){ scanBusy(false); },1200); }
   $("ahScan").addEventListener("click",function(){
     if(scanning) return;
     explainCamera(startScan);
   });
   function startScan(){
-    say("");
+    say(""); scanBusy(true);
     var waitMsg=setTimeout(function(){ say("Getting the scanner ready…"); },400);
     loadBD().then(function(ok){
       clearTimeout(waitMsg); say("");
-      if(!ok){ say("The scanner could not load. Check your internet, or type the tracking ID."); return; }
+      if(!ok){ scanBusy(false); say("Scanner didn\u2019t load. Check your internet."); return; }
       return formats().then(function(f){
-        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!cameraAllowed()){ $("ahScanFile").click(); return; }
+        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!cameraAllowed()){ pickPhoto(); return; }
         return navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }, audio:false }).then(function(stream){
           var ov=document.createElement("div"); ov.className="ah-scanov"; ov.setAttribute("role","dialog"); ov.setAttribute("aria-label","Barcode scanner");
           ov.innerHTML='<video playsinline muted autoplay></video><div class="ah-frame" aria-hidden="true"></div><div class="ah-scanbar"><p>Point the camera at the barcode on the label.</p><button type="button" class="ah-torch" aria-pressed="false" hidden>Light</button><button type="button" class="ah-close">Close</button></div>';
-          document.body.appendChild(ov);
+          document.body.appendChild(ov); scanBusy(false);
           var v=ov.querySelector("video"); v.srcObject=stream; try{ var pp=v.play(); if(pp&&pp.catch) pp.catch(function(){}); }catch(e){}
           var det=new BarcodeDetector({ formats:f }), busy=false;
           scanning={ stream:stream, ov:ov, loop:null };
@@ -3140,8 +3225,8 @@ function carryQuote(){
           },250);
         },function(err){
           var n=err&&err.name||"";
-          if(n==="NotAllowedError"||n==="SecurityError"||n==="PermissionDeniedError"){ if(cameraAllowed()) cameraDenied(); else $("ahScanFile").click(); return; }
-          $("ahScanFile").click();
+          if(n==="NotAllowedError"||n==="SecurityError"||n==="PermissionDeniedError"){ if(cameraAllowed()){ scanBusy(false); cameraDenied(); } else pickPhoto(); return; }
+          pickPhoto();
         });
       });
     });
@@ -3150,7 +3235,7 @@ function carryQuote(){
     var el=this, file=el.files&&el.files[0], bm=null; if(!file) return;
     formats().then(function(f){ return createImageBitmap(file).then(function(b){ bm=b; return new BarcodeDetector({ formats:f }).detect(b); }); })
       .then(function(c){ var id=c&&c.length?clean(c[0].rawValue):""; if(!id) throw new Error("none"); scanned(); input.value=id; paintClr(); go(id); })
-      .catch(function(){ say("No barcode found in that photo. Try a closer, sharper photo, or type the tracking ID."); try{ input.focus(); }catch(e){} })
+      .catch(function(){ say("No barcode found. Try a closer photo."); try{ input.focus(); }catch(e){} })
       .then(function(){ try{ if(bm&&bm.close) bm.close(); }catch(e){} el.value=""; });
   });
   window.__nvAhStopScan=function(){ if(!scanning) return false; stopScan(); return true; };
@@ -3187,7 +3272,7 @@ function carryQuote(){
   function netPaint(on){
     if(!net) return; clearTimeout(netT);
     var sp=net.querySelector("span");
-    if(!on){ net.classList.remove("ok"); sp.textContent="No internet. Tracking and sign-in will work again as soon as you reconnect."; net.classList.add("show"); return; }
+    if(!on){ net.classList.remove("ok"); sp.textContent="No internet. Tracking and log in work again once you reconnect."; net.classList.add("show"); return; }
     if(!net.classList.contains("show")) return;
     net.classList.add("ok"); sp.textContent="Back online.";
     netT=setTimeout(function(){ net.classList.remove("show","ok"); },2200);
@@ -3195,6 +3280,28 @@ function carryQuote(){
   window.addEventListener("offline",function(){ netPaint(false); });
   window.addEventListener("online",function(){ netPaint(true); });
   if(navigator.onLine===false) netPaint(false);
+
+  /* Sheets: a grabber you can pull down to close the box (a tap outside
+     closes it too), and the app's own words: "Log in", like the buttons. */
+  [].forEach.call(document.querySelectorAll(".ov .mdl"),function(m){
+    var g=document.createElement("div"); g.className="ah-grab"; g.setAttribute("aria-hidden","true");
+    m.insertBefore(g,m.firstChild);
+    var y0=null, dy=0, t0=0;
+    function down(e){ if(m.scrollTop>4) return; y0=e.clientY; dy=0; t0=Date.now(); m.classList.add("ah-dragging"); try{ g.setPointerCapture(e.pointerId); }catch(_){} }
+    function move(e){ if(y0===null) return; dy=Math.max(0,e.clientY-y0); m.style.transform=dy?"translateY("+dy+"px)":""; }
+    function up(){
+      if(y0===null) return; y0=null; m.classList.remove("ah-dragging");
+      var fast=dy>30 && dy/Math.max(1,Date.now()-t0)>.6;
+      if(dy>110||fast){ m.style.transform=""; closeM(); return; }
+      m.style.transition="transform .2s cubic-bezier(.22,.9,.28,1)"; m.style.transform="";
+      setTimeout(function(){ m.style.transition=""; },220);
+    }
+    g.addEventListener("pointerdown",down); g.addEventListener("pointermove",move);
+    g.addEventListener("pointerup",up); g.addEventListener("pointercancel",up);
+  });
+  var suT=document.querySelector("#mdlSignup .mdl-top h3"); if(suT) suT.textContent="Create merchant account";
+  var sOther=$("signinAlreadyOther"); if(sOther) sOther.textContent="Log in with another account";
+  var ovS=$("ovSignin"); if(ovS) ovS.setAttribute("aria-label","Log in");
 })();
 
 /* ═════ FORM HELPERS ═════ */
@@ -3785,7 +3892,7 @@ $("fSignin").addEventListener("submit",function(e){
   if(!__nvSb||!__nvSb.auth){ nvRetryWithSb("fSignin","signinContinue","mSignin","sign-in"); return; }
   clearMsg("mSignin");
   var btn=$("signinContinue"), oldTxt=btn.textContent;
-  btn.disabled=true; btn.textContent="Signing in…";
+  btn.disabled=true; btn.textContent=document.documentElement.classList.contains("nv-app")?"Logging in…":"Signing in…";
 
   __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
     if(res.error||!res.data||!res.data.user){
