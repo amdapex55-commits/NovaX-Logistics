@@ -11228,6 +11228,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        card, the autopilot nudge -- now waits for this instead of covering it.
        Called on EVERY booking, not just the first. */
     function nvAwbReveal(awb, consignee, city, cod, onDone){
+      /* The native app listens for this (success haptic). */
+      try{ if(awb) document.dispatchEvent(new CustomEvent("nv:booked",{ detail:{ awb:awb } })); }catch(e){}
       var done=false;
       function finish(){ if(done) return; done=true; try{ if(onDone) onDone(); }catch(e){} }
       try{
@@ -25020,4 +25022,84 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
   window.nvAccountDeletionLoad=load;
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+})();
+
+/* ═══ Native app bridge (28 Nov 2026) ══════════════════════════════════
+   The NovaX app for iOS and Android (native/, Capacitor) loads this portal.
+   Everything here runs only inside that app (window.Capacitor native) and
+   does nothing in a browser. It gives the app what a website cannot:
+     - downloads (labels, CSV reports) open the phone's share sheet, because
+       an <a download> of a blob does nothing in an app web view;
+     - Android's back button closes the open sheet/menu, then goes back,
+       then leaves the app, instead of quitting from anywhere;
+     - navigator.share on Android (its web view has none), via the native
+       share sheet;
+     - a success haptic when a parcel is booked. */
+(function(){
+  "use strict";
+  var C=window.Capacitor;
+  if(!C || !C.isNativePlatform || !C.isNativePlatform()) return;
+  var P=C.Plugins||{};
+  try{ document.documentElement.classList.add("nv-native", "nv-native-"+C.getPlatform()); }catch(e){}
+
+  function blobToBase64(blob){
+    return new Promise(function(res, rej){
+      var r=new FileReader();
+      r.onload=function(){ res(String(r.result).split(",")[1]||""); };
+      r.onerror=rej; r.readAsDataURL(blob);
+    });
+  }
+  async function shareBlob(blob, name){
+    if(!P.Filesystem || !P.Share) throw new Error("sharing unavailable");
+    var safe=String(name||"novax-file").replace(/[^\w.\-]+/g,"_").slice(0,80);
+    var data=await blobToBase64(blob);
+    var w=await P.Filesystem.writeFile({ path:safe, data:data, directory:"CACHE" });
+    await P.Share.share({ title:safe, files:[w.uri], dialogTitle:"Save or send "+safe });
+  }
+  window.nvNativeShareBlob=shareBlob;
+
+  /* Every download in the portal is an <a download href="blob:..."> click. */
+  var origClick=HTMLAnchorElement.prototype.click;
+  function handle(a){
+    var href=a && a.getAttribute && a.getAttribute("href")||"";
+    if(!a.hasAttribute("download") || !/^(blob:|data:)/.test(href)) return false;
+    fetch(href).then(function(r){ return r.blob(); })
+      .then(function(b){ return shareBlob(b, a.getAttribute("download")); })
+      .catch(function(e){ try{ toast("Could not save that file: "+(e&&e.message||e),"error"); }catch(_){} });
+    return true;
+  }
+  HTMLAnchorElement.prototype.click=function(){ if(handle(this)) return; return origClick.apply(this, arguments); };
+  document.addEventListener("click", function(ev){
+    var a=ev.target && ev.target.closest && ev.target.closest("a[download]");
+    if(a && handle(a)){ ev.preventDefault(); ev.stopPropagation(); }
+  }, true);
+
+  if(!navigator.share && P.Share){
+    navigator.share=function(d){ d=d||{}; return P.Share.share({ title:d.title, text:d.text, url:d.url }); };
+  }
+
+  /* Success haptic on booking. */
+  document.addEventListener("nv:booked", function(){ try{ P.Haptics && P.Haptics.notification({ type:"SUCCESS" }); }catch(e){} });
+
+  /* `state` is a closure elsewhere in this file, so remember the open tab here. */
+  var curTab="dashboard";
+  (function wrap(){
+    var f=window.showClientTab;
+    if(typeof f!=="function"){ return setTimeout(wrap, 500); }
+    if(f.__nvNative) return;
+    var w=function(id){ curTab=id||"dashboard"; return f.apply(this, arguments); };
+    w.__nvNative=true; window.showClientTab=w;
+  })();
+
+  if(P.App && C.getPlatform()==="android"){
+    P.App.addListener("backButton", function(info){
+      var closeBtn=document.querySelector(".nvask-back .nvask-acts button:not(.nvask-ok), .modal-overlay.show .modal-close, .modal-overlay.show [data-close]");
+      if(closeBtn){ closeBtn.click(); return; }
+      var menu=document.getElementById("clientMenu");
+      if(menu && menu.classList.contains("open")){ var t=document.getElementById("clientMenuToggle"); if(t) t.click(); return; }
+      if(curTab!=="dashboard" && typeof window.showClientTab==="function"){ window.showClientTab("dashboard"); return; }
+      if(info && info.canGoBack){ history.back(); return; }
+      P.App.minimizeApp ? P.App.minimizeApp() : P.App.exitApp();
+    });
+  }
 })();
