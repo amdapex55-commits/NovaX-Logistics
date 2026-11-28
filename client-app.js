@@ -25354,6 +25354,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     };
   }
 
+  /* Privacy, terms, support and account deletion open in the in-app browser
+     (with Done), so the portal stays exactly where the merchant left it. */
+  document.addEventListener("click", function(ev){
+    var a=ev.target && ev.target.closest && ev.target.closest('a[href]');
+    if(!a || !P.Browser || !P.Browser.open) return;
+    var u; try{ u=new URL(a.getAttribute("href"), location.href); }catch(e){ return; }
+    if(!/^(www\.)?novaxlogistics\.com$/.test(u.hostname) && u.origin!==location.origin) return;
+    if(!/\/(privacy|terms|support|delete-account)\.html$/.test(u.pathname)) return;
+    ev.preventDefault(); ev.stopPropagation();
+    try{ P.Browser.open({ url:"https://novaxlogistics.com"+u.pathname+u.search+u.hash, presentationStyle:"popover", toolbarColor:"#06170f" }); }catch(e){ location.href=u.href; }
+  }, true);
+
   /* Success haptic on booking. */
   document.addEventListener("nv:booked", function(){ try{ P.Haptics && P.Haptics.notification({ type:"SUCCESS" }); }catch(e){} });
 

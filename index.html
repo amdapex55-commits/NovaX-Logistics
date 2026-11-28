@@ -1272,6 +1272,51 @@ html.nv-app #appHome{--ah-lime:#dcf54b;--ah-lime-ink:#0b1f14;--ah-green:#1fd283;
 .ah-net.show{display:flex}
 .ah-net.ok{background:#0e3a24;color:#c9f7df}
 .ah-net i{width:9px;height:9px;border-radius:50%;background:currentColor;flex:0 0 auto}
+/* ═════ Lighter, smoother (28 Nov 2026, "everything feels heavy") ═════
+   Fewer extra-bold weights, softer shadows and borders, and motion that
+   eases instead of snapping: presses shrink and spring back, the chosen
+   tab's pane fades up, and the sign-in / sign-up boxes slide up from the
+   bottom like a phone sheet. Nothing waits on an animation to be visible. */
+html.nv-app .ah-brand b{font-weight:700}
+html.nv-app .ah-brand img{box-shadow:0 2px 8px rgba(0,0,0,.25)}
+html.nv-app .ah-login{font-weight:700;border-color:rgba(234,255,245,.28)}
+html.nv-app .ah-create{font-weight:700;box-shadow:none}
+html.nv-app .ah-h{font-weight:700;font-size:clamp(28px,7.8vw,35px);line-height:1.16;letter-spacing:-.028em}
+html.nv-app .ah-route .ah-rail{stroke:rgba(31,210,131,.14);stroke-width:5}
+html.nv-app .ah-card{box-shadow:0 1px 0 rgba(255,255,255,.6) inset,0 18px 40px -24px rgba(0,0,0,.55)}
+html.nv-app .ah-tabs{background:#efeee8}
+html.nv-app .ah-tabs b{font-weight:700;font-size:16px}
+html.nv-app .ah-tabs small{font-weight:600;font-size:11.5px;letter-spacing:.05em;color:#5c665f}
+html.nv-app .ah-tabs button[aria-selected="true"] small{color:#2b352f}
+html.nv-app .ah-ink{box-shadow:0 1px 3px rgba(13,26,19,.10);transition:transform .34s cubic-bezier(.22,.9,.28,1)}
+html.nv-app .ah-k{font-weight:700;color:#159a5f}
+html.nv-app .ah-h2{font-weight:700;font-size:clamp(24px,6.8vw,28px);letter-spacing:-.02em}
+html.nv-app .ah-field{border:1px solid #d9ddd8}
+html.nv-app .ah-field input{font-weight:600}
+html.nv-app .ah-scan,html.nv-app .ah-clr{font-weight:700}
+html.nv-app .ah-go{font-weight:700;font-size:17px;background:#123a27;box-shadow:0 6px 16px -10px rgba(13,42,28,.7)}
+html.nv-app .ah-tile b{font-weight:700}
+html.nv-app .ah-tile{border-color:#e7e7e0}
+html.nv-app .ah-links a{font-weight:600;text-decoration-thickness:1px;text-decoration-color:rgba(13,26,19,.35)}
+html.nv-app .ah-foot button,html.nv-app .ah-foot a{font-weight:700;border-color:#e4e4dc}
+@media (prefers-reduced-motion:no-preference){
+  html.nv-app .ah-go,html.nv-app .ah-alt,html.nv-app .ah-create,html.nv-app .ah-login,html.nv-app .ah-tile,html.nv-app .ah-scan,html.nv-app .ah-clr,
+  html.nv-app .ah-foot button,html.nv-app .ah-foot a,html.nv-app .ah-tabs button{transition:transform .18s cubic-bezier(.22,.9,.28,1),background-color .18s,color .18s,border-color .18s}
+  html.nv-app .ah-go:active,html.nv-app .ah-alt:active,html.nv-app .ah-create:active,html.nv-app .ah-login:active,html.nv-app .ah-tile:active,
+  html.nv-app .ah-foot button:active,html.nv-app .ah-foot a:active,html.nv-app .ah-tabs button:active{transform:scale(.97);transition-duration:.08s}
+  html.nv-app .ah-pane:not([hidden]){animation:ahUp .3s cubic-bezier(.22,.9,.28,1)}
+  @keyframes ahUp{from{opacity:.25;transform:translateY(8px)}to{opacity:1;transform:none}}
+  html.nv-app .ah-recent:not([hidden]){animation:ahUp .24s cubic-bezier(.22,.9,.28,1)}
+  html.nv-app .ov.on{animation:ovIn .22s ease}
+  html.nv-app .ov.on .mdl{animation:ahSheet .34s cubic-bezier(.22,.9,.28,1)}
+  @keyframes ahSheet{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+}
+/* In the app the boxes are bottom sheets: thumb-reach, and they feel native. */
+html.nv-app .ov{align-items:flex-end;padding:0;padding-top:max(24px,env(safe-area-inset-top));background:rgba(3,12,8,.55)}
+html.nv-app .mdl{max-width:560px;border-radius:22px 22px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+html.nv-app .mdl-top h3{font-weight:700}
+html.nv-app body{overscroll-behavior-y:none}
+html.nv-app .ah-legal{margin-top:auto;padding-top:8px}
 /* Large text (review 28 Nov). Android scales every font with the phone's
    font size (up to 200%) while the layout keeps its width, so the header
    collided and the tabs ran off the card. With big text the page may scroll;
@@ -1433,7 +1478,7 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
       <h2 class="ah-h2">Find it instantly.</h2>
       <form class="ah-field" id="ahTrack" novalidate>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="ahAwb" type="text" inputmode="text" placeholder="Tracking ID or AWB" aria-label="Tracking ID or AWB" aria-describedby="ahHint" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search" maxlength="24">
+        <input id="ahAwb" type="text" inputmode="text" placeholder="Tracking ID" aria-label="Tracking ID or AWB" aria-describedby="ahHint" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="search" maxlength="24">
         <button type="button" class="ah-clr" id="ahClr" aria-label="Paste a copied tracking ID">Paste</button>
         <button type="button" class="ah-scan" id="ahScan" aria-label="Scan the barcode on the label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 8v8M10.5 8v8M14 8v8M17 8v8"/></svg>Scan</button>
         <input type="file" id="ahScanFile" accept="image/*" capture="environment" hidden>
