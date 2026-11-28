@@ -25399,12 +25399,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         PN.createChannel({ id:"novax_updates", name:"Parcel updates", description:"Picked up and delivered", importance:3, visibility:0 });
       }catch(e){}
     }
+    function pushSoftAsk(){
+      return new Promise(function(done){
+        var later=0; try{ later=Number(localStorage.getItem("nvPushLater")||0); }catch(e){}
+        if(Date.now()-later<7*864e5){ done(false); return; }
+        var ov=document.createElement("div");
+        ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true"); ov.setAttribute("aria-labelledby","nvPushAskT");
+        ov.style.cssText="position:fixed;inset:0;z-index:2147482000;display:flex;align-items:flex-end;justify-content:center;background:rgba(3,12,8,.55)";
+        ov.innerHTML='<div style="width:100%;max-width:520px;background:var(--panel,#fff);color:var(--ink,#0d1a13);border-radius:20px 20px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom) + 16px);box-shadow:0 -10px 40px rgba(0,0,0,.3)">'+
+          '<h3 id="nvPushAskT" style="margin:0 0 8px;font-size:19px;font-weight:800">Know the moment it matters</h3>'+
+          '<p style="margin:0 0 6px;font-size:15px;line-height:1.45">We\u2019ll tell you when a parcel is delivered, refused or returned, and when a payout reaches your bank.</p>'+
+          '<p style="margin:0 0 14px;font-size:13.5px;opacity:.75">No offers or ads. Your phone will ask next; you can turn it off any time.</p>'+
+          '<button type="button" data-yes style="display:block;width:100%;min-height:52px;border:0;border-radius:14px;background:#0f8a5f;color:#fff;font:800 16px inherit">Turn on notifications</button>'+
+          '<button type="button" data-no style="display:block;width:100%;min-height:48px;margin-top:6px;border:0;background:none;color:inherit;font:700 15px inherit">Not now</button></div>';
+        document.body.appendChild(ov);
+        var end=function(v){ try{ ov.remove(); }catch(e){} if(!v){ try{ localStorage.setItem("nvPushLater",String(Date.now())); }catch(e){} } done(v); };
+        ov.querySelector("[data-yes]").onclick=function(){ end(true); };
+        ov.querySelector("[data-no]").onclick=function(){ end(false); };
+        try{ ov.querySelector("[data-yes]").focus(); }catch(e){}
+      });
+    }
     async function pushStart(){
       try{
         var st=await PN.checkPermissions();
         if(st.receive==="prompt" || st.receive==="prompt-with-rationale"){
           var asked=false; try{ asked=localStorage.getItem(pushAskedKey)==="1"; }catch(e){}
           if(asked) return;
+          /* Our own question first (review 28 Nov): the phone asks only once,
+             so say what the notifications are for before it does. "Not now"
+             leaves the phone's question unasked for next time. */
+          var yes=await pushSoftAsk();
+          if(!yes) return;
           try{ localStorage.setItem(pushAskedKey, "1"); }catch(e){}
           st=await PN.requestPermissions();
         }

@@ -1156,17 +1156,28 @@
          before a pickup. Driven by the work the rider has, not the screen. */
       (inBucket("out").length > 0 || inBucket("pickup").length > 0);
   }
-  function geoStop() { if (geo.watch != null) { try { navigator.geolocation.clearWatch(geo.watch); } catch (_) {} geo.watch = null; } }
+  function geoStop() { if (geo.watch != null) { try { navigator.geolocation.clearWatch(geo.watch); } catch (_) {} geo.watch = null; } paintGeoWhy(); }
   function geoSync() {
     if (!geoWanted()) { geoStop(); return; }
     if (geo.watch != null) return;
     try {
       geo.watch = navigator.geolocation.watchPosition(function (p) {
-        if (!p || !p.coords) return; var was = geo.denied; geo.fix = p; geo.fixAt = Date.now(); geo.denied = false; if (was) paintGeo();
+        if (!p || !p.coords) return; var was = geo.denied; geo.fix = p; geo.fixAt = Date.now(); geo.denied = false; if (was) paintGeo(); else paintGeoWhy();
       }, function (e) { if (e && e.code === 1) { geo.denied = true; geoStop(); paintGeo(); } }, { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 });
     } catch (_) { geo.watch = null; }
   }
+  /* What location is used for, always in view while it is on (review 28 Nov):
+     only while the app is open and parcels are out, saved with each parcel
+     marked; never in the background. */
+  function paintGeoWhy() {
+    var el = q("geoWhy"); if (!el) return;
+    var on = geo.watch != null && !geo.denied;
+    el.classList.toggle("hidden", !on);
+    el.textContent = LANG === "ur" ? "Location on: sirf app khuli ho aur parcel bahar hon. Har parcel lagane par jagah save hoti hai. Background mein nahi." :
+      "Location on: only while this app is open and you have parcels out. Saved with each parcel you mark. Never in the background.";
+  }
   function paintGeo() {
+    paintGeoWhy();
     var el = q("geoNote"); if (!el) return;
     el.classList.toggle("hidden", !(geo.denied && authorized && (inBucket("out").length || inBucket("pickup").length)));
     el.textContent = t("geoOff");

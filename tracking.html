@@ -264,11 +264,19 @@
     .pk{font-size:11px;} .pbar{margin:5.5px 2px 0;}
   }
   @media (prefers-reduced-motion:reduce){ .tk-live i,.pstep.cur .pdot,.skel{animation:none;} }
+  /* 28 Nov 2026: retry, saved status, and a way back inside the app. */
+  .tk-retry{display:inline-flex;align-items:center;justify-content:center;min-height:48px;margin-top:14px;padding:0 22px;border:0;border-radius:12px;background:#0f7a55;color:#fff;font:800 15px system-ui,-apple-system,sans-serif;cursor:pointer}
+  .tk-saved{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#fff6dd;color:#5a4300;font-size:13.5px;line-height:1.4}
+  .tk-back{display:none;align-items:center;justify-content:center;width:44px;height:44px;margin:-6px 2px -6px -8px;border:0;background:none;color:inherit;border-radius:10px;cursor:pointer;flex:0 0 auto}
+  html.tk-app .tk-back{display:inline-flex}
+  .tk-back svg{width:22px;height:22px}
 </style>
+<script>try{if(sessionStorage.getItem("nvApp")==="1"||(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()))document.documentElement.classList.add("tk-app");}catch(e){}</script>
 </head>
 <body>
 <div class="wrap">
   <header class="brandbar">
+    <button type="button" class="tk-back" id="tkBack" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="logo" role="img" aria-label="NovaX Logistics"></div>
     <div class="t">
       <strong>NovaX Logistics</strong>
@@ -426,9 +434,37 @@
     catch(e){ return ""; }
   }
   function show(html){ document.getElementById("out").innerHTML=html; }
-  function fail(title,sub){
-    show('<div class="card"><div class="msg"><strong>'+esc(title)+'</strong>'+esc(sub)+'</div></div>');
+  /* retry: a lookup that failed (not "not found") gets a Try again button. */
+  function fail(title,sub,retry){
+    clearTimeout(NV_SLOW);
+    show('<div class="card"><div class="msg" role="alert"><strong>'+esc(title)+'</strong>'+esc(sub)+
+      (retry?'<br><button type="button" class="tk-retry" onclick="location.reload()">Try again</button>':'')+'</div></div>');
     var live=document.getElementById("tkLive"); if(live) live.hidden=true;
+  }
+  /* Slow mobile data: after 12 s of loading, say so and offer a retry
+     instead of leaving the grey blocks up with no explanation. */
+  var NV_SLOW=setTimeout(function(){
+    var o=document.getElementById("out"); if(!o||!o.querySelector(".skel")) return;
+    if(o.querySelector(".tk-slow")) return;
+    var d=document.createElement("div"); d.className="msg tk-slow"; d.setAttribute("role","status");
+    d.innerHTML='<strong>Still looking\u2026</strong>Your connection is slow. We are still trying.<br><button type="button" class="tk-retry" onclick="location.reload()">Try again</button>';
+    o.querySelector(".card").appendChild(d);
+  },12000);
+  /* The last status seen for a tracking number stays on this phone (the
+     ?awb= result has no names or amounts), so offline still shows something,
+     clearly marked as saved. */
+  var NV_CK="nvTrackSaved";
+  function saveRow(row){ try{ var m=JSON.parse(localStorage.getItem(NV_CK)||"{}")||{}; m[row.awb]={ row:row, at:Date.now() }; var ks=Object.keys(m).sort(function(a,b){ return m[b].at-m[a].at; }).slice(0,8), o={}; ks.forEach(function(k){ o[k]=m[k]; }); localStorage.setItem(NV_CK,JSON.stringify(o)); }catch(e){} }
+  function savedRow(awb){ try{ var m=JSON.parse(localStorage.getItem(NV_CK)||"{}")||{}; return m[awb]||null; }catch(e){ return null; } }
+  function showSaved(awb, why){
+    var c=savedRow(awb); if(!c||!c.row) return false;
+    clearTimeout(NV_SLOW); render(c.row);
+    var d=new Date(c.at), when=d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+", "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    var n=document.createElement("p"); n.className="tk-saved"; n.setAttribute("role","status");
+    n.textContent=why+" Showing the status saved on this phone at "+when+"; it may have changed since.";
+    var o=document.getElementById("out"); o.insertBefore(n,o.firstChild);
+    var live=document.getElementById("tkLive"); if(live) live.hidden=true;
+    return true;
   }
   /* The journey, from nv_parcel_status_log -- a real scan history with a
      timestamp on every line, which is what TCS, Leopards and M&P all show
@@ -875,10 +911,12 @@
     el.hidden=false;
   }
   function bootByAwb(sb, awb){
+    if(!navigator.onLine && showSaved(awb,"You\u2019re offline.")) return;
     sb.rpc("public_track_awb",{ p_awb: awb }).then(function(r){
-      if(r&&r.error){ fail("Tracking is temporarily unavailable","Please try again in a moment."); return; }
+      if(r&&r.error){ if(!showSaved(awb,"Tracking is temporarily unavailable.")) fail("Tracking is temporarily unavailable","Your parcel is not affected. Please try again in a moment.",true); return; }
       var row=(r&&r.data&&r.data[0])||null;
-      if(!row){ fail("Parcel not found","We couldn't find a parcel with that tracking ID. Please check it and try again."); return; }
+      if(!row){ fail("Parcel not found","We couldn't find a parcel with tracking ID "+awb+". Check it against the label or the message from your seller. A new booking can take a few minutes to appear."); return; }
+      clearTimeout(NV_SLOW); saveRow(row);
       render(row);
       if(nvIsFinal(row.status)) return;
       nvStartRefresh(function(){
@@ -888,12 +926,12 @@
              watch a status that had stopped updating and never know. */
           if(!n){ nvRefreshTrouble(true); return; }
           nvRefreshTrouble(false);
-          if(n.updated_at!==row.updated_at){ row=n; render(n); }
+          if(n.updated_at!==row.updated_at){ row=n; saveRow(n); render(n); }
           if(nvIsFinal(n.status)) nvStopRefresh();
         }).catch(function(){ nvRefreshTrouble(true); });
       });
     }).catch(function(){
-      fail("Cannot reach NovaX right now","Please check your internet connection and try again.");
+      if(!showSaved(awb,"You\u2019re offline.")) fail("Cannot reach NovaX right now","Please check your internet connection and try again.",true);
     });
   }
 
@@ -936,7 +974,7 @@
       return;
     }
     if(!window.supabase||!window.supabase.createClient){
-      fail("Cannot reach NovaX right now","Please check your internet connection and refresh.");
+      fail("Cannot reach NovaX right now","Please check your internet connection and try again.",true);
       return;
     }
     var sb;
@@ -946,11 +984,16 @@
       return;
     }
 
-    if(!token && awb){ bootByAwb(sb,awb); return; }
+    if(!token && awb){
+      awb=awb.replace(/[\s\-_.\/]+/g,"");
+      if(!/^[A-Z]{1,4}\d{5,12}$/.test(awb)){ fail("That isn\u2019t a tracking ID","A NovaX tracking ID is a letter and 7 digits, like N0010023. Check the label or the message from your seller."); return; }
+      bootByAwb(sb,awb); return;
+    }
 
     sb.rpc("public_track_parcel",{ p_token: token }).then(function(r){
+      clearTimeout(NV_SLOW);
       if(r&&r.error){
-        fail("Tracking is temporarily unavailable","Please try again in a moment.");
+        fail("Tracking is temporarily unavailable","Your parcel is not affected. Please try again in a moment.",true);
         return;
       }
       var row=(r&&r.data&&r.data[0])||null;
@@ -985,10 +1028,13 @@
         if(b) applyBrand(b, row.awb);
       }).catch(function(){});
     }).catch(function(){
-      fail("Tracking is temporarily unavailable","Please try again in a moment.");
+      fail(navigator.onLine?"Tracking is temporarily unavailable":"You\u2019re offline",navigator.onLine?"Please try again in a moment.":"Connect to the internet and try again.",true);
     });
   }
 
+  /* In the app there is no browser back button (iPhone): this one goes back,
+     or to the app's front page when this page was opened from a link. */
+  (function(){ var b=document.getElementById("tkBack"); if(b) b.onclick=function(){ if(history.length>1) history.back(); else location.href="index.html?source=app"; }; })();
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot);
   else boot();
 })();
