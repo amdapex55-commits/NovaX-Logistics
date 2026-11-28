@@ -11452,7 +11452,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(riskWarnEl){ delete riskWarnEl.dataset.nvRisk; riskWarnEl.removeAttribute("role"); nvMarkBookingField(null); }
       if(risk.minor.length){
-        if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a15c00"; riskWarnEl.style.background="var(--nvu-warn-bg)"; riskWarnEl.style.borderColor="#f0d6a0"; riskWarnEl.textContent=risk.minor[0]; }
+        if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a15c00"; riskWarnEl.style.background="var(--nvu-warn-bg)"; riskWarnEl.style.borderColor="#f0d6a0"; riskWarnEl.textContent=risk.minor[0]; riskWarnEl.dataset.nvRisk="minor"; }
       } else if(riskWarnEl){ riskWarnEl.style.display="none"; }
 
       __bookingInFlight=true;
@@ -11460,7 +11460,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const oldBtnText=btn?btn.textContent:"";
       if(btn){ btn.disabled=true; btn.textContent="Creating booking..."; }
       const confirmLine=document.getElementById("bookingConfirmLine");
-      if(confirmLine){ confirmLine.textContent="Sending booking to NovaX server..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
+      if(confirmLine){ confirmLine.textContent="Sending booking to NovaX server..."; confirmLine.style.display="block"; confirmLine.style.color=""; delete confirmLine.dataset.nvErr; }
       try{
         if(!window.__novaxBookParcel){ throw new Error("Booking service is unavailable. Please refresh and try again."); }
         const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No"), comments:String((document.getElementById("bookingComments")||{}).value||"").trim().slice(0,180),
@@ -11526,7 +11526,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         console.error("Booking failed", e);
         const msg=(e&&e.message)?e.message:"Booking could not be completed. Please try again.";
         toast(msg,"error");
-        if(confirmLine){ confirmLine.textContent=msg; confirmLine.style.color="#c0392b"; confirmLine.style.display="block"; }
+        if(confirmLine){ confirmLine.textContent=msg; confirmLine.style.color="#c0392b"; confirmLine.style.display="block"; confirmLine.dataset.nvErr="1"; }
         /* client_book_parcel now refuses a parcel with no phone or address
            (sql_novax_booking_requires_contact_20260922) instead of creating an
            undeliverable one and apologising afterwards. A refusal is only
@@ -11956,8 +11956,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvMarkBookingField(field);
     }
     function nvRecheckBookingProblem(){
+      /* 28 Nov 2026: a refusal from the server (client_book_parcel) was
+         written to #bookingConfirmLine and never cleared, so it stayed up
+         after the merchant fixed the phone. Any edit to the form makes it
+         stale: hide it, and the next Create booking says again if needed. */
+      var cl=document.getElementById("bookingConfirmLine");
+      if(cl && cl.dataset.nvErr){ cl.style.display="none"; cl.textContent=""; delete cl.dataset.nvErr; }
       var w=document.getElementById("nvRiskWarning");
-      if(!w || w.dataset.nvRisk!=="serious") return;
+      if(!w) return;
+      /* A minor warning (unrecognised city) also stayed after it was fixed. */
+      if(w.dataset.nvRisk==="minor"){
+        var rm=checkBookingRisk(nvBookingRiskInput());
+        if(rm.serious.length || !rm.minor.length){ w.style.display="none"; w.textContent=""; delete w.dataset.nvRisk; }
+        else if(w.textContent!==rm.minor[0]) w.textContent=rm.minor[0];
+        return;
+      }
+      if(w.dataset.nvRisk!=="serious") return;
       var r=checkBookingRisk(nvBookingRiskInput());
       if(r.serious.length){ if(w.textContent!==r.serious[0]) w.textContent=r.serious[0]; nvMarkBookingField(r.seriousFields[0]); return; }
       w.style.display="none"; w.textContent=""; delete w.dataset.nvRisk; w.removeAttribute("role");
