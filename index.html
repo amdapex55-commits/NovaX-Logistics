@@ -1997,6 +1997,47 @@ catch(e){ console.warn("NovaX: cloud init failed",e); }
    page nothing ever set it -- __nvSb lived only inside this closure -- so
    "Forgot your password?" always answered "Password reset is unavailable". */
 window.__nvSb=__nvSb;
+/* 28 Nov 2026: a merchant on Windows Chrome got "Login service is unavailable"
+   because the Supabase library never arrived (one failed script request), and
+   the page had no way back except a reload. The forms now fetch the library
+   again on demand -- this site first, then jsDelivr -- and carry on. */
+var __nvSbLoading=null;
+function nvLoadSb(){
+  if(__nvSb&&__nvSb.auth) return Promise.resolve(__nvSb);
+  if(__nvSbLoading) return __nvSbLoading;
+  function make(){
+    try{ if(window.supabase&&window.supabase.createClient){ __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); window.__nvSb=__nvSb; return true; } }catch(e){}
+    return false;
+  }
+  __nvSbLoading=new Promise(function(resolve,reject){
+    if(make()) return resolve(__nvSb);
+    var srcs=["/assets/vendor/supabase-2.117.2.js?retry="+Date.now(),"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"];
+    (function next(i){
+      if(i>=srcs.length){ reject(new Error("supabase library unavailable")); return; }
+      var sc=document.createElement("script"), done=false;
+      var t=setTimeout(function(){ if(!done){ done=true; next(i+1); } },20000);
+      sc.src=srcs[i]; sc.async=true;
+      sc.onload=function(){ if(done) return; done=true; clearTimeout(t); if(make()) resolve(__nvSb); else next(i+1); };
+      sc.onerror=function(){ if(done) return; done=true; clearTimeout(t); next(i+1); };
+      document.head.appendChild(sc);
+    })(0);
+  }).then(function(c){ __nvSbLoading=null; return c; },function(e){ __nvSbLoading=null; throw e; });
+  return __nvSbLoading;
+}
+/* Hand a form back to its own submit handler once the library is here. */
+function nvRetryWithSb(formId,btnId,msgId,label){
+  var btn=$(btnId), old=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Connecting\u2026"; }
+  nvLoadSb().then(function(){
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+    var f=$(formId);
+    if(f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));
+  },function(){
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+    showMsg(msgId,"We could not reach the "+label+" service. Check your internet connection and try again.",false);
+  });
+}
+if(!__nvSb) try{ window.addEventListener("load",function(){ nvLoadSb().catch(function(){}); }); }catch(e){}
 var trackSb=null;
 try{
   if(window.supabase&&window.supabase.createClient){
@@ -2730,7 +2771,7 @@ $("fSignup").addEventListener("submit",function(e){
      no session yet), and nv_accept_terms writes the row once a session exists. */
   if(!($("merchantAccept")&&$("merchantAccept").checked)){ showMsg("mSignup","Please read and accept the Merchant Agreement to open your account.",false); return; }
   var NV_TERMS_VERSION="1.0", termsAt=new Date().toISOString();
-  if(!__nvSb||!__nvSb.auth){ showMsg("mSignup","Signup service is unavailable. Please refresh and try again.",false); return; }
+  if(!__nvSb||!__nvSb.auth){ nvRetryWithSb("fSignup","merchantSubmit","mSignup","signup"); return; }
 
   clearMsg("mSignup");
   var btn=$("merchantSubmit"), oldTxt=btn.textContent;
@@ -2844,7 +2885,7 @@ $("fSales").addEventListener("submit",function(e){
   var salesPhone=nvNormalizePkPhone(phone);
   if(!salesPhone){ showMsg("mSales","Enter a Pakistani mobile number. 03001234567, 0300-1234567 and +92 300 1234567 all work.",false); return; }
   phone=salesPhone;
-  if(!__nvSb){ showMsg("mSales","Sales request service is unavailable. Please refresh and try again.",false); return; }
+  if(!__nvSb){ nvRetryWithSb("fSales","salesLeadSubmit","mSales","request"); return; }
   clearMsg("mSales");
   var btn=$("salesLeadSubmit"), oldTxt=btn.textContent;
   btn.disabled=true; btn.textContent="Sending your request…";
@@ -2867,7 +2908,7 @@ $("fSignin").addEventListener("submit",function(e){
   e.preventDefault();
   var email=val("signinEmail").toLowerCase(), pass=val("signinPassword");
   if(!email||!pass){ showMsg("mSignin","Email and password are required.",false); return; }
-  if(!__nvSb||!__nvSb.auth){ showMsg("mSignin","Login service is unavailable. Please refresh and try again.",false); return; }
+  if(!__nvSb||!__nvSb.auth){ nvRetryWithSb("fSignin","signinContinue","mSignin","sign-in"); return; }
   clearMsg("mSignin");
   var btn=$("signinContinue"), oldTxt=btn.textContent;
   btn.disabled=true; btn.textContent="Signing in…";
