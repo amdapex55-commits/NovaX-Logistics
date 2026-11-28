@@ -101,7 +101,7 @@ console.log("THREE SCREENS CHECKS PASSED");
     assert.ok(fnSrc("nvPfSave").includes("if(NV_PF.saving || !NV_PF.loaded || !NV_PF.filled) return;"), "a form that was never filled cannot be saved");
     // Run the real functions in the order a signed-in page runs them: data arrives while the form is empty.
     const els = {}; const el = (id) => (els[id] = els[id] || { id, value: "", checked: false, hidden: false, textContent: "", style: { setProperty() {} }, classList: { toggle() {}, remove() {}, add() {}, contains: () => false }, setAttribute() {}, querySelectorAll: () => [], innerHTML: "" });
-    const doc = { getElementById: (id) => (/^(nvPfLoadErr|nvPfName|nvPfPhone|nvPfEmail|nvPfWeb|nvPfType|nvPfAddr|nvPfWa|nvPfAccent|nvPfTrackOn)$/.test(id) ? el(id) : null), querySelectorAll: () => [] };
+    const doc = { getElementById: (id) => (/^(nvPfLoadErr|nvPfName|nvPfPhone|nvPfEmail|nvPfWeb|nvPfType|nvPfAddr|nvPfWa|nvPfAccent|nvPfTrackOn)$/.test(id) ? el(id) : null), querySelectorAll: () => [], body: { classList: { add() {}, remove() {}, toggle() {}, contains: () => false } } };
     const real = { name: "KKM Test", phone: "03001234567", email: "a@b.pk", website: "", business_type: "Sweets", address: "Shop 1, Lahore", accent: "", whatsapp: "", tracking_on: false, logo_url: "", is_owner: true };
     const sb = { rpc: () => Promise.resolve({ data: real, error: null }), from: () => ({ select: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }) }) };
     const win = { __nvSb: sb, __NOVAX_DEMO: false };

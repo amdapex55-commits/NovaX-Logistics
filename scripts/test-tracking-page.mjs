@@ -105,7 +105,7 @@ const base={awb:'N1234567',origin_city:'Karachi',destination_city:'Lahore',cod_a
 {
   let p=await open('',null); assert.match(p.text('.msg'),/No tracking link/); assert.equal(p.q('#tkLive').hidden,true); assert.ok(p.q('.tk-seller')); p.close();
   p=await open('?t=aaaaaaaaaaaaaaaaaaaaaaaa',null); assert.match(p.text('.msg'),/Parcel not found.*ask your seller/); p.close();
-  p=await open('?awb=N0000000',null); assert.match(p.text('.msg'),/Parcel not found.*check it and try again/); p.close();
+  p=await open('?awb=N0000000',null); assert.match(p.text('.msg'),/Parcel not found.*Check it against the label/); p.close();
   ok('no link, a wrong link and a wrong number each explain themselves');
 }
 // the customer answers (token link only)

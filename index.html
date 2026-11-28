@@ -2696,7 +2696,7 @@ function nvSigninPaint(){
     var go=$("signinAlreadyGo"); go.setAttribute("href",NV_SIGNED.target); go.textContent=NV_PORTAL_WORDS[NV_SIGNED.target]||"Open your portal";
     return;
   }
-  var APPW=document.documentElement.classList.contains("nv-app");
+  var APPW=!!(document.documentElement&&document.documentElement.classList&&document.documentElement.classList.contains("nv-app"));
   title.textContent=rider?(APPW?"Rider log in":"Rider sign in"):(APPW?"Log in":"Sign in");
   sub.textContent=rider?"Use the email and password the NovaX office gave you.":"Use the email and password linked to your NovaX workspace.";
   var em=$("signinEmail"); if(em) em.setAttribute("placeholder", rider?"Your email":"you@store.com");
@@ -2995,8 +2995,16 @@ function carryQuote(){
   }
   fit();
   try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fit); }catch(e){}
-  var fitT=null;
-  window.addEventListener("resize",function(){ placeInk(); clearTimeout(fitT); fitT=setTimeout(fit,120); });
+  /* Refit only when the width changes (turning the phone). The keyboard only
+     changes the height, and measuring hides panes, which would blur the
+     field being typed in and close the keyboard. */
+  var fitT=null, fitW=window.innerWidth;
+  window.addEventListener("resize",function(){
+    placeInk();
+    if(window.innerWidth===fitW) return;
+    fitW=window.innerWidth; clearTimeout(fitT);
+    fitT=setTimeout(function(){ var a=document.activeElement; if(a && a!==document.body && home.contains(a) && /INPUT|TEXTAREA/.test(a.tagName)) return; fit(); },150);
+  });
   home.setAttribute("data-mode","track");
   try{ var savedTab=localStorage.getItem("nvAhTab"); if(savedTab && ORDER.indexOf(savedTab)>0){ show(savedTab); home.classList.remove("ah-moved"); } else placeInk(); }catch(e){ placeInk(); }
   try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(placeInk); }catch(e){}
@@ -3892,7 +3900,7 @@ $("fSignin").addEventListener("submit",function(e){
   if(!__nvSb||!__nvSb.auth){ nvRetryWithSb("fSignin","signinContinue","mSignin","sign-in"); return; }
   clearMsg("mSignin");
   var btn=$("signinContinue"), oldTxt=btn.textContent;
-  btn.disabled=true; btn.textContent=document.documentElement.classList.contains("nv-app")?"Logging in…":"Signing in…";
+  btn.disabled=true; btn.textContent=(document.documentElement&&document.documentElement.classList&&document.documentElement.classList.contains("nv-app"))?"Logging in…":"Signing in…";
 
   __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
     if(res.error||!res.data||!res.data.user){
