@@ -26,6 +26,16 @@
    start the web view used to show a dark empty screen for seconds. */
 (function(){function go(){try{var S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.SplashScreen;if(S&&S.hide)requestAnimationFrame(function(){S.hide({fadeOutDuration:180});});}catch(e){}}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",go);else go();})();</script>
+<script>/* App Links / Universal Links (28 Nov 2026): a novaxlogistics.com link tapped
+   outside the app (tracking, password reset, portal, rider) opens the app; load
+   that page here. Only our own host and these four pages. */
+(function(){try{var C=window.Capacitor,A=C&&C.Plugins&&C.Plugins.App;if(!A||!C.isNativePlatform||!C.isNativePlatform())return;
+function go(u){try{var x=new URL(u);if(!/^(www\.)?novaxlogistics\.com$/.test(x.hostname)||!/^\/(tracking|new-password|client|rider)\.html$/.test(x.pathname))return;
+x.hostname="novaxlogistics.com";if(x.pathname==="/client.html"&&!x.searchParams.get("source"))x.searchParams.set("source","app");
+if(x.href!==location.href)location.href=x.href;}catch(e){}}
+A.addListener("appUrlOpen",function(e){if(e&&e.url)go(e.url);});
+if(A.getLaunchUrl)A.getLaunchUrl().then(function(r){var u=r&&r.url;if(!u)return;try{if(sessionStorage.getItem("nvLaunchUrl")===u)return;sessionStorage.setItem("nvLaunchUrl",u);}catch(e){}go(u);},function(){});
+}catch(e){}})();</script>
   <meta name="robots" content="noindex, nofollow, noarchive">
   <!-- Clickjacking guard (1 Oct 2026). GitHub Pages cannot send
        X-Frame-Options or frame-ancestors, so this page refuses to show
@@ -124,7 +134,7 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=f99d4bad">
+  <link rel="preload" as="script" href="client-app.min.js?v=b2403327">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2987,7 +2997,7 @@ html.nv-app-cold #nvAppBoot{position:fixed;inset:0;z-index:2147483000;display:fl
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
   <script src="nv-track.js?v=68f8c032" defer></script>
-  <script src="client-app.min.js?v=f99d4bad" defer></script>
+  <script src="client-app.min.js?v=b2403327" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --

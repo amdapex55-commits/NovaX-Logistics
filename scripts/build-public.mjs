@@ -10,6 +10,7 @@ const output = path.join(root, "dist");
 // deliberately reviewed and added here.
 const publicFiles = [
   "CNAME",
+  ".well-known/assetlinks.json",
   "admin.html",
   "care.html",
   "client.html",

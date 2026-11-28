@@ -1825,6 +1825,23 @@
      which costs a few bytes, and downloads only when something did, or at
      least every 3 minutes for the cash figures. If the server has no such
      check it falls back to the old download once a minute. */
+  /* Remote sign-out (28 Nov 2026). Admin → Edit Users → "Sign out on all
+     phones" deletes the login's sessions. Every 3 minutes, and when the app
+     comes back to the front, ask the server whether this session still exists;
+     if it says no (401/403, not a network error) sign out here at once. */
+  var revokeAt = 0;
+  async function revokeCheck() {
+    if (!authorized || !navigator.onLine || Date.now() - revokeAt < 60000) return;
+    revokeAt = Date.now();
+    try {
+      var u = await sb.auth.getUser(), e = u && u.error, st = e && (e.status || 0);
+      if (e && (st === 401 || st === 403) && /session|jwt|not.?found|does not exist|invalid/i.test(String(e.message || e.code || ""))) {
+        await sb.auth.signOut({ scope: "local" });   // fires SIGNED_OUT: the gate closes and this phone's cache is cleared
+      }
+    } catch (_) {}
+  }
+  setInterval(function () { if (!document.hidden) void revokeCheck(); }, 180000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) void revokeCheck(); });
   var CHECK_MS = 15000, FULL_MS = 180000;
   async function check() {
     if (document.hidden || !authorized || loading || busy || flushing || checking) return;

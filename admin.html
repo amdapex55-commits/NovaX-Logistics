@@ -6845,6 +6845,9 @@ html,body{ background:var(--bg); color:var(--ink); }
             <section class="admin-module" id="admin-users-edit">
               <div class="panel">
                 <div class="section-head"><div><h3>Edit Users</h3><p>View user emails, roles, access side, assigned branch, and account status.</p></div></div>
+                <div class="ops-card" style="margin-bottom:12px"><div class="ops-card-head"><strong>Lost or stolen phone?</strong></div>
+                  <p>Sign any login (merchant, rider or staff) out on every phone and browser. The account stays; they sign in again with their password.</p>
+                  <div class="inline-actions" style="margin-top:8px"><input id="nvSoeEmail" type="email" placeholder="Login email" autocomplete="off" style="flex:1;min-width:200px"><button class="ghost-btn" type="button" onclick="nvSignOutByEmail()">Sign out on all phones</button></div></div>
                 <div class="ops-list" id="userAccessList"></div>
               </div>
             </section>
@@ -11690,7 +11693,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
           ${nvUserSectionsHtml(user, !(typeof nvLimited === "function" && nvLimited()))}
-          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="revokeUserAccess('${nvEscAttrJs(user.id)}')">Revoke Access</button></div>` : ""}
+          ${!(typeof nvLimited === "function" && nvLimited()) || canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px">${!(typeof nvLimited === "function" && nvLimited()) ? `<button class="ghost-btn" onclick="nvSignOutEverywhere('${nvEscAttrJs(user.id)}')" title="Lost or stolen phone: ends every session, keeps the account">Sign out on all phones</button>` : ""}${canDeleteUsers ? `<button class="ghost-btn" onclick="revokeUserAccess('${nvEscAttrJs(user.id)}')">Revoke Access</button>` : ""}</div>` : ""}
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -15029,6 +15032,33 @@ html,body{ background:var(--bg); color:var(--ink); }
        this genuinely locks them out on their next request. The local row is
        kept and marked Blocked rather than hidden -- hiding it is what created
        the false impression in the first place. */
+    /* 28 Nov 2026: lost or stolen phone. Ends every session of this login
+       (phones and browsers) but keeps the account; they sign in again with
+       their password. sql_novax_sign_out_everywhere_20261128.sql. */
+    async function nvSignOutEverywhere(userId) {
+      const user = state.users.find(u => u.id === userId);
+      const sb = window.__nvSb;
+      if (!user || !sb) { toast("Not ready — nothing was changed.", "error"); return; }
+      if (!user.email) { toast(`${user.name} has no email on record, so their login cannot be found.`, "error"); return; }
+      if (!(await window.nvAsk({ title: `Sign ${user.name} out on all phones?`,
+        body: `${user.email || ""}\n\nEvery phone and browser signed in with this login goes back to the sign-in screen within a few minutes (at most an hour for one that stays open). The account and its data stay; they sign in again with their password. Change the password too if the phone was stolen.`,
+        ok: "Sign out everywhere", danger: true }))) return;
+      const r = await Promise.resolve(sb.rpc("admin_sign_out_everywhere", { p_email: user.email })).catch(e => ({ error: { message: String((e && e.message) || e) } }));
+      if (r && r.error) { toast("Could not sign them out: " + r.error.message, "error"); return; }
+      const d = (r && r.data) || {};
+      toast(`${user.name} signed out: ${d.sessions || 0} session${d.sessions === 1 ? "" : "s"} ended${d.phones ? ", " + d.phones + " phone" + (d.phones === 1 ? "" : "s") + " stop getting alerts" : ""}.`, "success");
+    }
+    window.nvSignOutEverywhere = nvSignOutEverywhere;
+    /* Any login by email (merchants and riders are not all listed in Edit Users). */
+    async function nvSignOutByEmail() {
+      const inp = document.getElementById("nvSoeEmail"), email = String((inp && inp.value) || "").trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Type the login's email first.", "error"); return; }
+      state.users = state.users || [];
+      const tmp = { id: "__soe", name: email, email: email };
+      state.users.push(tmp);
+      try { await nvSignOutEverywhere("__soe"); } finally { state.users = state.users.filter(u => u !== tmp); }
+    }
+    window.nvSignOutByEmail = nvSignOutByEmail;
     async function revokeUserAccess(userId) {
       const user = state.users.find(u => u.id === userId);
       if (!user) { toast("User not found."); return; }

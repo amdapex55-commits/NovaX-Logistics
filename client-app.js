@@ -17593,6 +17593,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                /jwt|token|expired|not authenticated|invalid claim|unauthorized/.test(msg);
       }
       window.nvSessionExpired = function(where){ return nvSessionExpired(where); };
+      /* Remote sign-out (28 Nov 2026). Admin → Edit Users → "Sign out on all
+   phones" deletes the login's sessions. Every 3 minutes, and when the app
+   comes back to the front, ask the server whether this session still exists;
+   if it says no (401/403, not a network error) sign out here at once. */
+      (function nvRevokeGuard(){
+        var last=0;
+        function chk(){
+          var sb=window.__nvSb; if(!sb||!sb.auth||window.__NOVAX_DEMO||window.__nvSessionExpiredShown||!navigator.onLine) return;
+          if(Date.now()-last<60000) return; last=Date.now();
+          Promise.resolve(sb.auth.getSession()).then(function(g){
+            if(!(g&&g.data&&g.data.session)) return;
+            return Promise.resolve(sb.auth.getUser()).then(function(u){
+              var e=u&&u.error, st=e&&(e.status||0);
+              if(e && (st===401||st===403) && /session|jwt|not.?found|does not exist|invalid/i.test(String(e.message||e.code||""))){
+                try{ sb.auth.signOut({ scope:"local" }); }catch(_){}
+                nvSessionExpired("revoked");
+              }
+            });
+          }).catch(function(){});
+        }
+        setInterval(function(){ if(!document.hidden) chk(); }, 180000);
+        document.addEventListener("visibilitychange", function(){ if(!document.hidden) chk(); });
+      })();
       function nvSessionExpired(where){
         if(window.__nvSessionExpiredShown) return;
         window.__nvSessionExpiredShown=true;
