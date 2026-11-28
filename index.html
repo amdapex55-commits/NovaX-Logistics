@@ -2420,6 +2420,13 @@ function carryQuote(){
   if(h==="signup") setTimeout(function(){openM("signup");},450);
   else if(h==="signin") setTimeout(function(){openM("signin");},450);
   else if(h==="contact-sales") setTimeout(function(){openM("sales");},450);
+  /* 28 Nov 2026: inside the NovaX app (iOS/Android) this page is only ever
+     reached signed out (first launch, sign-out, expired session), so the
+     sign-in form opens at once instead of the marketing page. Closing it
+     still leaves sign up and the demo one tap away. */
+  else if(!h){
+    try{ if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) setTimeout(function(){openM("signin");},300); }catch(e){}
+  }
 })();
 
 /* ═════ FORM HELPERS ═════ */

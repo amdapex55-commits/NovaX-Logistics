@@ -6410,7 +6410,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            the page would re-enter it and stamp THESE parcels printed, which is
            the very thing this block exists to prevent. */
         window.onafterprint=function(){ window.onafterprint=null; nvPrintDialogSeen=true; cleanupPrintStage(); nvMarkPrinted(); };
-        setTimeout(function(){
+        setTimeout(function nvNoDialogCheck(){
+          /* In the NovaX app the print dialog is native and stays open as
+             long as the merchant needs; afterprint arrives when it closes. */
+          if(window.nvNativePrintOpen){ setTimeout(nvNoDialogCheck,1000); return; }
           cleanupPrintStage();
           if(!nvPrintDialogSeen && !nvMarked){
             /* No dialog was ever detected, so this print is concluded. Drop the
@@ -7244,7 +7247,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       window.addEventListener("afterprint",restore);
       setTimeout(function(){ nvPrintThemeLight(); try{ window.print(); }catch(e){ restore(); } },60);
       /* Safety net: some browsers never fire afterprint. */
-      setTimeout(restore,8000);
+      setTimeout(function nvLate(){ if(window.nvNativePrintOpen){ setTimeout(nvLate,1000); return; } restore(); },8000);
     }
 
     function nvDocHead(title,sub,metaLines){
@@ -8189,7 +8192,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         window.removeEventListener("afterprint",done);
       }
       window.addEventListener("afterprint",done);
-      setTimeout(done,8000);
+      setTimeout(function nvLate(){ if(window.nvNativePrintOpen){ setTimeout(nvLate,1000); return; } done(); },8000);
       nvPrintThemeLight();
       try{ window.print(); }catch(e){ done(); }
     }
@@ -25126,14 +25129,40 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
   window.nvNativeShareBlob=shareBlob;
 
-  /* Every download in the portal is an <a download href="blob:..."> click. */
+  /* Every download in the portal is an <a download href="blob:..."> click.
+     The blob is remembered when its URL is made, because the page's CSP
+     (connect-src has no blob:) refuses fetch(blob:...) -- that broke every
+     download in the app on its first test. data: URLs are decoded here. */
+  var blobsByUrl={};
+  var origCreate=URL.createObjectURL, origRevoke=URL.revokeObjectURL;
+  URL.createObjectURL=function(obj){
+    var u=origCreate.apply(URL, arguments);
+    try{ if(obj instanceof Blob) blobsByUrl[u]=obj; }catch(e){}
+    return u;
+  };
+  /* Revoked URLs are kept a minute: the portal often revokes right after click(). */
+  URL.revokeObjectURL=function(u){ setTimeout(function(){ delete blobsByUrl[u]; }, 60000); return origRevoke.apply(URL, arguments); };
+  function blobFor(href){
+    if(blobsByUrl[href]) return Promise.resolve(blobsByUrl[href]);
+    var m=/^data:([^;,]*)(;base64)?,(.*)$/.exec(href);
+    if(m){
+      var raw=m[2]?atob(m[3]):decodeURIComponent(m[3]);
+      var bytes=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i)&255;
+      return Promise.resolve(new Blob([bytes], { type:m[1]||"application/octet-stream" }));
+    }
+    return Promise.reject(new Error("file is no longer available"));
+  }
   var origClick=HTMLAnchorElement.prototype.click;
   function handle(a){
     var href=a && a.getAttribute && a.getAttribute("href")||"";
     if(!a.hasAttribute("download") || !/^(blob:|data:)/.test(href)) return false;
-    fetch(href).then(function(r){ return r.blob(); })
+    blobFor(href)
       .then(function(b){ return shareBlob(b, a.getAttribute("download")); })
-      .catch(function(e){ try{ toast("Could not save that file: "+(e&&e.message||e),"error"); }catch(_){} });
+      .catch(function(e){
+        var msg=String(e&&e.message||e);
+        if(/cancel/i.test(msg)) return;   // they closed the share sheet on purpose
+        try{ toast("Could not save that file: "+msg,"error"); }catch(_){}
+      });
     return true;
   }
   HTMLAnchorElement.prototype.click=function(){ if(handle(this)) return; return origClick.apply(this, arguments); };
@@ -25144,6 +25173,58 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   if(!navigator.share && P.Share){
     navigator.share=function(d){ d=d||{}; return P.Share.share({ title:d.title, text:d.text, url:d.url }); };
+  }
+
+  /* Printing. A web view has no print window of its own (Android ignores
+     window.print(), iOS apps get nothing either), so the app's NovaxPrint
+     plugin opens the phone's real print dialog on this page, with the print
+     CSS applied. While it is open, nvNativePrintOpen holds back the
+     portal's "no print window was detected" fallbacks; when it closes,
+     afterprint fires exactly as in a desktop browser. */
+  /* Looked up at call time: on Android the app's own plugins are listed
+     only after this script has run, and the remote page has no
+     registerPlugin(). An app build without the plugin rejects with
+     UNIMPLEMENTED, and then the old print() is used. */
+  function nativePrint(opts){
+    if(C.Plugins && C.Plugins.NovaxPrint && C.Plugins.NovaxPrint.print) return C.Plugins.NovaxPrint.print(opts);
+    if(C.nativePromise) return C.nativePromise("NovaxPrint","print",opts);
+    return Promise.reject({ code:"UNIMPLEMENTED" });
+  }
+  /* The web view fires its own beforeprint/afterprint each time it lays the
+     page out for the dialog. The portal clears its print area on afterprint,
+     so the first one emptied it while the dialog was still open, and picking
+     another paper size printed a blank page. While the native dialog is open
+     those events are held back; ours is sent when it closes. */
+  window.addEventListener("afterprint", function(ev){
+    if(window.nvNativePrintOpen && ev.isTrusted) ev.stopImmediatePropagation();
+  }, true);
+  window.addEventListener("beforeprint", function(ev){
+    if(window.nvNativePrintOpen && ev.isTrusted) ev.stopImmediatePropagation();
+  }, true);
+  /* The app's dark page colour showed around labels on paper. */
+  try{
+    var ps=document.createElement("style");
+    ps.textContent="@media print{html.nv-native,html.nv-native body,html.nv-native body.nvd-on{background:#fff !important}}";
+    document.head.appendChild(ps);
+  }catch(e){}
+  {
+    var origPrint=window.print;
+    window.print=function(){
+      if(window.nvNativePrintOpen) return;
+      window.nvNativePrintOpen=true;
+      try{ window.dispatchEvent(new Event("beforeprint")); }catch(e){}
+      /* afterprint only when a dialog really opened and closed. On a
+         failure the flag drops and the portal's own fallback (offer the
+         PDF) takes over, exactly as when a browser shows no dialog. */
+      nativePrint({ name:(document.title||"NovaX").slice(0,60) }).then(function(){
+        window.nvNativePrintOpen=false;
+        try{ window.dispatchEvent(new Event("afterprint")); }catch(e){}
+      }, function(e){
+        window.nvNativePrintOpen=false;
+        if(e && (e.code==="UNIMPLEMENTED" || /not implemented/i.test(e.message||""))){ try{ origPrint.call(window); }catch(_){} return; }
+        try{ toast("Could not open printing: "+(e&&e.message||e),"error"); }catch(_){}
+      });
+    };
   }
 
   /* Success haptic on booking. */
