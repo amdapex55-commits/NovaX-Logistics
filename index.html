@@ -1991,8 +1991,14 @@ function nvTimedFetch(input,init){
   init.signal=ctl.signal;
   return fetch(input,init).finally(function(){ clearTimeout(t); });
 }
-try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); }
-catch(e){ console.warn("NovaX: cloud init failed",e); }
+/* Why the client could not be made, so a merchant's failed sign-in tells us
+   (Website visitors log + a short code under the message) instead of only
+   "unavailable". nolib = the library never arrived; storage = the browser
+   blocks site storage (cookies off); init:<error> = the library threw. */
+var __nvSbWhy="";
+function nvStorageOk(){ try{ var k="__nv_ls_probe"; localStorage.setItem(k,"1"); localStorage.removeItem(k); return true; }catch(e){ return false; } }
+try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); else __nvSbWhy="nolib"; }
+catch(e){ __nvSbWhy=nvStorageOk()?("init:"+String((e&&(e.name+" "+e.message))||e).slice(0,30)):"storage"; console.warn("NovaX: cloud init failed",e); }
 /* The password-recovery script further down reads window.__nvSb. On the old
    page nothing ever set it -- __nvSb lived only inside this closure -- so
    "Forgot your password?" always answered "Password reset is unavailable". */
@@ -2006,7 +2012,8 @@ function nvLoadSb(){
   if(__nvSb&&__nvSb.auth) return Promise.resolve(__nvSb);
   if(__nvSbLoading) return __nvSbLoading;
   function make(){
-    try{ if(window.supabase&&window.supabase.createClient){ __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); window.__nvSb=__nvSb; return true; } }catch(e){}
+    try{ if(window.supabase&&window.supabase.createClient){ __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); window.__nvSb=__nvSb; __nvSbWhy=""; return true; } __nvSbWhy="nolib"; }
+    catch(e){ __nvSbWhy=nvStorageOk()?("init:"+String((e&&(e.name+" "+e.message))||e).slice(0,30)):"storage"; }
     return false;
   }
   __nvSbLoading=new Promise(function(resolve,reject){
@@ -2034,7 +2041,10 @@ function nvRetryWithSb(formId,btnId,msgId,label){
     if(f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));
   },function(){
     if(btn){ btn.disabled=false; btn.textContent=old; }
-    showMsg(msgId,"We could not reach the "+label+" service. Check your internet connection and try again.",false);
+    var why=__nvSbWhy||"nolib", ua=(String(navigator.userAgent||"").match(/(Edg|OPR|Firefox|Chrome|Version)\/[0-9]+/)||[""])[0];
+    try{ if(window.nvSiteEvent){ nvSiteEvent("sbfail:"+why); if(ua) nvSiteEvent("ua:"+ua); nvSiteEvent("sbfail", true); } }catch(e){}
+    if(why==="storage") showMsg(msgId,"Your browser is blocking this site from saving your sign-in (cookies and site data are turned off). Allow cookies for novaxlogistics.com, or use a normal Chrome window, then try again.",false);
+    else showMsg(msgId,"We could not reach the "+label+" service. Check your internet connection and try again. (code: "+why+")",false);
   });
 }
 if(!__nvSb) try{ window.addEventListener("load",function(){ nvLoadSb().catch(function(){}); }); }catch(e){}
@@ -2472,6 +2482,9 @@ function carryQuote(){
 
 /* ═════ FORM HELPERS ═════ */
 function showMsg(id,txt,ok){ var el=$(id); if(!el) return; el.className="form-msg "+(ok?"ok":"err"); el.textContent=ok?txt:nvFriendly(txt);
+  /* A refused sign-in is logged (first words only, never the email) so a
+     merchant's "it won't let me in" can be read in Website visitors. */
+  if(!ok && (id==="mSignin"||id==="mSignup")){ try{ if(window.nvSiteEvent) nvSiteEvent((id==="mSignin"?"signin_err:":"signup_err:")+String(el.textContent).replace(/[^A-Za-z ]/g,"").slice(0,28), true); }catch(e){} }
   try{ el.scrollIntoView({block:"nearest",behavior:"smooth"}); }catch(e){} }
 function clearMsg(id){ var el=$(id); if(el) el.className="form-msg"; }
 function val(id){ var el=$(id); return el?String(el.value||"").trim():""; }
