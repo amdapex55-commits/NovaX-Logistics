@@ -13,9 +13,10 @@ Choose **All or some functionality is restricted** and paste:
 
 > NovaX is a cash-on-delivery courier for online stores in Pakistan. The app opens on its front page.
 > 1. **Track** (no account): enter tracking number **(review AWB)** and tap Track parcel. It shows the parcel's live status.
-> 2. **Look around without an account**: tap **Ship**, then **See the portal first, no signup**. This is a demo merchant with sample parcels, wallet and reports. Saving is switched off in the demo.
+> 2. **Look around without an account**: tap **Ship**, then **See the portal first**. This is a demo merchant with sample parcels, wallet and reports. Saving is switched off in the demo.
 > 3. **Merchant sign-in**: tap **Log in** with the review login below. It is a real test merchant kept apart from real customers. You can book a parcel (it is cancelled by our team, no rider is sent), print or share its label, see the wallet and reports, open a support ticket and request account deletion.
-> 4. **Rider side**: riders are NovaX staff and sign in with logins NovaX gives them, so it is not open to the public.
+> 4. **Rider side without an account**: tap **Ride**, then **See the rider app first**. A demo rider in Lahore with sample pickups, deliveries and cash. Nothing is sent or saved. Real riders are NovaX staff and sign in with logins NovaX gives them.
+> 5. **One parcel through all three sides** (sample data, labelled "Preview with sample data"): in the merchant demo open **N9000002** (Bilal Ahmed, Karachi → Lahore, out for delivery) and tap **Open tracking** for the customer's page. In the rider demo the same N9000002 is under **My parcels**. The customer page also opens directly: https://novaxlogistics.com/tracking.html?demo=1&awb=N9000002
 >
 > Merchant review login: (email) / (password)
 

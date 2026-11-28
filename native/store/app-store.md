@@ -19,14 +19,16 @@ Sign-in required: **Yes**. Use the merchant review login (see `play-console.md`)
 >
 > How to review:
 > • Track without an account: on the front page enter tracking number (review AWB) and tap Track parcel.
-> • Demo without an account: tap Ship → "See the portal first, no signup". Sample data; saving is switched off.
+> • Demo without an account: tap Ship → "See the portal first". Sample data; saving is switched off.
+> • Rider demo without an account: tap Ride → "See the rider app first". Sample data; nothing is sent or saved.
+> • One parcel through all three sides (all sample data, labelled "Preview with sample data"): in the merchant demo open N9000002 (Bilal Ahmed, Karachi → Lahore, out for delivery) and tap Open tracking to see the customer's page; in the rider demo the same N9000002 is under My parcels, where the rider can mark it Delivered. The customer page also opens directly: https://novaxlogistics.com/tracking.html?demo=1&awb=N9000002
 > • Signed in: tap Log in with the review login. Book a parcel (our team cancels review bookings, no rider is sent), print or share the label, open the wallet and reports, open a support ticket.
 >
 > About the CNIC: Pakistani law and our payout safety need us to know who owns a merchant account before we send them money. The owner adds a photo of the front and back of their CNIC (national ID) in Profile. Only the owner and NovaX staff can see it; it is deleted with the account. A reviewer does not need to add one.
 >
 > About the COD wallet: when a customer pays the rider cash on delivery, NovaX holds that money for the merchant and shows it in the Money tab. The merchant asks for a bank transfer of their own money; fees are flat rupee amounts shown before they confirm. There are no in-app purchases, no digital goods and no payments between users. NovaX earns from delivery charges, which merchants are invoiced for.
 >
-> Riders: NovaX riders are staff and sign in with logins we issue. The app records their location only when they mark a parcel action, and they can record a voice note when a customer refuses a parcel. Merchants never use location or the microphone.
+> Riders: NovaX riders are staff and sign in with logins we issue (the rider demo above shows every rider screen). The app records their location only when they mark a parcel action, and they can record a voice note when a customer refuses a parcel. Merchants never use location or the microphone.
 >
 > Notifications tell a merchant when a parcel is picked up, delivered, refused or returned and when a payout is sent. Asked once after sign-in.
 >
