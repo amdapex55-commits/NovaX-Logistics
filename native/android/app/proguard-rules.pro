@@ -30,3 +30,7 @@
 -keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
 -keepattributes *Annotation*,JavascriptInterface,SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+# Plugin internals (browser controller, listeners, crash reporter) are reached
+# through activities and callbacks R8 cannot see; keep the plugin packages whole.
+-keep class com.capacitorjs.plugins.** { *; }
+-keep class io.capawesome.capacitorjs.plugins.** { *; }
