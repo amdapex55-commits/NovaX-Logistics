@@ -8,6 +8,20 @@
        covered by the X-Frame-Options header (frame-ancestors cannot be set from a meta tag). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://rhzunbzbdzicajqtohwp.supabase.co https://api.qrserver.com https://barcode.tec-it.com; media-src 'self' blob: https://rhzunbzbdzicajqtohwp.supabase.co; connect-src 'self' https://rhzunbzbdzicajqtohwp.supabase.co wss://rhzunbzbdzicajqtohwp.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; upgrade-insecure-requests">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 28 Nov 2026: inside the NovaX app (iOS/Android). The app opens client.html?source=app;
+       that cold start shows the app's launch screen (after <body>) while the portal loads behind,
+       and tells index.html (reached when signed out) to show the app front page, not the website. -->
+  <script>
+  (function(){
+    try{
+      var cold=/[?&]source=app(&|#|$)/.test(location.search);
+      var nat=!!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+      var h=document.documentElement;
+      if(cold||nat){ h.classList.add("nv-app"); try{ sessionStorage.setItem("nvApp","1"); }catch(e){} }
+      if(cold){ h.classList.add("nv-app-cold"); try{ sessionStorage.setItem("nvAppBoot","1"); }catch(e){} }
+    }catch(e){}
+  })();
+  </script>
   <meta name="robots" content="noindex, nofollow, noarchive">
   <!-- Clickjacking guard (1 Oct 2026). GitHub Pages cannot send
        X-Frame-Options or frame-ancestors, so this page refuses to show
@@ -2416,6 +2430,73 @@ try{
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
+<!-- NovaX app launch screen (28 Nov 2026). Only inside the iOS/Android app,
+     only on a cold start (client.html?source=app). The portal loads behind
+     it; it lifts when the first data has arrived, never before 1.2 s, and
+     CSS alone takes it away at 2.8 s even if no script runs. -->
+<style>
+#nvAppBoot{display:none}
+html.nv-app-cold #nvAppBoot{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  background:radial-gradient(120% 90% at 50% 8%,#0a2318,#04100b 72%);color:#eafff5;font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  animation:nabOut .35s ease 2.8s forwards;transition:opacity .35s ease}
+#nvAppBoot.out{opacity:0;pointer-events:none}
+#nvAppBoot .nab-grid{position:absolute;inset:0;opacity:.3;pointer-events:none;
+  background-image:linear-gradient(rgba(20,199,123,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,199,123,.07) 1px,transparent 1px);background-size:42px 42px}
+#nvAppBoot .nab-in{position:relative;display:flex;flex-direction:column;align-items:center;width:min(260px,70vw)}
+#nvAppBoot .nab-brand{display:flex;align-items:center;gap:10px}
+#nvAppBoot .nab-brand img{width:40px;height:40px;border-radius:10px;background:#fff}
+#nvAppBoot .nab-brand b{display:block;font-size:20px;font-weight:800;letter-spacing:-.01em;line-height:1}
+#nvAppBoot .nab-brand small{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;letter-spacing:.32em;color:#9dbdae;margin-top:4px}
+#nvAppBoot .nab-mach{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;letter-spacing:.22em;color:#5f8272;margin-top:30px}
+#nvAppBoot .nab-slot{width:178px;height:8px;margin-top:6px;border-radius:4px;background:#0a2318;border:1px solid rgba(126,224,175,.25);position:relative;z-index:2}
+#nvAppBoot .nab-slot i{position:absolute;left:8px;right:8px;top:2px;height:2px;background:#4ee6a5;box-shadow:0 0 12px #14c77b;animation:nabHot 1.1s ease .1s both}
+#nvAppBoot .nab-stage{width:160px;height:118px;margin-top:-3px;overflow:hidden;position:relative}
+#nvAppBoot .nab-label{position:absolute;inset:0 0 auto 0;height:112px;background:#f7f5ee;border-radius:0 0 3px 3px;color:#11150f;padding:10px 11px;box-sizing:border-box;
+  box-shadow:0 14px 30px rgba(0,0,0,.45);transform:translate3d(0,-101%,0);animation:nabFeed .95s cubic-bezier(.3,.7,.2,1) .15s forwards}
+#nvAppBoot .nab-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #11150f;padding-bottom:5px}
+#nvAppBoot .nab-top b{font-size:11px;font-weight:800}
+#nvAppBoot .nab-top span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:7.5px;letter-spacing:.14em}
+#nvAppBoot .nab-bars{height:38px;margin-top:9px;clip-path:inset(0 100% 0 0);animation:nabBars .55s linear 1s forwards;
+  background:repeating-linear-gradient(90deg,#11150f 0 2px,transparent 2px 4px,#11150f 4px 5px,transparent 5px 7px,#11150f 7px 10px,transparent 10px 11px,#11150f 11px 12px,transparent 12px 15px)}
+#nvAppBoot .nab-num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8.5px;letter-spacing:.2em;text-align:center;margin-top:5px}
+#nvAppBoot .nab-cap{font-size:13px;color:#9dbdae;margin-top:16px}
+@keyframes nabFeed{to{transform:translate3d(0,0,0)}}
+@keyframes nabBars{to{clip-path:inset(0 0 0 0)}}
+@keyframes nabHot{0%,100%{opacity:0}15%,85%{opacity:1}}
+@keyframes nabOut{to{opacity:0;visibility:hidden;pointer-events:none}}
+@media (prefers-reduced-motion:reduce){#nvAppBoot .nab-label{animation:none;transform:none}#nvAppBoot .nab-bars{animation:none;clip-path:none}#nvAppBoot .nab-slot i{animation:none;opacity:0}}
+</style>
+<div id="nvAppBoot" role="status" aria-label="Opening NovaX">
+  <div class="nab-grid" aria-hidden="true"></div>
+  <div class="nab-in" aria-hidden="true">
+    <div class="nab-brand"><img src="/assets/icon-192.png" alt="" width="40" height="40"><span><b>NovaX</b><small>LOGISTICS</small></span></div>
+    <div class="nab-mach">NOVAX THERMAL &middot; 4&times;6</div>
+    <div class="nab-slot"><i></i></div>
+    <div class="nab-stage"><div class="nab-label"><div class="nab-top"><b>NovaX</b><span>AIR WAY BILL</span></div><div class="nab-bars"></div><div class="nab-num">NOVAX &middot; LIVE</div></div></div>
+    <div class="nab-cap">Opening NovaX&hellip;</div>
+  </div>
+</div>
+<script>
+(function(){
+  var h=document.documentElement; if(!h.classList.contains("nv-app-cold")) return;
+  var el=document.getElementById("nvAppBoot"), t0=Date.now(), MIN=1200, MAX=2700, gone=false;
+  function out(){
+    if(gone) return; gone=true;
+    try{ sessionStorage.removeItem("nvAppBoot"); }catch(e){}
+    if(!el) return; el.classList.add("out"); setTimeout(function(){ try{ el.remove(); }catch(e){} },400);
+  }
+  (function tick(){
+    if(gone) return;
+    /* Signed out: the page is leaving for the front page, which keeps this screen up. */
+    if(window.__nvLeaving) return;
+    var waited=Date.now()-t0;
+    var ready=window.__novaxRealDataArrived || window.__NOVAX_DEMO ||
+      (waited>300 && document.body && !document.body.classList.contains("nv-booting"));
+    if((ready && waited>=MIN) || waited>=MAX){ out(); return; }
+    setTimeout(tick,120);
+  })();
+})();
+</script>
 <script>
 /* 4 Oct 2026: loading placeholders. While the first data load is in flight
    the dashboard's empty boxes show a soft shimmer instead of blank space.
