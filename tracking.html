@@ -266,6 +266,16 @@
   @media (prefers-reduced-motion:reduce){ .tk-live i,.pstep.cur .pdot,.skel{animation:none;} }
   /* 28 Nov 2026: retry, saved status, and a way back inside the app. */
   .tk-retry{display:inline-flex;align-items:center;justify-content:center;min-height:48px;margin-top:14px;padding:0 22px;border:0;border-radius:12px;background:#0f7a55;color:#fff;font:800 15px system-ui,-apple-system,sans-serif;cursor:pointer}
+  .tk-demo{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#e6f0ff;color:#0b3a75;font-size:13.5px;line-height:1.45}
+  .tk-demo b{font-weight:800}
+  .tk-demo nav{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tk-demo nav a{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border-radius:999px;background:#fff;color:#0b3a75;font-weight:700;font-size:12.5px;text-decoration:none;border:1px solid #b9cff2}
+  .tk-demo nav a[aria-current]{background:#0b3a75;color:#fff;border-color:#0b3a75}
+  @media (prefers-color-scheme:dark){
+    .tk-demo{background:#13233b;color:#cfe0ff;border:1px solid #24406a}
+    .tk-demo nav a{background:transparent;color:#cfe0ff;border-color:#2f4f80}
+    .tk-demo nav a[aria-current]{background:#cfe0ff;color:#0b1d36;border-color:#cfe0ff}
+  }
   .tk-saved{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#fff6dd;color:#5a4300;font-size:13.5px;line-height:1.4}
   .tk-back{display:none;align-items:center;justify-content:center;width:44px;height:44px;margin:-6px 2px -6px -8px;border:0;background:none;color:inherit;border-radius:10px;cursor:pointer;flex:0 0 auto}
   html.tk-app .tk-back{display:inline-flex}
@@ -625,7 +635,7 @@
     /* Share the AWB link, never location.href -- on a ?t= link that would
        hand the tokenised URL, and everything behind it, to whoever it is
        forwarded to. */
-    var url=SITE+"/tracking.html?awb="+encodeURIComponent(v);
+    var url=SITE+"/tracking.html?"+(NV_DEMO?"demo=1&":"")+"awb="+encodeURIComponent(v);
     function copyLink(){
       if(navigator.clipboard&&navigator.clipboard.writeText){
         navigator.clipboard.writeText(url).then(function(){
@@ -955,6 +965,36 @@
   }
   function nvStopRefresh(){ if(NV_TIMER){ clearInterval(NV_TIMER); NV_TIMER=null; } }
 
+  /* ── Preview (28 Nov 2026) ───────────────────────────────────────────
+     tracking.html?demo=1&awb=N9000002 opens one of the seven sample parcels
+     the merchant and rider previews also show (nv-demo-data.js), so an app
+     reviewer can follow one parcel from the shop, to the rider, to the
+     customer. It never reaches NovaX: no Supabase client, no saved status,
+     no refresh, and no customer answers (those need a real seller link). */
+  var NV_DEMO=param("demo")==="1";
+  function bootDemo(awb){
+    clearTimeout(NV_SLOW);
+    function go(){
+      var D=window.NVDemo;
+      if(!D){ fail("The preview could not load","Please refresh and try again.",true); return; }
+      awb=(awb||"N9000002").replace(/[\s\-_.\/]+/g,"");
+      var row=D.trackRow(awb), list=D.parcels.map(function(p){
+        return '<a href="tracking.html?demo=1&amp;awb='+esc(p.awb)+'"'+(p.awb===awb?' aria-current="page"':"")+'>'+esc(p.awb)+'</a>';
+      }).join("");
+      var bar='<div class="tk-demo" role="note"><b>Preview with sample data.</b> Nothing here is real, and nothing is saved.'+
+              '<nav aria-label="Sample parcels">'+list+'</nav></div>';
+      if(!row){ fail("Not a sample parcel","This preview has seven sample parcels, N9000001 to N9000007."); document.getElementById("out").insertAdjacentHTML("afterbegin",bar); return; }
+      render(row);
+      document.getElementById("out").insertAdjacentHTML("afterbegin",bar);
+      var live=document.getElementById("tkLive"); if(live) live.hidden=true;
+      try{ document.title=document.title.replace(" · NovaX"," · NovaX preview"); }catch(e){}
+    }
+    if(window.NVDemo){ go(); return; }
+    var sc=document.createElement("script"); sc.src="nv-demo-data.js?v=fdad2714"; sc.onload=go;
+    sc.onerror=function(){ fail("The preview could not load","Please check your internet connection and try again.",true); };
+    document.head.appendChild(sc);
+  }
+
   function boot(){
     var token=param("t");
     /* NovaX fix (dead "View full journey" link): the homepage and the client
@@ -968,6 +1008,7 @@
        tracker already calls, so this exposes nothing that was not already
        public. Status summary instead of full timeline, rather than a dead end. */
     var awb=(param("awb")||param("track")||"").trim().toUpperCase();
+    if(NV_DEMO){ bootDemo(awb); return; }
 
     if(!token && !awb){
       fail("No tracking link","Please use the tracking link your seller sent you.");

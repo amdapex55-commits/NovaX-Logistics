@@ -52,6 +52,7 @@ const publicFiles = [
   "nv-appback.js",
   "nv-voice.js",
   "nv-journey.js",
+  "nv-demo-data.js",
   "nv-payment.js",
   "rider-app.js",
   "rider-core.js",

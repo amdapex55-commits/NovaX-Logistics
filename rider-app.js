@@ -239,7 +239,7 @@
            "Parcel: " + p.awb, shop ? "From: " + shop : "", m.category ? "Contents: " + m.category : "", m.orderId ? "Order: " + m.orderId : "", cash];
       if (m.swapLeg === "out") lines.push(ur ? "Badalne wala purana saman tayyar rakhein." : "Please keep the item you are exchanging ready.");
     }
-    lines.push((ur ? "Track: " : "Track it: ") + "https://novaxlogistics.com/tracking.html?awb=" + encodeURIComponent(p.awb));
+    lines.push((ur ? "Track: " : "Track it: ") + "https://novaxlogistics.com/tracking.html?" + (DEMO ? "demo=1&" : "") + "awb=" + encodeURIComponent(p.awb));
     return lines.filter(function (x, i) { return x !== "" || i === 2; }).join("\n");
   }
   /* Why the server would refuse to take this parcel out right now. */
@@ -1884,27 +1884,48 @@
     var me = "demo-rider", up = function (a) { return String(a || "").toUpperCase(); };
     var SH = { z: { name: "Zeb Store", phone: "0300 0000001", address: "Shop 14, Main Boulevard, Gulberg, Lahore" }, a: { name: "Anarkali Fabrics", phone: "0300 0000002", address: "Shop 3, New Anarkali, Lahore" },
                k: { name: "Karachi Kicks", phone: "0300 0000003", address: "Tariq Road, Karachi" } };
+    /* 28 Nov 2026: the Karachi shipper is the merchant preview's Sana's Closet,
+       and three of its parcels are the same N9000002-4 the merchant and the
+       customer tracker show (nv-demo-data.js). Every other sample parcel is
+       N91xxxxx, so no AWB here means something else in another preview. */
+    var DD = window.NVDemo || null;
+    if (DD) SH.k = { name: DD.shipper.name, phone: DD.shipper.phone, address: DD.shipper.address };
     var WHO = ["Ayesha K.", "Bilal R.", "Sana M.", "Hamza T.", "Fatima N.", "Usman J.", "Maryam S.", "Ali Z.", "Hira B.", "Omar F."];
     var AT = ["House 12, Block C, Johar Town", "Flat 4, Street 9, Model Town", "House 88, Phase 5, DHA Lahore", "Shop 6, Liberty Market, Gulberg", "House 31, Wapda Town", "House 7, Iqbal Town"];
     function add(bucket, status, origin, city, hours, sh, x) {
-      n++; var p = { id: "demo-" + n, awb: "N" + (9000000 + n), client_id: "demo-" + sh, rider_id: null, consignee: WHO[n % WHO.length], phone: "0300 0000" + String(100 + n),
+      n++; var p = { id: "demo-" + n, awb: "N" + (9100000 + n), client_id: "demo-" + sh, rider_id: null, consignee: WHO[n % WHO.length], phone: "0300 0000" + String(100 + n),
         address: AT[n % AT.length], city: city, origin: origin, cod_amount: 950 + (n * 170) % 2400, status: status, bucket: bucket, status_since: iso(hours), updated_at: iso(hours), delivered_at: null,
         held_by: null, outside: false, meta: { weight: "0.5 kg" }, exception: "", customer_reply: null, attempts: 0, shipper: Object.assign({ from_request: false }, SH[sh]) };
       Object.keys(x || {}).forEach(function (k) { p[k] = x[k]; }); rows.push(p); return p;
     }
     add("pickup", "New booked", "Lahore", "Lahore", 3, "z"); add("pickup", "New booked", "Lahore", "Lahore", 3, "z"); add("pickup", "New booked", "Lahore", "Karachi", 2, "z");
     add("pickup", "New booked", "Lahore", "Lahore", 20, "a"); add("pickup", "New booked", "Lahore", "Islamabad", 20, "a");
-    var coming = [0, 0, 0, 0].map(function () { return add("incoming", "Parcel now in transit", "Karachi", "Lahore", 18, "k", { meta: { weight: "1 kg", transitBatch: "KAR-LAH-DEMO" } }).awb; });
+    var coming = [0, 0, 0, 0].map(function () { return add("incoming", "Parcel now in transit", "Karachi", "Lahore", 5, "k", { meta: { weight: "1 kg", transitBatch: "KAR-LAH-DEMO" } }).awb; });
     add("incoming", "Return in transit", "Lahore", "Karachi", 40, "a");
     for (var i = 0; i < 4; i++) add("station", "Parcel received at destination", "Karachi", "Lahore", 5 + i, "k");
     add("station", "Parcel received at destination", "Lahore", "Lahore", 4, "z", { cod_amount: 0, meta: { weight: "0.5 kg", paymentMode: "Prepaid" } });
     add("station", "Parcel received at destination", "Lahore", "Lahore", 6, "a", { customer_reply: { choice: "call_first", note: "", at: iso(1) } });
     add("station", "Reattempt", "Karachi", "Lahore", 20, "k", { attempts: 1, exception: "Customer asked for tomorrow", meta: { weight: "0.5 kg", steps: ["Reattempt"], nextAttempt: R.day(new Date(now + 864e5)) } });
-    add("station", "Refused", "Karachi", "Lahore", 50, "k", { attempts: 1, exception: "Customer refused" }); add("station", "Refused", "Lahore", "Lahore", 30, "a", { attempts: 1, exception: "No money" });
+    add("station", "Refused", "Karachi", "Lahore", 20, "k", { attempts: 1, exception: "Customer refused" }); add("station", "Refused", "Lahore", "Lahore", 30, "a", { attempts: 1, exception: "No money" });
     for (i = 0; i < 3; i++) add("out", "Parcel out for delivery", i ? "Karachi" : "Lahore", "Lahore", 2, i ? "k" : "z", { attempts: 1, rider_id: me });
     add("transit", "Collected by rider", "Lahore", "Karachi", 6, "z"); add("transit", "Collected by rider", "Lahore", "Karachi", 6, "a"); add("transit", "Collected by rider", "Lahore", "Islamabad", 7, "a");
     add("done", "Delivered", "Karachi", "Lahore", 1, "k", { rider_id: me, delivered_at: iso(1), attempts: 1 }); add("done", "Delivered", "Lahore", "Lahore", 2, "z", { rider_id: me, delivered_at: iso(2), attempts: 1 });
-    batches.push({ code: "KAR-LAH-DEMO", kind: "forward", from_city: "Karachi", to_city: "Lahore", reference: "Daewoo 558812", awbs: coming.slice(), received: [], status: "Sent", sent_at: iso(18) });
+    batches.push({ code: "KAR-LAH-DEMO", kind: "forward", from_city: "Karachi", to_city: "Lahore", reference: "Daewoo 558812", awbs: coming.slice(), received: [], status: "Sent", sent_at: iso(5) });
+    /* The shared parcels: same AWB, customer, address and COD as the merchant
+       preview. Found by where they sit, so the counts above do not change. */
+    function shared(p, awb, x) {
+      var d = DD && DD.byAwb(awb); if (!p || !d) return;
+      var old = p.awb;
+      Object.assign(p, { awb: d.awb, consignee: d.consignee, phone: d.phone, address: d.address, cod_amount: d.cod }, x || {});
+      p.meta = Object.assign({}, p.meta, { weight: d.kg });
+      if (d.exception) p.exception = d.exception;
+      batches.forEach(function (b) { b.awbs = b.awbs.map(function (a) { return a === old ? d.awb : a; }); });
+      coming = coming.map(function (a) { return a === old ? d.awb : a; });
+    }
+    var fromK = function (bucket, status) { return rows.filter(function (p) { return p.bucket === bucket && p.client_id === "demo-k" && (!status || p.status === status); })[0]; };
+    shared(fromK("out"), "N9000002", { customer_reply: { choice: "call_first", note: "", at: iso(40 / 60) } });
+    shared(fromK("incoming", "Parcel now in transit"), "N9000003");
+    shared(fromK("station", "Refused"), "N9000004");
     function copy(v) { return JSON.parse(JSON.stringify(v)); }
     function put(p, status, bucket) { p.status = status; p.bucket = bucket; p.status_since = p.updated_at = iso(0); }
     function cash() {
@@ -1915,10 +1936,11 @@
     var rev = 1;   /* the preview's answer to "has anything changed?" */
     /* A made-up morning in Lahore: out from the station, two deliveries, one refusal. */
     var route = (function () {
-      var st = [{ h: 3, action: "out", awbs: ["N9000020", "N9000021", "N9000022", "N9000026", "N9000027"], lat: 31.5204, lng: 74.3587, acc: 12 },
-        { h: 2, action: "delivered", awbs: ["N9000027"], lat: 31.5102, lng: 74.3431, acc: 9, km: 1.86 },
-        { h: 1.5, action: "refused", awbs: ["N9000019"], lat: 31.4983, lng: 74.3302, acc: 16, km: 1.8 },
-        { h: 1, action: "delivered", awbs: ["N9000026"], lat: 31.4721, lng: 74.2717, acc: 11, km: 6.27 }];
+      var A = function (n) { return rows[n - 1].awb; };   /* the n-th sample parcel, whatever its AWB became */
+      var st = [{ h: 3, action: "out", awbs: [A(20), A(21), A(22), A(26), A(27)], lat: 31.5204, lng: 74.3587, acc: 12 },
+        { h: 2, action: "delivered", awbs: [A(27)], lat: 31.5102, lng: 74.3431, acc: 9, km: 1.86 },
+        { h: 1.5, action: "refused", awbs: [A(19)], lat: 31.4983, lng: 74.3302, acc: 16, km: 1.8 },
+        { h: 1, action: "delivered", awbs: [A(26)], lat: 31.4721, lng: 74.2717, acc: 11, km: 6.27 }];
       return { day: R.day(new Date()), km: 9.9, n: st.length, gps: st.length, same: 0, stops: st.map(function (s) { var o = Object.assign({ at: iso(s.h) }, s); delete o.h; return o; }) };
     })();
     function act(a) {
@@ -1953,7 +1975,7 @@
       else if (name === "rider_today") d = rows.filter(function (p) { return /Delivered|Refused|Consignee not available/.test(p.status); }).slice(0, 6).map(function (p, i) {
           return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i === 0 ? "missing" : i % 2 ? "sent" : "skipped"),
                    address: p.address, phone: p.phone, cod_amount: p.cod_amount, payment_mode: (p.meta && p.meta.paymentMode) || "COD", shop: (p.shipper && p.shipper.name) || "Karachi Kicks" }; });
-      else if (name === "rider_out_of_area") d = [{ awb: "N9000099", consignee: "Awais Mehmood", city: "Lahore", address: "Near veterinary hospital, Daultala, Gujar Khan", phone: "03001234599", cod_amount: 1380, payment_mode: "COD", shop: "Karachi Kicks", reason: "Address is outside Lahore", changed_at: iso(60) }];
+      else if (name === "rider_out_of_area") d = [{ awb: "N9100099", consignee: "Awais Mehmood", city: "Lahore", address: "Near veterinary hospital, Daultala, Gujar Khan", phone: "03001234599", cod_amount: 1380, payment_mode: "COD", shop: "Karachi Kicks", reason: "Address is outside Lahore", changed_at: iso(60) }];
       else if (name === "rider_awb_why") d = [];
       else if (name === "rider_station_action") d = act(a);
       else if (name === "rider_add_expense") { expenses.unshift({ category: a.p_category, amount: Number(a.p_amount) || 0, note: a.p_note || "", expenseDate: R.day(new Date()), settled: false, createdAt: iso(0) }); d = { ok: true }; }

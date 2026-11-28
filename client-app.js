@@ -277,17 +277,18 @@ window.nvCount=function(n,one,many){
        refusal handled honestly, and one waiting for pickup. Showing the
        refusal is deliberate -- five green rows read as a mockup.
 
-       Every name, address and number here is invented. AWBs use an N9xxxxxx
-       block the live sequence does not reach, so a demo AWB can never be
-       confused for a real parcel. */
+       Every name, address and number here is invented. The AWBs are the
+       shared sample set in nv-demo-data.js. They are not a reserved block
+       (nv_next_awb gives N900 to a client id ending in 900), which is why
+       the preview is only ever opened by ?demo=1, never by the AWB. */
     function nvDemoSeed(){
       var now = Date.now(), H = 3600000, D = 24 * H;
       function iso(ms){ return new Date(ms).toISOString(); }
       var CID = "demo-client";
       function parcel(o){
         return { id:"demo-p-"+o.awb, awb:o.awb, client_id:CID, status:o.status,
-          consignee:o.consignee, phone:o.phone, city:"Karachi", address:o.address,
-          cod_amount:o.cod, fee:225, exception:o.exception||null,
+          consignee:o.consignee, phone:o.phone, city:o.city||"Karachi", address:o.address,
+          cod_amount:o.cod, fee:o.fee||225, exception:o.exception||null,
           booked_at:iso(now-o.age), updated_at:iso(now-o.upd),
           delivered_at:o.status==="Delivered"?iso(now-o.upd):null,
           invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-(o.invoicedAgo||6*H)):null,
@@ -296,6 +297,9 @@ window.nvCount=function(n,one,many){
           meta:{ weight:o.kg||"0.5 kg", service:"COD Standard", branch:"Karachi Hub",
                  paymentMode:"COD", steps:o.steps||null, risk:0 } };
       }
+      /* 28 Nov 2026: N9000002-4 go to Lahore, where the rider preview's
+         Demo Rider holds them; nv-demo-data.js is the shared story and
+         scripts/test-demo-dataset.mjs keeps this copy equal to it. */
       return {
         tables: {
           profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
@@ -309,13 +313,13 @@ window.nvCount=function(n,one,many){
                      phone:"0300-0000001", address:"Flat 3B, Block 7, Gulshan-e-Iqbal, Karachi",
                      cod:3450, age:5*D, upd:6*H, invoice:"demo-inv-1", rider:"demo-rider" }),
             parcel({ awb:"N9000002", status:"Parcel out for delivery", consignee:"Bilal Ahmed",
-                     phone:"0300-0000002", address:"House 21, Phase 5, DHA, Karachi",
+                     phone:"0300-0000002", address:"House 21, Phase 5, DHA, Lahore", city:"Lahore", fee:250,
                      cod:1899, age:2*D, upd:2*H, rider:"demo-rider", kg:"1 kg" }),
             parcel({ awb:"N9000003", status:"Parcel now in transit", consignee:"Ayesha Siddiqui",
-                     phone:"0300-0000003", address:"Shop 8, Bahadurabad, Karachi",
+                     phone:"0300-0000003", address:"House 8, Block C, Johar Town, Lahore", city:"Lahore", fee:250,
                      cod:2750, age:1*D, upd:5*H }),
             parcel({ awb:"N9000004", status:"Refused", consignee:"Usman Tariq",
-                     phone:"0300-0000004", address:"House 44, North Nazimabad, Karachi",
+                     phone:"0300-0000004", address:"House 44, Model Town, Lahore", city:"Lahore", fee:250,
                      cod:1200, age:3*D, upd:20*H,
                      exception:"Consignee refused at doorstep - asked to reattempt Saturday" }),
             parcel({ awb:"N9000005", status:"New booked", consignee:"Maryam Khan",
@@ -3161,7 +3165,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
     // awaiting payment in Payment History / the invoice list.
     function invoiceChipClass(status){ if(status==="Cancelled") return "bad"; if(isInvoiceClosed(status)) return "good"; return "warn"; }
     function invoiceTypeChipClass(invType){ return invType==="Delivery Charges"?"bad":(invType==="Mixed"?"warn":"info"); }
-    function trackingUrl(awb){ try{ return location.origin+"/tracking.html?awb="+encodeURIComponent(awb); }catch(e){ return "https://novaxlogistics.com/tracking.html?awb="+encodeURIComponent(awb); } }
+    /* 28 Nov 2026: in the preview every tracking link (Track, Share, WhatsApp,
+       label QR) opens the sample parcel on tracking.html?demo=1 -- a real
+       ?awb= lookup of N9000002 says "Parcel not found". */
+    function trackingUrl(awb){ var q=(window.__NOVAX_DEMO?"demo=1&":"")+"awb="+encodeURIComponent(awb); try{ return location.origin+"/tracking.html?"+q; }catch(e){ return "https://novaxlogistics.com/tracking.html?"+q; } }
     // NovaX (Part 7): WhatsApp customer message templates. Shared list of
     // event kinds, next-step copy per kind, and a status->kind guess so the
     // UI can preselect a sensible template for the parcel's current status.

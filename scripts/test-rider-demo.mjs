@@ -8,7 +8,7 @@ const require=createRequire(import.meta.url);
 let JSDOM;try{({JSDOM}=require('jsdom'));}catch{({JSDOM}=createRequire('/tmp/novax-rider-test-deps/package.json')('jsdom'));}
 const root=new URL('../',import.meta.url);
 const html=readFileSync(new URL('rider.html',root),'utf8');
-const scripts=['nv-payment.js','nv-journey.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL(f,root),'utf8'));
+const scripts=['nv-payment.js','nv-journey.js','nv-demo-data.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL(f,root),'utf8'));
 const ok=m=>console.log('ok - '+m);
 const wait=(ms=60)=>new Promise(r=>setTimeout(r,ms));
 async function app(search,{withRealLogin}={}){

@@ -132,7 +132,7 @@ for (const f of ["sw.js", "client-app.js", "client-app.min.js", "rider-app.js", 
 }
 
 const riderHtml = readFileSync(join(root, "rider.html"), "utf8");
-for (const file of ["rider-app.js", "rider-core.js", "rider.css"]) {
+for (const file of ["rider-app.js", "rider-core.js", "rider.css", "nv-demo-data.js"]) {
   const actual = execFileSync("git", ["hash-object", join(root, file)]).toString().trim().slice(0, 8);
   if (!riderHtml.includes(file + "?v=" + actual)) problems.push(`${file}: rider.html must reference ?v=${actual} to bust stale offline assets.`);
   else notes.push(`${file}?v=${actual} matches the file`);
@@ -148,6 +148,13 @@ for (const file of ["rider-app.js", "rider-core.js", "rider.css"]) {
     if (!html.includes("nv-cnic.js?v=" + actual)) problems.push(`${page} must reference nv-cnic.js?v=${actual}.`);
     else notes.push(`${page}: nv-cnic.js?v=${actual} matches the file`);
   }
+}
+
+/* nv-demo-data.js (one sample story for every preview, 28 Nov 2026). */
+{
+  const actual = execFileSync("git", ["hash-object", join(root, "nv-demo-data.js")]).toString().trim().slice(0, 8);
+  const html = readFileSync(join(root, "tracking.html"), "utf8");
+  if (!html.includes("nv-demo-data.js?v=" + actual)) problems.push(`tracking.html must reference nv-demo-data.js?v=${actual}.`);
 }
 
 /* nv-track.js (app health events, 28 Nov 2026): index and client must load the current file. */
