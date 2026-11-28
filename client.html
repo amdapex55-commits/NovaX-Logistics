@@ -8,6 +8,31 @@
        X-Frame-Options or frame-ancestors, so this page refuses to show
        inside another site's frame: nothing to click, nothing to trick. -->
   <script>if(window.top!==window.self){document.documentElement.style.display="none";try{window.top.location.replace(window.location.href);}catch(e){}}</script>
+  <script>
+    /* 28 Nov 2026: a visitor with no saved sign-in downloaded the whole portal
+       (about 1 MB of script), waited for it to run, and only then was sent to
+       the homepage: 4.5 s wasted (Lighthouse). The full gate in client-app.js
+       still decides everything for a saved session; this only skips the wait
+       when there is clearly none. Demo mode and sign-in links that carry a
+       token in the URL are left alone. Any error falls through to the gate. */
+    (function(){
+      try{
+        var q=new URLSearchParams(location.search);
+        if(q.has("demo") || q.has("code") || /access_token|refresh_token|error_description/.test(location.hash)) return;
+        if(localStorage.getItem("sb-rhzunbzbdzicajqtohwp-auth-token")) return;
+        var tab=q.get("tab"); if(!tab && q.get("awb")) tab="awbLabel";
+        if(["money","awbLabel","support","profile","newBooking","flyers"].indexOf(tab)>-1){
+          var awb=(q.get("awb")||"").trim().toUpperCase();
+          sessionStorage.setItem("novaxEmailDestination",JSON.stringify({ tab:tab, awb:/^[A-Z0-9-]{1,80}$/.test(awb)?awb:"", at:Date.now() }));
+        }
+        /* "Get my code" in the Shopify app opens ?shopifyConnect=1. Keep it
+           across sign-in, or the merchant lands on the dashboard with no code. */
+        if(q.get("shopifyConnect")==="1"){ sessionStorage.setItem("novaxShopifyConnect","1"); sessionStorage.setItem("novaxViaShopify","1"); }
+        document.documentElement.style.display="none";
+        location.replace("index.html");
+      }catch(e){}
+    })();
+  </script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -76,7 +101,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=21d5dde5">
+  <link rel="preload" as="script" href="client-app.min.js?v=b8cdbcb9">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2818,7 +2843,7 @@ try{
   <script src="nv-payment.js?v=1ec3b2cc" defer></script>
   <script src="nv-journey.js?v=bd803110" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=21d5dde5" defer></script>
+  <script src="client-app.min.js?v=b8cdbcb9" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --

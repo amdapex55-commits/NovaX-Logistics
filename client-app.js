@@ -1107,6 +1107,16 @@ window.nvCount=function(n,one,many){
               tab:emailTab, awb:/^[A-Z0-9-]{1,80}$/.test(emailAwb)?emailAwb:"", at:Date.now()
             }));
           }
+          /* 28 Nov 2026: "Get my code" from the Shopify app sends a signed-out
+             merchant here with ?shopifyConnect=1. The flag was only saved after
+             sign-in, so it was lost in this redirect and the merchant landed
+             on the dashboard with no code -- the step Shopify's reviewers
+             never got past. Save it before leaving; sessionStorage survives
+             the round trip through index.html in this tab. */
+          if(emailQuery.get("shopifyConnect")==="1"){
+            sessionStorage.setItem("novaxShopifyConnect","1");
+            sessionStorage.setItem("novaxViaShopify","1");
+          }
         }catch(e){}
         redirectAway("index.html"); return;
       }
