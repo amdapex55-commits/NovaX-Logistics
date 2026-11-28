@@ -354,7 +354,41 @@ function consigneeName(a: ShopifyAddress): string {
 
 // ---------------------------------------------------------------- map -------
 
+/** 28 Nov 2026: Shopify's reviewers test from their own development store,
+ *  which is in USD with a US address and pays with the Bogus Gateway. Every
+ *  one of those is a correct skip for a real merchant, so the reviewer saw
+ *  "not booked" and nothing to fulfil. A TEST order on a review-mode account
+ *  is reshaped into a Karachi test parcel instead: it is never handed to a
+ *  rider (nvsh_review_autocollect marks it collected after 60 s) and the
+ *  address keeps a "Shopify review test" note. Real orders are untouched. */
+export const REVIEW_PHONE = "03000000000";
+export function reviewTestOrder(order: ShopifyOrder): ShopifyOrder {
+  const a = order.shipping_address ?? {};
+  const name = consigneeName(a) || "Shopify Reviewer";
+  const city = serviceCity(String(a.city ?? "").trim()) ?? "Karachi";
+  const street = [a.address1, a.address2].map((x) => String(x ?? "").trim()).filter(Boolean).join(", ");
+  return {
+    ...order,
+    currency: "PKR",
+    phone: firstUsablePhone(order) || REVIEW_PHONE,
+    shipping_address: {
+      ...a,
+      name, first_name: null, last_name: null,
+      address1: `${street || "Test address"} (Shopify review test)`,
+      address2: null,
+      city,
+      country_code: "PK",
+      phone: firstUsablePhone(order) || REVIEW_PHONE,
+    },
+    line_items: (order.line_items ?? []).length && (order.line_items ?? []).every((li) => li.requires_shipping === false)
+      ? (order.line_items ?? []).map((li) => ({ ...li, requires_shipping: true }))
+      : order.line_items,
+  };
+}
+
 export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): MapResult {
+  const review = Boolean(order.test && opts.allowTest);
+  if (review) order = reviewTestOrder(order);
   const {
     defaultWeight = "0.8 kg",
     defaultService = "Standard",
@@ -451,7 +485,10 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
   // for the full amount. An authorised card order would have had the buyer
   // charged twice: once by the card capture, once by the rider at the door.
   // Financial status alone never proves cash on delivery; the gateway does.
-  const kind = paymentKind(order);
+  let kind = paymentKind(order);
+  // A review test order paid with the Bogus Gateway in any state is booked:
+  // paid as Prepaid, anything else as COD for the outstanding amount.
+  if (review && kind === "unknown") kind = "cod";
 
   if (kind === "unknown") {
     return {
@@ -462,11 +499,12 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
     };
   }
 
-  if (kind === "prepaid" && !bookPrepaid) {
+  if (kind === "prepaid" && !bookPrepaid && !review) {
     return { action: "skip", reason: "order already paid online (prepaid booking is switched off)" };
   }
 
   const cod = kind === "prepaid" ? 0 : codAmount(order);
+  if (review && kind === "cod" && cod <= 0) kind = "prepaid";
   if (kind === "cod" && cod <= 0) {
     return { action: "skip", reason: "COD order with nothing left to collect" };
   }

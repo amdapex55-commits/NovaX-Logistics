@@ -127,8 +127,21 @@ for (const [name, order, re] of skips) {
 {
   const r = mapOrderToBooking({ ...base, test: true }, { allowTest: true });
   t("review mode: test order booked", r.action === "book", JSON.stringify(r));
-  const usd = mapOrderToBooking({ ...base, test: true, currency: "USD" }, { allowTest: true });
-  t("review mode: currency rule still applies", usd.action === "skip" && /USD/.test(usd.reason), JSON.stringify(usd));
+  // 28 Nov 2026: a reviewer's own dev store -- USD, US address, no Pakistani
+  // phone, Bogus Gateway paid -- becomes a Karachi test parcel.
+  const us = { ...base, test: true, currency: "USD", financial_status: "paid", gateway: "bogus",
+    payment_gateway_names: ["bogus"], phone: null, customer: null,
+    shipping_address: { name: "Rev Iewer", address1: "151 O'Connor St", city: "Ottawa", country_code: "US", phone: "+1 613 555 0100" } };
+  const rv = mapOrderToBooking(us, { allowTest: true });
+  t("review mode: US/USD/Bogus order booked", rv.action === "book" && rv.booking.city === "Karachi"
+    && rv.booking.phone === "03000000000" && rv.booking.paymentMode === "Prepaid"
+    && /Shopify review test/.test(rv.booking.address), JSON.stringify(rv));
+  const rvAuth = mapOrderToBooking({ ...us, financial_status: "authorized", total_outstanding: "25.00" }, { allowTest: true });
+  t("review mode: authorized Bogus order booked as COD", rvAuth.action === "book" && rvAuth.booking.paymentMode === "COD", JSON.stringify(rvAuth));
+  const realUsd = mapOrderToBooking({ ...us, test: false }, { allowTest: true });
+  t("review account, real order: USD still skipped", realUsd.action === "skip" && /USD/.test(realUsd.reason), JSON.stringify(realUsd));
+  const notReview = mapOrderToBooking({ ...us, test: true }, {});
+  t("not review mode: reviewer order skipped", notReview.action === "skip", JSON.stringify(notReview));
   const plain = mapOrderToBooking({ ...base, test: true }, {});
   t("not review mode: test order skipped", plain.action === "skip" && /test order/i.test(plain.reason), JSON.stringify(plain));
 }
