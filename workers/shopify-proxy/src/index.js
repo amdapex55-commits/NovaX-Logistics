@@ -80,6 +80,11 @@ export default {
     // see the route as an invocation rather than a bare asset fetch.
     headers.set("x-forwarded-host", url.host);
     headers.set("x-forwarded-proto", "https");
+    // 28 Nov 2026: Shopify's IP allowlist (AS16509, Australia) only passes
+    // Admin API calls made from Sydney. Without this the function runs in the
+    // region nearest the caller: us-east-1 for Shopify webhooks, ap-south-1
+    // for a merchant in Pakistan. Pin every invocation to the project's region.
+    headers.set("x-region", "ap-southeast-2");
 
     // GET/HEAD must not carry a body; everything else forwards the raw stream.
     const hasBody = request.method !== "GET" && request.method !== "HEAD";
