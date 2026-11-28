@@ -1272,7 +1272,31 @@ html.nv-app #appHome{--ah-lime:#dcf54b;--ah-lime-ink:#0b1f14;--ah-green:#1fd283;
 .ah-net.show{display:flex}
 .ah-net.ok{background:#0e3a24;color:#c9f7df}
 .ah-net i{width:9px;height:9px;border-radius:50%;background:currentColor;flex:0 0 auto}
+/* Large text (review 28 Nov). Android scales every font with the phone's
+   font size (up to 200%) while the layout keeps its width, so the header
+   collided and the tabs ran off the card. With big text the page may scroll;
+   the header keeps one action, the tab captions and route drawing go, and
+   the headline stays moderate so the tracking field comes first. */
+html.nv-bigtext .ah-create,html.nv-bigtext .ah-brand .ah-div,html.nv-bigtext .ah-brand small,html.nv-bigtext .ah-route,html.nv-bigtext .ah-tabs small,html.nv-bigtext .ah-hx,html.nv-bigtext .ah-tag{display:none}
+html.nv-bigtext .ah-brand b{font-size:16px}
+html.nv-bigtext .ah-login{padding:0 12px;font-size:13px}
+html.nv-bigtext .ah-h{font-size:17px;line-height:1.2}
+html.nv-bigtext .ah-card{margin-top:16px}
+html.nv-bigtext .ah-tabs button{font-size:13px;white-space:normal;padding:6px 2px}
+html.nv-bigtext .ah-tabs button svg{display:none}
+html.nv-bigtext .ah-field{flex-wrap:wrap}
+html.nv-bigtext .ah-field input{flex:1 1 60%;font-size:15px}
+html.nv-bigtext .ah-scan{font-size:13px}
+html.nv-bigtext .ah-links{flex-direction:column;gap:0}
+html.nv-bigtext .ah-links span{display:none}
+html.nv-bigtext .ah-slot,html.nv-bigtext .ah-slot>*{min-height:0;line-height:1.35}
+html.nv-bigtext .ah-foot{flex-direction:column}
 </style>
+<script>/* How much the phone enlarges text: a 16px probe reads back larger when the
+   Android font size is up. 1.15 or more turns on the large-text layout. */
+(function(){try{var p=document.createElement("span");p.style.cssText="position:absolute;visibility:hidden;font-size:16px";p.textContent="x";document.documentElement.appendChild(p);
+var z=parseFloat(getComputedStyle(p).fontSize)/16||1;p.remove();if(z<1.1&&window.visualViewport){}
+if(z>=1.15)document.documentElement.classList.add("nv-bigtext");document.documentElement.style.setProperty("--nv-tz",z.toFixed(2));}catch(e){}})();</script>
 <script>
   /* 28 Nov 2026: the homepage carried the manifest but never registered the
      service worker, so installing from here gave an app with no offline
