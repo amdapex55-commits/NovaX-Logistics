@@ -18643,7 +18643,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         : (showAll && totalItems>6
             ? `<p class="footer-note" style="margin-top:8px">Showing all ${totalItems}. <button class="action-btn ghost" onclick="typeof nvActionNeededShowFewer==='function'&&nvActionNeededShowFewer()">Show fewer</button></p>`
             : "");
-      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${parcelItems.length} parcel${parcelItems.length===1?"":"s"}${walletItems?" and 1 wallet item":""} to review. Open each parcel to see its latest update and available actions.</p></div></div><div class="ops-list">`+parcelCards.concat(walletCard).join("")+`</div>${moreNote}</div>`;
+      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${parcelItems.length} parcel${parcelItems.length===1?"":"s"}${walletCard.length?" and 1 wallet item":""} to review. Open each parcel to see its latest update and available actions.</p></div></div><div class="ops-list">`+parcelCards.concat(walletCard).join("")+`</div>${moreNote}</div>`;
     }
 
     function clientActionNeededReattempt(awb){
@@ -23681,7 +23681,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   function submit(){
     if(submitting || !rating) return;
     var sb = window.__nvSb;
-    if(!sb){ el("nvrvErr").textContent = "Still connecting — try again in a moment."; return; }
+    if(!sb){ el("nvrvErr").textContent = "Still connecting — try again in a moment."; allowLater(); return; }
     submitting = true;
     var btn = el("nvrvSubmit");
     btn.disabled = true;
@@ -23697,6 +23697,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         btn.disabled = false;
         btn.textContent = "Submit review";
         el("nvrvErr").textContent = "Could not send that — " + r.error.message;
+        allowLater();
         return;
       }
       celebrate();
@@ -23705,10 +23706,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       btn.disabled = false;
       btn.textContent = "Submit review";
       el("nvrvErr").textContent = "Could not send that — " + ((e && e.message) || e);
+      allowLater();
     });
   }
 
-  /* There is no close control by design, but a stray Escape keypress or a
+  /* 28 Nov 2026: the prompt stays mandatory while sending works. Once a send
+     has failed, "Not now" and Escape close it, so a server or network error can
+     never lock the merchant out of the portal. It asks again on the next visit,
+     because client_review_prompt_state is still eligible. */
+  var laterOk = false;
+  function allowLater(){
+    laterOk = true;
+    var b = el("nvrvLater");
+    if(b) b.hidden = false;
+  }
+  function later(){
+    if(!laterOk) return;
+    close();
+  }
+
+  /* No close control while sending works (see allowLater). A stray Escape or a
      backdrop click must not dismiss it either -- the merchant has to submit. */
   function guard(){
     var ov = el("nvrvOverlay");
@@ -23717,6 +23734,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.addEventListener("keydown", function(ev){
       if(ev.key === "Escape" && ov.classList.contains("nvrv-open")){
         ev.preventDefault(); ev.stopPropagation();
+        if(laterOk) later();
       }
     }, true);
   }
@@ -23724,6 +23742,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   function boot(){
     var btn = el("nvrvSubmit");
     if(btn) btn.addEventListener("click", submit);
+    var lt = el("nvrvLater");
+    if(lt) lt.addEventListener("click", later);
     guard();
 
     var tries = 0;
