@@ -175,10 +175,21 @@ window.nvCount=function(n,one,many){
         rows = rows.filter(function(r){ return String(r[col]) >= String(val); }); return api; };
       api.single = function(){ one = true; return api; };
       api.maybeSingle = function(){ one = true; return api; };
-      api.insert = function(){ return Promise.resolve(nvDemoBlocked("save")); };
-      api.update = function(){ return Promise.resolve(nvDemoBlocked("save")); };
-      api.upsert = function(){ return Promise.resolve(nvDemoBlocked("save")); };
-      api.delete = function(){ return Promise.resolve(nvDemoBlocked("delete")); };
+      /* Writes are refused, but the portal chains them like supabase-js
+         (insert(...).select(...).maybeSingle()), so the refusal must chain
+         too. A bare Promise here showed "insert(...).select is not a
+         function" on Request pickup (28 Nov 2026). */
+      function blockedWrite(what){
+        var out = nvDemoBlocked(what), w = {};
+        ["select","eq","in","is","not","match","order","limit","single","maybeSingle","returns"].forEach(function(k){ w[k] = function(){ return w; }; });
+        w.then = function(res, rej){ return Promise.resolve(out).then(res, rej); };
+        w.catch = function(f){ return w.then(function(v){ return v; }).catch(f); };
+        return w;
+      }
+      api.insert = function(){ return blockedWrite("save"); };
+      api.update = function(){ return blockedWrite("save"); };
+      api.upsert = function(){ return blockedWrite("save"); };
+      api.delete = function(){ return blockedWrite("delete"); };
       api.then = function(res, rej){
         return Promise.resolve({ data: one ? (rows[0] || null) : rows, error:null }).then(res, rej); };
       api.catch = function(f){ return api.then(function(v){ return v; }).catch(f); };
