@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,25 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Play upload key: ~/.novax/novax-upload.jks, its passwords in
+    // ~/.novax/android-upload.properties (never in the repo). Without the file
+    // a release build comes out unsigned.
+    def uploadProps = new Properties()
+    def uploadFile = new File(System.getProperty("user.home"), ".novax/android-upload.properties")
+    if (uploadFile.exists()) uploadFile.withInputStream { uploadProps.load(it) }
+    signingConfigs {
+        release {
+            if (uploadFile.exists()) {
+                storeFile file(uploadProps["storeFile"])
+                storePassword uploadProps["storePassword"]
+                keyAlias uploadProps["keyAlias"]
+                keyPassword uploadProps["keyPassword"]
+            }
+        }
+    }
     buildTypes {
         release {
+            if (uploadFile.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
