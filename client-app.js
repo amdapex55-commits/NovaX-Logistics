@@ -6826,7 +6826,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var s=(NV_SW.list||[]).find(function(x){ return x.code===code; }) || (NV_SW.done && NV_SW.done.code===code ? { code:code, out_awb:NV_SW.done.out_awb, customer_name:NV_SW.done.customer, customer_phone:"" } : null);
         if(s && !s.customer_phone){ var op=(state.parcels||[]).find(function(p){ return p && p.awb===s.out_awb; }); if(op) s.customer_phone=op.phone; }
         if(!s || !String(s.customer_phone||"").replace(/\D/g,"")){ toast("The customer's phone is not loaded yet. Try again in a moment.","error"); return; }
-        var win=window.open(nvSwWaLink(s),"_blank","noopener"); if(!win) toast("WhatsApp may have been blocked. Allow pop-ups and try again.","error");
+        var win=window.open(nvSwWaLink(s),"_blank"); if(win) try{ win.opener=null; }catch(e){} if(!win) toast("WhatsApp may have been blocked. Allow pop-ups and try again.","error");
       }
       else if(k==="cancel"){
         var c=act.getAttribute("data-code");
@@ -25224,6 +25224,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(e && (e.code==="UNIMPLEMENTED" || /not implemented/i.test(e.message||""))){ try{ origPrint.call(window); }catch(_){} return; }
         try{ toast("Could not open printing: "+(e&&e.message||e),"error"); }catch(_){}
       });
+    };
+  }
+
+  /* window.open in the app. iOS hands an outside link (WhatsApp, tracking)
+     to the phone and returns null, which the portal reads as "pop-up
+     blocked". The link did open, so give the caller a closed stand-in. */
+  {
+    var origOpen=window.open;
+    window.open=function(url){
+      var w=null;
+      try{ w=origOpen.apply(window, arguments); }catch(e){ w=null; }
+      if(w) return w;
+      var outside=false;
+      try{ var u=new URL(String(url||""), location.href); outside=/^(https?|whatsapp|tel|mailto|sms):$/.test(u.protocol) && u.origin!==location.origin; }catch(e){}
+      if(!outside) return w;
+      return { closed:true, opener:null, close:function(){}, focus:function(){}, blur:function(){}, postMessage:function(){}, location:{ href:String(url) } };
     };
   }
 
