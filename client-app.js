@@ -18176,6 +18176,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                   // an invoice or marks a payout paid, and none of that reached
                   // the merchant until they reloaded the page by hand.
                   .on("postgres_changes",{event:"*",schema:"public",table:"clients",filter:"id=eq."+MY},rtReload)
+                  /* 28 Nov 2026: pickup_requests is in the realtime publication and
+                     admin subscribes to it, but the merchant did not -- a rider
+                     assigned or a pickup marked done showed only on the 3-minute
+                     poll or the next focus. */
+                  .on("postgres_changes",{event:"*",schema:"public",table:"pickup_requests",filter:"client_id=eq."+MY},rtReload)
                   .subscribe(function(status,err){
                     if(err) console.warn("NovaX client realtime",status,err.message||err);
                     /* BUG: this only ever set the flag TRUE. Nothing anywhere
@@ -20358,10 +20363,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var done=false;
     function go(){ if(done) return; done=true; window.location.href="index.html"; }
     setTimeout(go, 2500);
-    try{
-      var out=(__sb&&__sb.auth)?__sb.auth.signOut():null;
-      if(out&&typeof out.then==="function") out.then(go, go); else go();
-    }catch(_2){ go(); }
+    function signOutNow(){
+      try{
+        var out=(__sb&&__sb.auth)?__sb.auth.signOut():null;
+        if(out&&typeof out.then==="function") out.then(go, go); else go();
+      }catch(_2){ go(); }
+    }
+    /* 28 Nov 2026: in the app, the phone stops getting this account's
+       notifications first (needs the session, so before signOut; max 1.2s). */
+    var forget=null; try{ if(typeof window.nvNativePushForget==="function") forget=window.nvNativePushForget(); }catch(_5){}
+    if(forget&&typeof forget.then==="function") Promise.race([forget, new Promise(function(r){ setTimeout(r,1200); })]).then(signOutNow, signOutNow);
+    else signOutNow();
   }
   /* A tab that did not initiate the sign-out still has to stop showing the
      account. Wipe what is on screen before navigating, so nothing is readable
@@ -25286,6 +25298,63 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var w=function(id){ curTab=id||"dashboard"; return f.apply(this, arguments); };
     w.__nvNative=true; window.showClientTab=w;
   })();
+
+  /* Phone notifications (28 Nov 2026). Firebase gives the phone a token; it is
+     saved for this merchant (client_push_register) and the server sends
+     parcel and payout news to it (sql_novax_push_20261128.sql). Asked once,
+     after the portal has loaded for a signed-in merchant, never on the
+     front page. A tap opens the parcel or the Money tab. */
+  var PN=P.PushNotifications;
+  if(PN){
+    var pushTokenKey="nvPushToken", pushAskedKey="nvPushAsked";
+    function pushSb(){ return window.__nvSb && window.__nvSb.rpc ? window.__nvSb : null; }
+    function pushSave(token){
+      var sb=pushSb(); if(!sb || !token) return;
+      Promise.resolve(sb.rpc("client_push_register", { p_token:token, p_platform:C.getPlatform()==="ios"?"ios":"android" })).then(function(r){
+        if(r && r.error) console.warn("NovaX push register", r.error.message||r.error);
+        else { try{ localStorage.setItem(pushTokenKey, token); }catch(e){} }
+      }, function(){});
+    }
+    PN.addListener("registration", function(t){ pushSave(t && t.value); });
+    PN.addListener("registrationError", function(e){ console.warn("NovaX push registration", e && (e.error||e)); });
+    PN.addListener("pushNotificationActionPerformed", function(a){
+      var u=a && a.notification && a.notification.data && a.notification.data.url;
+      if(u && /^\/[a-z0-9]/i.test(u)) location.href=new URL(u, location.origin).href;
+    });
+    PN.addListener("pushNotificationReceived", function(n){
+      try{ if(n && n.title && typeof toast==="function") toast(n.title+(n.body?" · "+n.body:"")); }catch(e){}
+    });
+    if(C.getPlatform()==="android" && PN.createChannel){
+      try{
+        PN.createChannel({ id:"novax_alerts", name:"Problems and payouts", description:"Refused or not-available parcels, returns, payouts sent", importance:4, visibility:0, vibration:true });
+        PN.createChannel({ id:"novax_updates", name:"Parcel updates", description:"Picked up and delivered", importance:3, visibility:0 });
+      }catch(e){}
+    }
+    async function pushStart(){
+      try{
+        var st=await PN.checkPermissions();
+        if(st.receive==="prompt" || st.receive==="prompt-with-rationale"){
+          var asked=false; try{ asked=localStorage.getItem(pushAskedKey)==="1"; }catch(e){}
+          if(asked) return;
+          try{ localStorage.setItem(pushAskedKey, "1"); }catch(e){}
+          st=await PN.requestPermissions();
+        }
+        if(st.receive==="granted") await PN.register();
+      }catch(e){ console.warn("NovaX push", e && (e.message||e)); }
+    }
+    /* Only once the merchant's portal has data (signed in), and only on the portal. */
+    (function waitReady(n){
+      if(!/\/client\.html$/.test(location.pathname)) return;
+      if(window.__novaxClientDataReady && window.__novaxGateSession){ setTimeout(pushStart, 1500); return; }
+      if(n<120) setTimeout(function(){ waitReady(n+1); }, 1000);
+    })(0);
+    window.nvNativePushForget=function(){
+      var tok=null; try{ tok=localStorage.getItem(pushTokenKey); }catch(e){}
+      try{ localStorage.removeItem(pushTokenKey); }catch(e){}
+      var sb=pushSb(); if(!tok || !sb) return null;
+      return Promise.resolve(sb.rpc("client_push_unregister", { p_token:tok })).then(function(){}, function(){});
+    };
+  }
 
   if(P.App && C.getPlatform()==="android"){
     P.App.addListener("backButton", function(info){
