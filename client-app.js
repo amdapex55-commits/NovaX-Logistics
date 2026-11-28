@@ -558,7 +558,7 @@ window.nvCount=function(n,one,many){
     function nvObWhere(nav){
       var tabs = (typeof NV_BOTTOM_TABS !== "undefined" && NV_BOTTOM_TABS) ? NV_BOTTOM_TABS : [
         { id:"dashboard", label:"Home", ico:"⌂" }, { id:"newBooking", label:"Book", ico:"+" },
-        { id:"money", label:"Wallet", ico:"₨" }, { id:"tickets", label:"Support", ico:"☺" }];
+        { id:"money", label:"Wallet", ico:"₨" }, { id:"tickets", label:"Support", ico:"\u263A\uFE0E" }];
       var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
       items.push({ id:"more", label:"More", ico:"≡" });
       var fab = nav === "fab";
@@ -5373,7 +5373,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       { id:"dashboard",  label:"Home",    ico:"\u2302" },
       { id:"newBooking", label:"Book",    ico:"\u002B" },
       { id:"money",      label:"Wallet", aria:"NovaX Wallet", ico:"\u20A8" },
-      { id:"tickets",    label:"Support", ico:"\u263A" }
+      /* \uFE0E asks for the plain glyph: iOS drew U+263A as a yellow emoji
+         beside four flat icons. */
+      { id:"tickets",    label:"Support", ico:"\u263A\uFE0E" }
     ];
 
     function nvRenderBottomNav(){
@@ -13759,7 +13761,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         bits.push('\u00b7 median first reply across NovaX <strong>' + escLabelText(t) + "</strong>");
       }
       host.className = "nv-tk-desk" + (d.open_now ? " is-open" : "");
-      host.innerHTML = bits.join(" ");
+      /* Dot + headline on one line, the details as ONE line under it. Joined
+         straight into the flex box, every text node became its own flex item:
+         a line starting with a stray "·" and the reply time alone on a third
+         line (iPhone, 28 Nov 2026). */
+      host.innerHTML = bits[0] + bits[1] + '<span class="nv-tk-sub">'
+        + bits.slice(2).join(" ").replace(/^\u00b7 /, "") + "</span>";
       host.style.display = "flex";
     }
     /* Fetched ONCE per page load. A merchant who opened the portal before noon
