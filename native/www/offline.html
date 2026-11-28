@@ -1,6 +1,18 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>NovaX</title>
-<style>html,body{margin:0;height:100%;background:#04100b;color:#eafff5;font:600 16px/1.45 system-ui,-apple-system,sans-serif}main{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}.mark{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#0c7c59,#14c77b);display:grid;place-items:center;font-weight:900;font-size:24px;color:#fff;margin-bottom:8px}b{font-size:24px;font-weight:800}span{color:#9dbdae;max-width:32ch}button{margin-top:12px;min-height:52px;padding:0 28px;border:0;border-radius:16px;background:#14c77b;color:#04140d;font:inherit;font-weight:800}</style></head>
-<body><main><div class="mark">NX</div><b>You're offline</b><span>NovaX needs the internet to book and track parcels. Check your connection and try again.</span><button onclick="location.href='https://novaxlogistics.com/client.html?source=app'">Try again</button></main><script>/* Native splash stays up until this page can paint (28 Nov 2026): on a cold
+<style>html,body{margin:0;height:100%;background:#04100b;color:#eafff5;font:600 16px/1.45 system-ui,-apple-system,sans-serif}main{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}.mark{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#0c7c59,#14c77b);display:grid;place-items:center;font-weight:900;font-size:24px;color:#fff;margin-bottom:8px}b{font-size:24px;font-weight:800}span{color:#9dbdae;max-width:32ch}button{margin-top:12px;min-height:52px;padding:0 28px;border:0;border-radius:16px;background:#14c77b;color:#04140d;font:inherit;font-weight:800}button:disabled{opacity:.6}</style></head>
+<body><main><div class="mark">NX</div><b>You're offline</b><span>NovaX needs the internet to book and track parcels. Check your connection and try again.</span><button id="retry" type="button">Try again</button><small id="st" aria-live="polite" style="color:#9dbdae;font-size:13.5px;font-weight:600;min-height:20px"></small></main>
+<script>/* Never a dead end (review 28 Nov): it retries by itself when the phone
+   reports a connection and every 8 s, checking the server answers before
+   leaving, and says what it is doing. */
+(function(){var U="https://novaxlogistics.com/client.html?source=app",st=document.getElementById("st"),b=document.getElementById("retry"),busy=false;
+function check(manual){if(busy)return;busy=true;st.textContent="Reconnecting\u2026";b.disabled=true;
+var ctl=window.AbortController?new AbortController():null,t=setTimeout(function(){if(ctl)ctl.abort();},6000);
+fetch("https://novaxlogistics.com/assets/favicon.svg?r="+Date.now(),{cache:"no-store",mode:"no-cors",signal:ctl?ctl.signal:undefined})
+.then(function(){clearTimeout(t);st.textContent="Connected. Opening NovaX\u2026";location.replace(U);},
+function(){clearTimeout(t);busy=false;b.disabled=false;st.textContent=manual?"Still no connection. We\u2019ll keep trying.":"";});}
+b.addEventListener("click",function(){check(true);});
+window.addEventListener("online",function(){check(false);});
+setInterval(function(){if(!document.hidden)check(false);},8000);})();</script><script>/* Native splash stays up until this page can paint (28 Nov 2026): on a cold
    start the web view used to show a dark empty screen for seconds. */
-(function(){function go(){try{var S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.SplashScreen;if(S&&S.hide)requestAnimationFrame(function(){S.hide({fadeOutDuration:180});});}catch(e){}}
+(function(){function go(){try{var S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.SplashScreen;if(S&&S.hide)requestAnimationFrame(function(){S.hide();});}catch(e){}}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",go);else go();})();</script></body></html>

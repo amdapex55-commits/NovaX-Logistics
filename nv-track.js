@@ -55,12 +55,19 @@
   document.addEventListener("visibilitychange", function () { if (document.hidden) { park(); flush(); } });
 
   window.nvTrack = track;
+  /* Crash reports (Firebase Crashlytics, app only): tag every native crash
+     with this visit's id and screen, and send script errors as non-fatal
+     reports, so a crash, its script errors and these events share one trail. */
+  var CR = null; try { CR = native && C.Plugins && C.Plugins.FirebaseCrashlytics; } catch (e) {}
+  function crKey(k, v) { try { if (CR && CR.setCustomKey) CR.setCustomKey({ key: k, value: String(v), type: "string" }); } catch (e) {} }
+  crKey("nv_session", SID); crKey("nv_page", page);
   /* client-app.js calls this from showClientTab(). */
   window.nvTrackScreen = function (id) {
     if (!id || id === cur) return;
     var now = Date.now();
     if (cur && curAt && now - curAt < 3000) track("screen_bounce", { screen: cur, ms: now - curAt });
     cur = String(id); curAt = now;
+    crKey("nv_screen", cur); try { if (CR && CR.log) CR.log({ message: "screen " + cur }); } catch (e) {}
     track("screen", { screen: cur });
     if (cur === "newBooking" && !bookAt) { bookAt = now; track("booking_open"); }
   };
@@ -93,6 +100,7 @@
     var m = String((e && (e.message || (e.error && e.error.message))) || "error").slice(0, 140);
     if (/^Script error\.?$/i.test(m) || /ResizeObserver loop/i.test(m)) return;
     track("js_error", { meta: { why: m, at: String((e && e.filename) || "").split("/").pop().split("?")[0].slice(0, 40) } });
+    try { if (CR && CR.recordException) CR.recordException({ message: "JS: " + m }); } catch (x) {}
   });
 
   /* CNIC uploads, wherever they start (signup or the Profile screen). */
@@ -112,6 +120,23 @@
   }
   if (!wrapCnic()) document.addEventListener("DOMContentLoaded", wrapCnic);
 
+  /* Start-up timing in the app (28 Nov 2026): server answer (ttfb), first
+     paint (fcp), page usable (DOMContentLoaded = when the splash is hidden)
+     and fully loaded, per page. Data readiness is the "ready" event below. */
+  if (app && (page === "index" || page === "client")) {
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try {
+          var n = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+          var f = performance.getEntriesByName && performance.getEntriesByName("first-contentful-paint")[0];
+          if (!n) return;
+          track("app_start", { screen: page, ms: n.domContentLoadedEventEnd, meta: {
+            ttfb: Math.round(n.responseStart), fcp: Math.round(f ? f.startTime : 0), load: Math.round(n.loadEventEnd),
+            nav: String(n.type || "").slice(0, 12), net: String((navigator.connection && navigator.connection.effectiveType) || "").slice(0, 6) } });
+        } catch (e) {}
+      }, 0);
+    });
+  }
   /* Time until the portal has the merchant's data. */
   if (page === "client") {
     var t0 = (performance && performance.timing && performance.timing.navigationStart) || Date.now();

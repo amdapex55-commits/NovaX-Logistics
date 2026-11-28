@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# NovaX (28 Nov 2026): release builds are shrunk. Keep what the web view and
+# Capacitor reach by reflection: our own plugins and activity, every
+# Capacitor plugin class and its @PluginMethod methods, and JS interfaces.
+-keep class com.novaxlogistics.app.** { *; }
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepclassmembers class * { @com.getcapacitor.PluginMethod public <methods>; }
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
+-keepattributes *Annotation*,JavascriptInterface,SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

@@ -14,6 +14,7 @@
 --     function sends through Firebase (FCM HTTP v1) and forgets phones that
 --     Firebase says are gone.
 -- Safe to run again.
+-- 28 Nov 2026 pm: a tap opens the exact parcel (open=parcel&awb=) or payout receipt (payout=<id>).
 
 create table if not exists public.nv_push_devices (
   token        text primary key check (length(token) between 20 and 4096),
@@ -132,7 +133,7 @@ begin
   end if;
   begin
     perform public.nv_push_enqueue(new.client_id, v_event, v_title, v_body,
-      '/client.html?source=app&awb=' || new.awb, 'awb-' || new.awb);
+      '/client.html?source=app&open=parcel&awb=' || new.awb, 'awb-' || new.awb);
   exception when others then
     raise warning 'NovaX push enqueue failed for %: %', new.awb, sqlerrm;   -- never block a status change
   end;
@@ -149,7 +150,7 @@ begin
     begin
       perform public.nv_push_enqueue(new.client_id, 'wallet_paid', 'Payout sent',
         'Rs ' || to_char(new.amount, 'FM999,999,990') || ' is on its way to your bank.',
-        '/client.html?source=app&tab=money', 'payout-' || new.id);
+        '/client.html?source=app&tab=money&payout=' || new.id, 'payout-' || new.id);
     exception when others then
       raise warning 'NovaX push enqueue failed for payout %: %', new.id, sqlerrm;
     end;

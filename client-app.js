@@ -1363,7 +1363,9 @@ window.nvCount=function(n,one,many){
         var wantTab=qp.get("tab")||(qp.get("shopifyConnect")==="1"?"integrations":"")
           ||(location.hash==="#integrations"?"integrations":"");
         var wantAwb=(qp.get("awb")||"").trim().toUpperCase();
-        if(wantAwb){ state.nvFocusAwb=wantAwb; wantTab=wantTab||"awbLabel"; }
+        /* ?open=parcel&awb= comes from a phone notification: it opens that
+           parcel's own page (nvPushTarget below), not the label tab. */
+        if(wantAwb && qp.get("open")!=="parcel"){ state.nvFocusAwb=wantAwb; wantTab=wantTab||"awbLabel"; }
         if(wantTab && typeof normalizeClientTab==="function"){
           var t=normalizeClientTab(wantTab);
           /* nvCanUseTab reads NOVAX_ROLE_TABS, a var declared ~11k lines below and
@@ -9395,6 +9397,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var i=Number(t.getAttribute("data-nvw-tx")), x=NV_W3.list[i];
       if(x) nvwOpenReceipt(x);
     });
+
+    /* Notification taps (28 Nov 2026). A parcel alert opens
+       /client.html?source=app&open=parcel&awb=N…, a payout alert
+       /client.html?source=app&tab=money&payout=<withdrawal id>. Once the data
+       is in, open that parcel's page or that payout's receipt, then drop the
+       parameters so a reload does not open it again. */
+    (function nvPushTarget(){
+      var qp; try{ qp=new URLSearchParams(location.search); }catch(e){ return; }
+      var awb=String(qp.get("awb")||"").trim().toUpperCase(), wantParcel=qp.get("open")==="parcel" && /^[A-Z0-9-]{4,40}$/.test(awb);
+      var pay=String(qp.get("payout")||"").trim();
+      if(!wantParcel && !pay) return;
+      function clean(){ try{ qp.delete("open"); qp.delete("payout"); if(wantParcel) qp.delete("awb"); var q=qp.toString(); history.replaceState(history.state,"",location.pathname+(q?"?"+q:"")+location.hash); }catch(e){} }
+      var tries=0, iv=setInterval(function(){
+        tries++;
+        if(tries>120){ clearInterval(iv); clean(); return; }
+        if(!window.__novaxClientDataReady) return;
+        if(wantParcel){
+          var have=(state.parcels||[]).some(function(p){ return p && String(p.awb||"").toUpperCase()===awb; });
+          if(!have && tries<60) return;           // a fresh parcel may still be on its way in
+          clearInterval(iv); clean();
+          try{ openClientParcelJourney(awb); }catch(e){ try{ toast("Could not open "+awb+". Find it in Parcels."); }catch(_){} }
+          return;
+        }
+        if(state.activeClientTab!=="money"){ try{ showClientTab("money"); }catch(e){} return; }
+        var list=(NV_W3&&NV_W3.list)||[], x=null;
+        for(var i=0;i<list.length;i++){ var it=list[i]; if(it && ((it.w && (String(it.w._uuid)===pay || String(it.w.id)===pay)) || (it.l && (String(it.l.referenceId)===pay || String(it.l.referenceCode)===pay)))){ x=it; break; } }
+        if(!x && tries<60) return;
+        clearInterval(iv); clean();
+        if(x){ try{ nvwOpenReceipt(x); }catch(e){} }
+      }, 400);
+    })();
 
     /* ─── Wallet v3, part 2 (30 Sep 2026) ─────────────────────────────────
        Transfer-style withdraw, the payout tracker, "just landed", the bank

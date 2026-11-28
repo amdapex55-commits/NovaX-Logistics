@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+def novaxBuildNumber() {
+    def env = System.getenv("NOVAX_BUILD")
+    if (env) return env.toInteger()
+    try {
+        def out = ["git", "rev-list", "--count", "HEAD"].execute(null, rootProject.projectDir).text.trim()
+        return out ? out.toInteger() : 1
+    } catch (ignored) { return 1 }
+}
+def novaxVersionName() {
+    def f = rootProject.file("../VERSION")
+    return f.exists() ? f.text.trim() : "1.0.0"
+}
+
 android {
     namespace "com.novaxlogistics.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +20,11 @@ android {
         applicationId "com.novaxlogistics.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        // One version for both stores: native/VERSION. The build number counts
+        // the commits on main, so every new build is higher than the last
+        // (set NOVAX_BUILD to override on a build machine).
+        versionCode novaxBuildNumber()
+        versionName novaxVersionName()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -35,8 +51,15 @@ android {
     buildTypes {
         release {
             if (uploadFile.exists()) signingConfig signingConfigs.release
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Store builds are shrunk and stripped; Crashlytics gets the mapping file.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            resValue "string", "novax_env", "production"
+        }
+        debug {
+            versionNameSuffix "-dev"
+            resValue "string", "novax_env", "development"
         }
     }
 }
@@ -65,6 +88,7 @@ try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
+        apply plugin: 'com.google.firebase.crashlytics'
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")

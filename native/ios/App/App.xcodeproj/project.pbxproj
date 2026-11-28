@@ -120,6 +120,8 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */,
+				B2E56F102E00000000000010 /* NovaX version stamp */,
+				B2E56F102E00000000000011 /* Crashlytics dSYM upload */,
 			);
 			buildRules = (
 			);
@@ -216,6 +218,40 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-App/Pods-App-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B2E56F102E00000000000010 /* NovaX version stamp */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "NovaX version stamp";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# One version for both stores (native/VERSION); build number = commits on main.\nV=$(cat \"${SRCROOT}/../../VERSION\" 2>/dev/null || echo 1.0.0)\nN=${NOVAX_BUILD:-$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || echo 1)}\nP=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $V\" \"$P\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $N\" \"$P\"\n/usr/libexec/PlistBuddy -c \"Delete :NovaXEnv\" \"$P\" 2>/dev/null || true\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then E=production; else E=development; fi\n/usr/libexec/PlistBuddy -c \"Add :NovaXEnv string $E\" \"$P\"\necho \"NovaX $V ($N) $E\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B2E56F102E00000000000011 /* Crashlytics dSYM upload */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+				"$(SRCROOT)/$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Crashlytics dSYM upload";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Upload dSYMs so Crashlytics reports show file and line (Release builds).\nif [ \"${CONFIGURATION}\" = \"Release\" ] && [ -x \"${PODS_ROOT}/FirebaseCrashlytics/run\" ]; then\n  \"${PODS_ROOT}/FirebaseCrashlytics/run\"\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

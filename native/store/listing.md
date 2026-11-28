@@ -58,7 +58,7 @@ First release of the NovaX app.
 - Target audience (Play): **18 and over** only. NovaX is a business service; the privacy policy says it does not knowingly collect data from anyone under 18.
 
 ## Data safety (Play) — paste these answers
-Does the app collect or share user data? **Yes, collects.** Shared with third parties: **No** (Supabase, Google Firebase and Cloudflare act as our service providers, which Play does not count as sharing).
+Does the app collect or share user data? **Yes, collects.** Shared with third parties: **No** (Supabase, Google Firebase (Cloud Messaging, Crashlytics) and Cloudflare act as our service providers, which Play does not count as sharing).
 Encrypted in transit: **Yes**. Users can ask for deletion: **Yes** (in the app, and https://novaxlogistics.com/delete-account).
 
 | Data type | Collected | Optional? | Why |
@@ -75,7 +75,8 @@ Encrypted in transit: **Yes**. Users can ask for deletion: **Yes** (in the app, 
 | Voice or sound recordings | Yes | Riders only | App functionality (voice note on a refused parcel) |
 | Other user-generated content (support tickets) | Yes | Optional | Customer support |
 | App interactions | Yes | Required | Analytics (screens opened, bookings finished), app health |
-| Crash logs / Diagnostics | Yes | Required | App health (script errors) |
+| Crash logs | Yes | Required | App health (Firebase Crashlytics: crashes, freezes, script errors) |
+| Diagnostics | Yes | Required | App health (start-up timing, time until data is ready) |
 | Device or other IDs (notification token) | Yes | Optional | App functionality (notifications) |
 
 Not collected: approximate location for merchants, contacts, calendar, health, files and docs, web browsing, messages (SMS/email), music, videos, installed apps.
@@ -91,6 +92,6 @@ Data linked to you (all for **App Functionality**, plus the notes):
 - Purchases: Purchase History
 - Identifiers: User ID, Device ID (notification token)
 - Usage Data: Product Interaction (also **Analytics**)
-- Diagnostics: Other Diagnostic Data (also **Analytics**)
+- Diagnostics: Crash Data (Firebase Crashlytics), Other Diagnostic Data (start-up timing, script errors; also **Analytics**)
 - Other Data: CNIC photos and number (also **Fraud Prevention / Security**)
 This matches `native/ios/App/App/PrivacyInfo.xcprivacy`.
