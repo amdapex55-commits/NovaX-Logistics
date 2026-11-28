@@ -6140,11 +6140,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvApplyPrintMode();
       try{ renderAwbPrintModeToggle(); }catch(e){}
     }
+    /* iPhone and iPad (Safari and the NovaX app) print through WebKit's
+       print formatter, which lays the page out 1.25x wider than the paper and
+       shrinks it back: 1 CSS px lands as 0.8pt instead of 0.75pt, so every
+       label prints 6.7% too big and three 88mm labels no longer fit one A4
+       sheet (the third was cut across two pages). zoom .9375 (= 0.75/0.8)
+       brings the sheet back to true size, and the paper's own 18pt edge
+       replaces the 6mm @page margin, which the shrunk page has no room for.
+       Measured 28 Nov 2026 on the iOS 26 simulator. */
+    function nvIsIOSWebKit(){
+      try{ var ua=navigator.userAgent||""; return /iP(hone|ad|od)/.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1); }catch(e){ return false; }
+    }
+    function nvIosA4Sheet(){
+      var el=document.getElementById("nvPrintA4Ios");
+      if(!el && nvIsIOSWebKit()){
+        el=document.createElement("style"); el.id="nvPrintA4Ios"; el.media="print";
+        el.textContent="@page{margin:0}#printStage .print-page{zoom:.9375 !important}";
+        el.disabled=true;
+        var a4=document.getElementById("nvPrintA4");
+        if(a4&&a4.parentNode) a4.parentNode.insertBefore(el,a4.nextSibling); else document.head.appendChild(el);
+      }
+      return el;
+    }
     function nvApplyPrintMode(){
       const mode=nvPrintMode();
       const th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
       if(th) th.disabled = mode!=="thermal";
       if(a4) a4.disabled = mode!=="a4";
+      const ios=nvIosA4Sheet(); if(ios) ios.disabled = mode!=="a4";
       /* Label printing states ALL THREE sheets rather than trusting the load
          sheet to have restored itself. nvPrintDoc restores on afterprint with
          an 8s fallback, but a browser that fires neither -- or a tab throttled
@@ -7226,9 +7249,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!stage){ toast("Print area not ready."); return; }
       var th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
       var ex=extraSheetId?document.getElementById(extraSheetId):null;
-      var prevTh=th?th.disabled:null, prevA4=a4?a4.disabled:null, prevEx=ex?ex.disabled:null;
+      var ios=document.getElementById("nvPrintA4Ios");
+      var prevTh=th?th.disabled:null, prevA4=a4?a4.disabled:null, prevEx=ex?ex.disabled:null, prevIos=ios?ios.disabled:null;
       if(th) th.disabled=true;
       if(a4) a4.disabled=true;
+      if(ios) ios.disabled=true;
       if(ex) ex.disabled=false;
       stage.innerHTML=html;
       /* nvFitLabelText shrinks overflowing AWB-label blocks. A load sheet is a
@@ -7241,6 +7266,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         stage.style.display="none"; stage.innerHTML="";
         if(th&&prevTh!==null) th.disabled=prevTh;
         if(a4&&prevA4!==null) a4.disabled=prevA4;
+        if(ios&&prevIos!==null) ios.disabled=prevIos;
         if(ex&&prevEx!==null) ex.disabled=prevEx;
         window.removeEventListener("afterprint",restore);
       }

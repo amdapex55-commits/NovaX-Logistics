@@ -106,7 +106,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=fadbe8c5">
+  <link rel="preload" as="script" href="client-app.min.js?v=713b05ad">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -1179,7 +1179,12 @@
       width:100% !important;height:auto !important;min-height:0 !important;
       display:grid !important;
       grid-template-columns:1fr !important;
-      grid-template-rows:repeat(3,88mm) !important;   /* fixed, never 1fr */
+      /* Fixed 88mm rows, never 1fr. Rows are made per label (auto rows,
+         not repeat(3,88mm)), so a sheet with one or two labels ends after
+         its last one: a 270mm empty grid on a 1-label print overflowed the
+         page on iPhones and printed a blank second sheet. Positions of the
+         labels are unchanged. */
+      grid-template-rows:none !important;grid-auto-rows:88mm !important;
       align-content:start !important;
       gap:3mm !important;box-sizing:border-box !important;
       /* 3 x 88mm + 2 x 3mm = 270mm against 285mm of usable height on A4 at
@@ -2886,7 +2891,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=fadbe8c5" defer></script>
+  <script src="client-app.min.js?v=713b05ad" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
