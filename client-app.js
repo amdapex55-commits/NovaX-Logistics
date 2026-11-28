@@ -6145,9 +6145,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        shrinks it back: 1 CSS px lands as 0.8pt instead of 0.75pt, so every
        label prints 6.7% too big and three 88mm labels no longer fit one A4
        sheet (the third was cut across two pages). zoom .9375 (= 0.75/0.8)
-       brings the sheet back to true size, and the paper's own 18pt edge
-       replaces the 6mm @page margin, which the shrunk page has no room for.
-       Measured 28 Nov 2026 on the iOS 26 simulator. */
+       would bring it back to true size, and the paper's own edge replaces the
+       6mm @page margin, which the shrunk page has no room for. But that edge
+       is up to ~40pt at the top AND the bottom (iOS "no printer" A4: 761pt of
+       usable height = ~252mm of CSS), and the 3-label sheet at .9375 is 253mm,
+       so a full sheet still spilled its last border onto a second page. .92
+       prints each label at ~86.4mm (1.8% under true size) and leaves ~4mm of
+       slack for any printer's margins. Measured 28 Nov 2026 on the iOS 26
+       simulator: 1 label = 1 page, 3 labels = 1 page. */
     function nvIsIOSWebKit(){
       try{ var ua=navigator.userAgent||""; return /iP(hone|ad|od)/.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1); }catch(e){ return false; }
     }
@@ -6155,7 +6160,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var el=document.getElementById("nvPrintA4Ios");
       if(!el && nvIsIOSWebKit()){
         el=document.createElement("style"); el.id="nvPrintA4Ios"; el.media="print";
-        el.textContent="@page{margin:0}#printStage .print-page{zoom:.9375 !important}";
+        el.textContent="@page{margin:0}#printStage .print-page{zoom:.92 !important}";
         el.disabled=true;
         var a4=document.getElementById("nvPrintA4");
         if(a4&&a4.parentNode) a4.parentNode.insertBefore(el,a4.nextSibling); else document.head.appendChild(el);
