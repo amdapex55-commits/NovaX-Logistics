@@ -20861,6 +20861,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }catch(e){}
   }
 
+  /* Button labels come from three places (this file, novax-ai-support,
+     novax-autopilot-brain) and mixed "Review Delays" with "Review issues".
+     Show them all in sentence case, and say plainly where each one goes. */
+  var NV_AI_LABEL={ "withdraw wallet":"Withdraw", "go to wallet":"Open wallet", "book new parcel":"Book a parcel",
+    "print pending awbs":"Print labels", "print awbs":"Print labels", "review delays":"Review delays", "book orders":"Book a parcel" };
+  function nvAiLabel(l){
+    l=String(l||"").trim(); var k=l.toLowerCase(); if(NV_AI_LABEL[k]) return NV_AI_LABEL[k];
+    return l.split(" ").map(function(w,i){
+      if(i===0 || /[0-9]/.test(w) || /^[A-Z]{2,}s?$/.test(w) || /^(NovaX|WhatsApp|COD|AWB|AWBs|Nova|Saver|Express|Bolt|Shopify|WooCommerce|Karachi|Lahore|Islamabad|Rawalpindi)$/.test(w)) return w;
+      return w.charAt(0)+w.slice(1).toLowerCase();
+    }).map(function(w,i){ return i===0||!/^[A-Z][a-z]+$/.test(w)||/^(NovaX|WhatsApp|Nova|Saver|Express|Bolt|Shopify|Karachi|Lahore|Islamabad|Rawalpindi)$/.test(w)?w:w.toLowerCase(); }).join(" ");
+  }
   function addMsg(text,who,actions){
     var m=document.createElement("div");
     m.className="nvauto-m "+(who==="u"?"u":"b");
@@ -20874,7 +20886,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!a || !a.label) return;
         if(a.type==="request_reattempt_awb" && a.awb && window.nvReattemptUsed && window.nvReattemptUsed(a.awb)) return;
         var b=document.createElement("button");
-        b.type="button"; b.className="nvauto-action-btn"+(a.type==="confirm_action"?" nv-confirm":a.type==="cancel_confirm"?" nv-cancel":""); b.textContent=a.label;
+        b.type="button"; b.className="nvauto-action-btn"+(a.type==="confirm_action"?" nv-confirm":a.type==="cancel_confirm"?" nv-cancel":""); b.textContent=nvAiLabel(a.label);
         b.addEventListener("click",function(){ handleAction(a); });
         row.appendChild(b);
       });
@@ -21236,7 +21248,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     support:[["Talk to a human","q","Please connect me with a human agent."],["Review my issues","local","nv_review_issues"],["Refused parcels","q","which of my parcels were refused this week?"]],
     integrations:[["Shopify help","q","how do I connect my Shopify store?"],["Bulk import","q","how do I bulk import orders?"],["Human","q","Please connect me with a human agent."]]
   };
-  var NV_CHIPS_DEFAULT=[["Track Parcel","q","mera parcel kahan hai?"],["Book Order","local","go_booking"],["COD / Wallet","q","COD kab milega?"],["Issue Help","local","nv_review_issues"],["Human","q","Please connect me with a human agent."]];
+  var NV_CHIPS_DEFAULT=[["Track a parcel","q","mera parcel kahan hai?"],["Book a parcel","local","go_booking"],["COD and wallet","q","COD kab milega?"],["Parcel problems","local","nv_review_issues"],["Human","q","Please connect me with a human agent."]];
 
   function nvCurrentTab(){
     try{ return (typeof state!=="undefined" && state && state.activeClientTab) || "dashboard"; }

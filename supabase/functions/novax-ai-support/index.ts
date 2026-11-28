@@ -171,10 +171,14 @@ const SAFE_STATUS_NOTE: Record<string, string> = {
   "Return in transit": "on its way back to origin",
   "Return received at origin": "received back at origin",
   "Return out for delivery": "out for return delivery to you",
-  "Parcel returned to consignee": "returned to the consignee",
+  "Return to shipper": "returned to you",
 };
 
-const TERMINAL_STATUSES = new Set(["Delivered", "Parcel returned to consignee"]);
+/* The statuses parcels really end in. "Parcel returned to consignee" never
+   existed, so every returned parcel ("Return to shipper") counted as active
+   and, after a day, as "delayed": KKM saw "37 delayed" when 35 of them had
+   long been returned to it (28 Nov 2026). */
+const TERMINAL_STATUSES = new Set(["Delivered", "Return to shipper", "Cancelled by client"]);
 const RETURN_STATUSES = new Set([
   "Refused",
   "Consignee not available",
@@ -182,7 +186,7 @@ const RETURN_STATUSES = new Set([
   "Return in transit",
   "Return received at origin",
   "Return out for delivery",
-  "Parcel returned to consignee",
+  "Return to shipper",
 ]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -372,13 +376,17 @@ function buildSummary(ctx: ClientContext): string {
 function buildDashboardBrainGreeting(ctx: ClientContext, cname: string | null): string {
   const total = ctx.parcels.length;
   if (total === 0) {
-    return `Assalam o Alaikum${cname ? ", " + cname : ""}. Aaj ka summary: no parcels yet. Best next step: create your first booking.`;
+    return `Welcome${cname ? ", " + cname : ""}. No parcels yet. Next step: book your first parcel.`;
   }
+  /* One language (English, like the rest of the portal), and no "today":
+     these are account totals, not today's. */
   const delivered = ctx.parcels.filter((p) => p.status === "Delivered").length;
-  const bits: string[] = [`${total} parcel${total === 1 ? "" : "s"}`];
+  const returnedHome = ctx.parcels.filter((p) => p.status === "Return to shipper").length;
+  const bits: string[] = [];
   if (delivered) bits.push(`${delivered} delivered`);
+  if (returnedHome) bits.push(`${returnedHome} returned`);
   if (ctx.newBooked) bits.push(`${ctx.newBooked} new booked`);
-  if (ctx.delayed.length) bits.push(`${ctx.delayed.length} delayed`);
+  if (ctx.delayed.length) bits.push(`${ctx.delayed.length} not moved in a day`);
 
   let nextAction: string;
   if (ctx.newBooked > 0) nextAction = "print your new AWB";
@@ -386,7 +394,8 @@ function buildDashboardBrainGreeting(ctx: ClientContext, cname: string | null): 
   else if (ctx.walletBalance > 0) nextAction = `withdraw Rs ${ctx.walletBalance.toLocaleString()} from your wallet`;
   else nextAction = "keep an eye on today's deliveries";
 
-  return `Aaj ka summary: ${bits.join(", ")}, Rs ${ctx.walletBalance.toLocaleString()} payable. Best next step: ${nextAction}.`;
+  const nextUp = nextAction.charAt(0).toUpperCase() + nextAction.slice(1);
+  return `Your account so far: ${total} parcel${total === 1 ? "" : "s"}${bits.length ? " (" + bits.join(", ") + ")" : ""}. Wallet: Rs ${ctx.walletBalance.toLocaleString()}. Next step: ${nextUp}.`;
 }
 
 function explainCod(ctx: ClientContext): string {
@@ -674,10 +683,10 @@ Deno.serve(async (req: Request) => {
         reply: buildDashboardBrainGreeting(ctx, callerName),
         intent: "briefing",
         actions: [
-          { label: "Print AWBs", kind: "local", type: "go_awb_label" } as Action,
-          { label: "Review Delays", kind: "local", type: "go_dashboard" } as Action,
-          { label: "Go to Wallet", kind: "local", type: "go_wallet" } as Action,
-          { label: "Book New Parcel", kind: "local", type: "go_booking" } as Action,
+          { label: "Print labels", kind: "local", type: "go_awb_label" } as Action,
+          { label: "Review delays", kind: "local", type: "go_dashboard" } as Action,
+          { label: "Open wallet", kind: "local", type: "go_wallet" } as Action,
+          { label: "Book a parcel", kind: "local", type: "go_booking" } as Action,
         ],
       });
     }
@@ -700,10 +709,10 @@ Deno.serve(async (req: Request) => {
       reply: buildSummary(c),
       intent: "client_summary",
       actions: [
-        { label: "Print AWBs", kind: "local", type: "go_awb_label" } as Action,
-        { label: "Review Delays", kind: "local", type: "go_dashboard" } as Action,
-        { label: "Go to Wallet", kind: "local", type: "go_wallet" } as Action,
-        { label: "Book New Parcel", kind: "local", type: "go_booking" } as Action,
+        { label: "Print labels", kind: "local", type: "go_awb_label" } as Action,
+        { label: "Review delays", kind: "local", type: "go_dashboard" } as Action,
+        { label: "Open wallet", kind: "local", type: "go_wallet" } as Action,
+        { label: "Book a parcel", kind: "local", type: "go_booking" } as Action,
       ],
     });
   }
@@ -712,7 +721,7 @@ Deno.serve(async (req: Request) => {
     return json(req, {
       reply: "Opening Labels and pickup — print any pending labels before pickup.",
       intent: "print_awb",
-      actions: [{ label: "Print AWBs", kind: "local", type: "go_awb_label" } as Action],
+      actions: [{ label: "Print labels", kind: "local", type: "go_awb_label" } as Action],
     });
   }
 
@@ -720,7 +729,7 @@ Deno.serve(async (req: Request) => {
     return json(req, {
       reply: "Opening a new booking for you — fill in the consignee, city, COD, product, and address, then submit.",
       intent: "book_now",
-      actions: [{ label: "Book New Parcel", kind: "local", type: "go_booking" } as Action],
+      actions: [{ label: "Book a parcel", kind: "local", type: "go_booking" } as Action],
     });
   }
 
@@ -742,9 +751,9 @@ Deno.serve(async (req: Request) => {
     const c = ctx as ClientContext;
     // Client Risk Alerts: fixed 4-button set the seller can act on immediately.
     const actions: Action[] = [
-      { label: "Review Delays", kind: "local", type: "go_dashboard" },
-      { label: "Print AWBs", kind: "local", type: "go_awb_label" },
-      { label: "Withdraw Wallet", kind: "local", type: "go_wallet" },
+      { label: "Review delays", kind: "local", type: "go_dashboard" },
+      { label: "Print labels", kind: "local", type: "go_awb_label" },
+      { label: "Withdraw", kind: "local", type: "go_wallet" },
       { label: "Create Ticket", kind: "send", message: "Please open a support ticket for me." },
     ];
     return json(req, { reply: buildAttention(c), intent: "attention", actions });
@@ -847,7 +856,7 @@ Deno.serve(async (req: Request) => {
       requireLogin: false,
       suggestTicket: true,
       actions: [
-        { label: "Go to Wallet", kind: "local", type: "go_wallet" } as Action,
+        { label: "Open wallet", kind: "local", type: "go_wallet" } as Action,
         { label: "Ask payout question", kind: "send", message: "Why is my COD less than expected?" } as Action,
         { label: "Create finance ticket", kind: "send", message: "I have a finance/payout question, please open a ticket." } as Action,
       ],

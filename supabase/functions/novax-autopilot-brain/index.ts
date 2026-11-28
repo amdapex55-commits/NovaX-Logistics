@@ -283,7 +283,7 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
       const cnt = (s: string) => rows.filter((r: any) => String(r.status || "") === s).length;
       return {
         total_parcels: rows.length, delivered: cnt("Delivered"), refused: cnt("Refused"),
-        returned: cnt("Parcel returned to consignee"),
+        returned: cnt("Return to shipper"),
         recent: rows.slice(0, 8).map((r: any) => ({ awb: r.awb, status: r.status, city: r.city, booked_at: r.booked_at })),
       };
     }
