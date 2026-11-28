@@ -35,3 +35,12 @@ Sign-in required: **Yes**. Use the merchant review login (see `play-console.md`)
 
 ## Guideline 4.2 (minimum functionality)
 The app is the merchant portal in a native shell. Native parts to point at if Apple asks: push notifications, native print and share sheet for labels, camera scanning, haptics on booking, offline screen, and the app-only front page and launch screen.
+
+## Before you upload: decide these first (from the 28 Nov review)
+- 64 Fingerprint / Face ID re-entry (needs a new native plugin, so it only ships in a store build)
+- 59 Delivery alerts for customers (needs a new backend)
+- 90 New wallet screen design
+- 77 Map pin for the address
+- 81, 89 Ship launcher / direct Wallet (mostly moot now)
+- Rider push notifications (no backend yet)
+- 45 Paste reads the clipboard only on tap (phones ask permission otherwise)
