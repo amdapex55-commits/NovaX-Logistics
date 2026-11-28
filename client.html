@@ -106,7 +106,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=de4f646e">
+  <link rel="preload" as="script" href="client-app.min.js?v=7eea551f">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -2418,6 +2418,26 @@ try{
     document.body.classList.add("nv-booting");
     setTimeout(function(){ document.body.classList.remove("nv-booting"); },15000);
   }catch(e){}
+  /* 28 Nov 2026 (layout shift): the placeholders were a fixed 150 px, so when
+     the wallet card (about 470 px on a phone), the parcel line and the
+     "Finish setting up" card arrived, everything under them jumped down.
+     Lighthouse scored that 0.78 CLS, worse than "poor". The portal now
+     remembers how tall those three were last time for this login at this
+     screen width (nvSaveBootShape in client-app.js; heights only, no data)
+     and the placeholders take that size, so the real cards land in the
+     space already kept for them. */
+  try{
+    if(/[?&]demo(=|&|$)/.test(location.search)) return;
+    var sh=JSON.parse(localStorage.getItem("nvBootShape")||"null");
+    var tk=JSON.parse(localStorage.getItem("sb-rhzunbzbdzicajqtohwp-auth-token")||"null");
+    var uid=tk&&tk.user&&tk.user.id;
+    if(!sh||!uid||sh.uid!==uid||Math.abs((sh.w||0)-window.innerWidth)>1||!(Date.now()-sh.at<2592e6)) return;
+    var bs=document.body.style, bc=document.body.classList;
+    if(sh.hero>40&&sh.hero<1400) bs.setProperty("--nv-hold-hero",Math.round(sh.hero)+"px");
+    if(sh.line>40&&sh.line<1400){ bs.setProperty("--nv-hold-line",Math.round(sh.line)+"px"); bc.add("nv-hold-line"); }
+    if(sh.setup>40&&sh.setup<900){ bs.setProperty("--nv-hold-setup",Math.round(sh.setup)+"px"); bc.add("nv-hold-setup"); setTimeout(function(){ bc.remove("nv-hold-setup"); },12000); }
+    bc.add("nv-shaped");
+  }catch(e){}
 })();
 </script>
   <div id="nvAuthGate" style="position:fixed;inset:0;z-index:999999;background:#f4f8f6;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#10201b;">
@@ -2857,10 +2877,10 @@ try{
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="nv-payment.js?v=1ec3b2cc" defer></script>
-  <script src="nv-journey.js?v=bd803110" defer></script>
+  <script src="nv-payment.js?v=a14f4c65" defer></script>
+  <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=de4f646e" defer></script>
+  <script src="client-app.min.js?v=7eea551f" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -6812,6 +6832,16 @@ body.nv-booting #nvCodHero:empty,body.nv-booting #clientMetrics:empty,body.nv-bo
   background:linear-gradient(90deg,var(--panel,#11151a) 0%,var(--panel-soft,#161b21) 40%,var(--panel,#11151a) 80%);
   background-size:200% 100%;animation:nvSkel 1.3s linear infinite;box-shadow:inset 0 0 0 1px var(--line,#1d232a)}
 body.nv-booting #clientMetrics:empty{min-height:96px}
+/* 28 Nov 2026: learned placeholder sizes (see the boot script after <body>). */
+body.nv-booting #nvCodHero:empty{min-height:var(--nv-hold-hero,150px)}
+body.nv-booting.nv-hold-line #nvParcelLine[hidden],body.nv-hold-setup #nvSetupCard[hidden]{
+  display:block!important;border-radius:16px;
+  background:linear-gradient(90deg,var(--panel,#11151a) 0%,var(--panel-soft,#161b21) 40%,var(--panel,#11151a) 80%);
+  background-size:200% 100%;animation:nvSkel 1.3s linear infinite;box-shadow:inset 0 0 0 1px var(--line,#1d232a)}
+body.nv-booting.nv-hold-line #nvParcelLine[hidden]{min-height:var(--nv-hold-line)}
+body.nv-hold-setup #nvSetupCard[hidden]{min-height:var(--nv-hold-setup)}
+body.nv-hold-setup #nvSetupCard[hidden]>*{visibility:hidden}
+@media (prefers-reduced-motion:reduce){body.nv-booting.nv-hold-line #nvParcelLine[hidden],body.nv-hold-setup #nvSetupCard[hidden]{animation:none}}
 body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{min-height:220px}
 @media (prefers-reduced-motion:reduce){body.nv-booting #nvCodHero:empty,body.nv-booting #clientMetrics:empty,body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{animation:none}}
 @media (min-width:761px) and (max-width:1100px){.topbar-inner .brand-text span{display:none}.topbar-inner .nav-tabs{flex:none;overflow:visible}}

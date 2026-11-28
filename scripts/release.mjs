@@ -14,7 +14,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (f) => execFileSync(process.execPath, [path.join(root, "scripts", f)], { cwd: root, stdio: "inherit" });
-const hash = (f) => createHash("sha1").update(readFileSync(path.join(root, f))).digest("hex").slice(0, 8);
+// Same hash as check-build.mjs (git hash-object). A plain sha1 of the bytes
+// gave different values, so every release then failed check-build (28 Nov 2026).
+const hash = (f) => execFileSync("git", ["hash-object", path.join(root, f)]).toString().trim().slice(0, 8);
 
 run("build-client.mjs");
 

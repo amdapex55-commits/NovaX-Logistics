@@ -1703,7 +1703,18 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        the wallet. It is not owed separately -- counting it as well as the
        negative wallet is how the same charges showed up twice. */
     function nvInvTaken(inv){ return !!inv && Number(inv.dueToNovax||0)>0 && !!inv.walletPushedAt && inv.status!=="Cancelled" && inv.status!=="Paid to NovaX"; }
-    function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
+    /* 28 Nov 2026 (speed): isUnpaidDeliveredParcel() rebuilt this Set for every
+       parcel it was asked about. It is now built once per synchronous pass
+       (dropped at the next microtask), so a render sees one consistent Set
+       and a later change to the invoices is always picked up. */
+    var NV_PAID_REFS=null;
+    function paidParcelRefs(){
+      if(NV_PAID_REFS && NV_PAID_REFS.inv===state.invoices && NV_PAID_REFS.n===state.invoices.length) return NV_PAID_REFS.set;
+      var set=new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[]));
+      NV_PAID_REFS={ inv:state.invoices, n:state.invoices.length, set:set };
+      Promise.resolve().then(function(){ NV_PAID_REFS=null; });
+      return set;
+    }
     function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
     /* ═══ What counts as a delivery attempt ═══════════════════════════════
        A delivery rate of delivered/ALL parcels punished the merchant for
@@ -3954,12 +3965,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(m && !hasZone) return { y:+m[1], mo:+m[2], d:+m[3], h:(m[4]!=null?+m[4]:null), mi:(m[5]!=null?+m[5]:null) };
       var dt=new Date(s); if(isNaN(dt)) return null;
       try{
-        var o={}; new Intl.DateTimeFormat("en-GB",{ timeZone:"Asia/Karachi", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" })
+        var o={}; (NV_DP_FMT||(NV_DP_FMT=new Intl.DateTimeFormat("en-GB",{ timeZone:"Asia/Karachi", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" })))
           .formatToParts(dt).forEach(function(x){ o[x.type]=x.value; });
         return { y:+o.year, mo:+o.month, d:+o.day, h:+o.hour, mi:+o.minute };
       }catch(e){ return null; }
     }
-    function nvThisYear(){ try{ return +new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }).slice(0,4); }catch(e){ return new Date().getFullYear(); } }
+    /* 28 Nov 2026 (speed): one formatter, and the year is re-read once a minute, not per date shown. */
+    var NV_DP_FMT, NV_TY;
+    function nvThisYear(){
+      if(!NV_TY) NV_TY={ at:0, y:0 };
+      var now=Date.now(); if(NV_TY.y && now-NV_TY.at<60000) return NV_TY.y;
+      var y; try{ y=+(NV_TY.f||(NV_TY.f=new Intl.DateTimeFormat("en-CA",{ timeZone:"Asia/Karachi" }))).format(new Date(now)).slice(0,4); }catch(e){ y=new Date().getFullYear(); }
+      NV_TY.at=now; NV_TY.y=y; return y;
+    }
     function nvDate(v){
       var p=nvDateParts(v); if(!p||!p.mo) return v?String(v):"";
       return p.d+" "+NV_MON[p.mo-1]+(p.y!==nvThisYear()?" "+p.y:"");
@@ -15139,9 +15157,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!sb||!sb.rpc||!window.NVCnic||NV_KYC.loading) return Promise.resolve();
       NV_KYC.loading=true;
       return window.NVCnic.status(sb).then(function(d){
-        NV_KYC.loading=false; NV_KYC.data=d||null; nvKycRender();
+        NV_KYC.loading=false; NV_KYC.data=d||null; nvKycRender(); nvSetupSettled("kyc");
       }).catch(function(e){
-        NV_KYC.loading=false;
+        NV_KYC.loading=false; nvSetupSettled("kyc");
         var m=nvKycEl("nvKycMsg");
         if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=/permission denied/i.test((e&&e.message)||"")?window.nvPermText("Loading your CNIC","cnic_status",e&&e.message):"Could not load your CNIC. Refresh the page."; }
       });
@@ -15172,10 +15190,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* 22 Oct 2026: the setup banners (Merchant Agreement, owner's CNIC)
        sit inside one "Finish setting up" card. Each banner still shows and
        hides itself exactly as before; this only counts them. */
+    /* 28 Nov 2026 (layout shift): the boot script may keep room for this card
+       (body.nv-hold-setup) because it showed last visit. The room is given
+       back once the card is showing, or once both checks behind it (owner's
+       CNIC, Merchant Agreement) have answered and there is nothing to show. */
+    var NV_SETUP_SETTLED={};
+    function nvSetupSettled(k){
+      NV_SETUP_SETTLED[k]=1;
+      if(NV_SETUP_SETTLED.kyc && NV_SETUP_SETTLED.terms){ try{ nvSetupPaint(); document.body.classList.remove("nv-hold-setup"); }catch(e){} }
+    }
     function nvSetupPaint(){
       var card=document.getElementById("nvSetupCard"); if(!card) return;
       var n=Array.prototype.filter.call(card.querySelectorAll(".nv-kyc-banner"), function(b){ return !b.hidden; }).length;
       card.hidden=n===0;
+      if(n>0){ try{ document.body.classList.remove("nv-hold-setup"); }catch(e){} }
       var c=document.getElementById("nvSetupCount"); if(c) c.textContent=n===1?"1 step left":n+" steps left";
     }
     (function nvSetupWatch(){
@@ -15215,12 +15243,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!sb||!sb.rpc||!ban) return;
       NV_TERMS.tried=true;
       Promise.resolve(sb.rpc("nv_terms_status")).then(function(r){
+        nvSetupSettled("terms");
         if(!r||r.error||!r.data) return;
         if(r.data.accepted) return;
         var v=document.getElementById("nvTermsVer"); if(v) v.textContent=r.data.current||"1.0";
         ban.dataset.version=r.data.current||"1.0";
         ban.hidden=false;
-      }).catch(function(){ NV_TERMS.tried=false; });
+      }).catch(function(){ NV_TERMS.tried=false; nvSetupSettled("terms"); });
       var go=document.getElementById("nvTermsAccept");
       if(go && !go._nvWired){ go._nvWired=true; go.addEventListener("click",function(){
         if(NV_TERMS.busy) return; NV_TERMS.busy=true; go.disabled=true; go.textContent="Saving…";
@@ -16003,6 +16032,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
     }
 
+    /* 28 Nov 2026 (speed): render() redrew the Reports table, the bulk preview
+       and the three label/pickup lists on every refresh, although they sit on
+       tabs the merchant is not looking at. They now draw only while their
+       tab is open; showClientTab() already redraws all of them on every tab
+       switch, so a tab is current the moment it is opened. */
+    function nvOnTab(tab, fn){
+      return function(){ if(state.activeClientTab===tab) fn(); };
+    }
     function render(){
       try{ applyPickupCity(); }catch(e){}
       try{ renderCodHero(); }catch(e){}
@@ -16018,10 +16055,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvSafeRender([
         ["metrics", renderMetrics], ["statusBoard", renderClientStatusBoard],
         ["parcels", renderClientParcels], ["journey", renderJourney],
-        ["modules", renderClientModules], ["reportFull", renderClientReportFull],
-        ["wallet", renderClientWallet], ["bulkPreview", renderBulkPreview],
-        ["integrations", renderIntegrations], ["newBooked", renderNewBookedList],
-        ["pickupEligible", renderPickupEligibleList], ["pickupRequests", renderPickupRequestList],
+        ["modules", renderClientModules], ["reportFull", nvOnTab("reports", renderClientReportFull)],
+        ["wallet", renderClientWallet], ["bulkPreview", nvOnTab("bulkBooking", renderBulkPreview)],
+        ["integrations", renderIntegrations], ["newBooked", nvOnTab("awbLabel", renderNewBookedList)],
+        ["pickupEligible", nvOnTab("awbLabel", renderPickupEligibleList)], ["pickupRequests", nvOnTab("awbLabel", renderPickupRequestList)],
         ["zoneRateHint", updateZoneRateHint],
       ]);
       // NovaX fix (client identity leak): the Client Menu workspace label used
@@ -16904,7 +16941,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(d) d.addEventListener("click",nvHideStaleBanner);
     }
     function nvHideStaleBanner(){ var b=document.getElementById("nvStaleBanner"); if(b&&b.parentNode) b.parentNode.removeChild(b); }
-    window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; window.__nvLastFresh=Date.now(); nvHideStaleBanner(); try{ document.body.classList.remove("nv-booting"); }catch(e){} try{ nvPaintUpdated(); }catch(e){} };
+    /* 28 Nov 2026: remember how tall the top Home cards were, for the boot
+       placeholders next visit (boot script after <body> in client.html).
+       Heights and screen width only, under this login's id. */
+    function nvSaveBootShape(){
+      try{
+        if(window.__NOVAX_DEMO || state.activeClientTab!=="dashboard" || document.body.classList.contains("nv-booting")) return;
+        if(document.body.classList.contains("nv-hold-setup")) return;
+        var tk=JSON.parse(localStorage.getItem("sb-rhzunbzbdzicajqtohwp-auth-token")||"null");
+        var uid=tk&&tk.user&&tk.user.id; if(!uid) return;
+        var h=function(id){ var e=document.getElementById(id); return (e&&!e.hidden)?e.offsetHeight:0; };
+        var hero=h("nvCodHero"); if(!hero) return;
+        localStorage.setItem("nvBootShape", JSON.stringify({ uid:uid, w:window.innerWidth, at:Date.now(), hero:hero, line:h("nvParcelLine"), setup:h("nvSetupCard") }));
+      }catch(e){}
+    }
+    try{
+      document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="hidden") nvSaveBootShape(); });
+      window.addEventListener("pagehide",nvSaveBootShape);
+    }catch(e){}
+    var NV_SHAPE_T=0;
+    window.__novaxMarkDataFresh=function(){ clearTimeout(NV_SHAPE_T); NV_SHAPE_T=setTimeout(nvSaveBootShape,6000); window.__novaxRealDataArrived=true; window.__nvLastFresh=Date.now(); nvHideStaleBanner(); try{ document.body.classList.remove("nv-booting"); }catch(e){} try{ nvPaintUpdated(); }catch(e){} };
     /* __novaxRealDataArrived was a one-way latch: the first successful load set
        it true and nvShowStaleBanner() then returned immediately forever. So a
        merchant whose connection died AFTER that first load kept looking at
@@ -17254,14 +17310,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
          en-CA is used for the date because it formats as YYYY-MM-DD, which is
          what every caller compares and sorts on. */
+      /* 28 Nov 2026 (speed): toLocaleDateString with a timeZone builds a new
+         formatter on every call, and this ran several times per parcel at
+         boot -- the single biggest cost in the signed-in profile. The same
+         two formatters are now built once, and an answer for the same
+         timestamp is remembered. Output is byte-for-byte what it was. */
+      var NV_KP_FMT, NV_KP_MEMO;
       function nvKarachiParts(t){
+        var key = t ? String(t) : "";
+        if(!NV_KP_MEMO) NV_KP_MEMO=new Map();
+        if(key && NV_KP_MEMO.has(key)){ var hit=NV_KP_MEMO.get(key); return hit?{ date:hit.date, time:hit.time }:null; }
         var d = t ? new Date(t) : new Date();
-        if(isNaN(d.getTime())) return null;
+        if(isNaN(d.getTime())){ if(key) NV_KP_MEMO.set(key,null); return null; }
         try{
-          return {
-            date: d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }),
-            time: d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hour12:false })
+          if(!NV_KP_FMT) NV_KP_FMT={
+            d:new Intl.DateTimeFormat("en-CA",{ timeZone:"Asia/Karachi" }),
+            t:new Intl.DateTimeFormat("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hour12:false })
           };
+          var out={ date:NV_KP_FMT.d.format(d), time:NV_KP_FMT.t.format(d) };
+          if(key){ if(NV_KP_MEMO.size>20000) NV_KP_MEMO.clear(); NV_KP_MEMO.set(key,{ date:out.date, time:out.time }); }
+          return out;
         }catch(e){
           /* A browser without time-zone support used to fall back to the raw
              UTC text, which put a 1 am payment on the previous day. Pakistan
@@ -17294,7 +17362,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function updstamp(t){
         var k=nvKarachiParts(t);
         if(!k) return "";
-        var today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+        var today=(nvKarachiParts()||{}).date;
         if(k.date===today) return k.time;
         var d=new Date(k.date+"T00:00:00Z");
         var nice=isNaN(d)?k.date:d.toLocaleDateString("en-GB",{ day:"numeric", month:"short", timeZone:"UTC" });
@@ -18474,7 +18542,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!ready){
           if(existingBox) existingBox.remove();
           var host0=document.getElementById("client-dashboard");
-          if(host0 && !document.getElementById("nvfbLoadingState")){
+          if(host0 && !document.getElementById("nvfbLoadingState") && !document.body.classList.contains("nv-shaped")){
             var loading=document.createElement("div");
             loading.id="nvfbLoadingState";
             loading.style.cssText="background:var(--nvu-neutral-bg);border:1px dashed #bfe8d7;border-radius:var(--r-xl);padding:16px;text-align:center;margin-bottom:16px;color:#3a6b5a;font-size:13px;font-weight:700";
