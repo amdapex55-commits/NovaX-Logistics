@@ -5427,6 +5427,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var rs = document.documentElement.style;
             rs.setProperty("--nv-vv-cover", cover + "px");
             rs.setProperty("--nv-vv-h", Math.round(vv.height) + "px");
+            rs.setProperty("--nv-vv-top", Math.round(vv.offsetTop) + "px");
           }catch(e){}
         });
       }
