@@ -13,10 +13,9 @@ const WHATSAPP = 'https://wa.me/923123922558';
 const STOP = WEBSITE + 'unsubscribe.html?t=';
 const LOGO = 'https://novaxlogistics.com/assets/icon-192.png';
 // Word for word from the site and Decisions. Do not reword.
-// 6 Nov 2026: promotional rates (new sign-ups start on them; existing merchants opt in).
-const PRICE = 'Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges.';
-// Reminders and win-backs also reach accounts opened before 6 Nov 2026, which stay on 225 / 250 until they opt in.
-const PRICE_OPT = PRICE + ' Account opened before 6 November? Tap Opt in now on Home in your portal to switch.';
+// 28 Nov 2026: the November promotional rates (170 / 210) ended; everyone is back on the standard card.
+const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to every other NovaX city, plus Rs 85 per additional kg.';
+const PRICE_OPT = PRICE;
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 // One-off emails to merchants who stopped, or set up and never shipped (8 Oct
 // 2026). Sent once each, with the same private stop link as the reminders.

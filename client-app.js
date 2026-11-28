@@ -280,9 +280,8 @@ window.nvCount=function(n,one,many){
           profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
           clients: [{ id:CID, name:"Sana's Closet", code:"SC", phone:"0300-0000000",
                       city:"Karachi", address:"Shop 14, Tariq Road, Karachi",
-                      wallet_balance:3425, rate:170, status:"Active",
-                      /* 6 Nov 2026: the demo is what a new account gets, so it books at the promotional rates. */
-                      rate_card:{ A:{overnight:170, additionalKg:85}, B:{overnight:210, additionalKg:85}, sameCity:true, promo:"promo-2026-11" },
+                      wallet_balance:3425, rate:225, status:"Active",
+                      rate_card:{ A:{overnight:225, additionalKg:85}, B:{overnight:250, additionalKg:85} },
                       meta:{ pickupCity:"Karachi" } }],
           parcels: [
             parcel({ awb:"N9000001", status:"Delivered", consignee:"Hina Raza",
@@ -517,8 +516,8 @@ window.nvCount=function(n,one,many){
              '<div class="nvob-btns">'+m.chip("Try again","go")+m.chip("Bring it back")+'</div>' },
         { k:"Your money", t:"COD in your wallet the day it lands", nav:"money",
           b:"The delivery charge comes off on one invoice, and nothing is taken twice.",
-          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 170",""],["Into your wallet","Rs 3,280","ok"]]),
-          n:"Rs 170 for the first kg in your own city, Rs 210 to any other city, plus Rs 85 per additional kg. No hidden or extra charges." },
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 225",""],["Into your wallet","Rs 3,225","ok"]]),
+          n:"Rs 225 for the first kg to a Karachi address, Rs 250 to every other NovaX city, plus Rs 85 per additional kg." },
         { k:"Your money", t:"Withdraw to your bank", nav:"money",
           b:"Send your balance to your own bank account whenever it suits you. Choose how fast; the fee is shown before you confirm.",
           v: m.rows([speed("24h","Nova Saver","48-72 hours","Free"), speed("12h","Nova Express","24 hours","Rs 100"), speed("instant","Nova Bolt","6-12 hours","Rs 500")]) },
@@ -13700,6 +13699,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        sign-ups (already on the promotional card) never see it. The switch is
        nv_promo_opt_in() on the server, which re-checks the card itself. */
     function nvPromoEligible(){
+      return false;   /* 28 Nov 2026 (owner): the promotional rates ended; nv_promo_opt_in() now refuses. */
       try{
         var rc=state.client&&state.client.rateCard;
         if(!state.client||!state.client.id||!rc||rc.sameCity||!rc.A||!rc.B) return false;

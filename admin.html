@@ -5779,8 +5779,8 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div id="nvQueueDone"></div>
               </details>
 
-              <!-- 6 Nov 2026: new rates (Rs 170 / Rs 210). Who opted in, and how far the emails have got (admin_promo_status). -->
-              <details class="panel mt-14 nv-calls-fold" id="nvPromoPanel">
+              <!-- 6 Nov 2026: new rates (Rs 170 / Rs 210). Hidden since 28 Nov 2026, when the offer ended. -->
+              <details class="panel mt-14 nv-calls-fold" id="nvPromoPanel" style="display:none">
                 <summary class="nv-calls-sum"><b>New rates opt-ins</b><span class="chip" id="nvPromoCountS">…</span><span class="nv-calls-tap">Tap to open</span></summary>
                 <div class="section-head" style="margin-top:12px">
                   <div><p>Merchants on the old Rs 225 / Rs 250 card switch to Rs 170 / Rs 210 with Opt in now on their Home. New sign-ups start on the new rates.</p></div>
@@ -13980,10 +13980,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("This login email already exists.");
         return;
       }
-      /* 6 Nov 2026 (owner): merchants created here start on the promotional
-         card like self sign-ups (nv_promo_card): Rs 170 same city, Rs 210
-         elsewhere, Rs 85 per extra kg. */
-      const rateCard = { A: defaultRateCard(170), B: defaultRateCard(210), sameCity: true, promo: "promo-2026-11" };
+      /* 28 Nov 2026 (owner): the promotional rates ended; new merchants start on the standard card again. */
+      const rateCard = { A: defaultRateCard(NV_ZONE_A_BASE), B: defaultRateCard(NV_ZONE_B_BASE) };
       state.clients = state.clients.filter(item => item.id !== "CL-0000");
       const id = nextId("CL", state.clients);
       const newClient = {
