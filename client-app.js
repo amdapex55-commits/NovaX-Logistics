@@ -5419,6 +5419,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           raf = 0;
           var gap = window.innerHeight - vv.height;
           document.body.classList.toggle("nv-keyboard-open", gap > KEYBOARD_MIN);
+          /* How much of the layout viewport the keyboard (or just iOS's
+             accessory bar, ~45px) covers, so bottom sheets such as the AI
+             panel can sit on top of it instead of under it. */
+          try{
+            var cover = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+            var rs = document.documentElement.style;
+            rs.setProperty("--nv-vv-cover", cover + "px");
+            rs.setProperty("--nv-vv-h", Math.round(vv.height) + "px");
+          }catch(e){}
         });
       }
       vv.addEventListener("resize", sync);
@@ -20805,7 +20814,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   new MutationObserver(function(){
     var open=panel.classList.contains("open");
     btn.setAttribute("aria-expanded",String(open));
-    if(open) setTimeout(function(){try{panel.querySelector("#nvautoInput").focus();}catch(e){}},0);
+    /* Only focus the box where there is no on-screen keyboard: on a phone the
+       keyboard jumped up on open and covered the answer the panel opened to
+       show (28 Nov 2026). */
+    var fine=false; try{ fine=window.matchMedia("(hover:hover) and (pointer:fine)").matches; }catch(e){}
+    if(open && fine) setTimeout(function(){try{panel.querySelector("#nvautoInput").focus();}catch(e){}},0);
     else if(panel.contains(document.activeElement)) try{btn.focus();}catch(e){}
   }).observe(panel,{attributes:true,attributeFilter:["class"]});
   panel.addEventListener("keydown",function(e){
