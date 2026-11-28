@@ -2073,6 +2073,12 @@
     #nvQueuePanel[hidden]{display:none!important}
     /* Website visitors (7 Nov 2026) */
     .nvs-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin:4px 0 14px}
+    .nvs-tile.nv-ah-bad{border-color:var(--nvu-bad,#d9534f)}
+    .nvs-tile.nv-ah-bad b{color:var(--nvu-bad,#c0392b)}
+    tr.nv-ah-row-bad td:first-child{font-weight:800}
+    .nvs-tile.nv-ah-sk{min-height:64px;background:linear-gradient(90deg,var(--line) 25%,var(--nvu-bg-2,#f3f3f0) 50%,var(--line) 75%) 0 0/220% 100%;animation:nvAhSk 1.3s linear infinite}
+    @keyframes nvAhSk{to{background-position:-220% 0}}
+    @media (prefers-reduced-motion:reduce){.nvs-tile.nv-ah-sk{animation:none}}
     .nvs-tile{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--nvu-bg-2,transparent);min-width:0}
     .nvs-tile b{display:block;font-size:22px;font-weight:850;line-height:1.1;font-variant-numeric:tabular-nums}
     .nvs-tile span{display:block;font-size:12px;color:var(--nvu-ink-2);margin-top:2px}
@@ -5649,6 +5655,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
 
               <button type="button" class="admin-nav-main" data-admin-tab="website-visitors">WEBSITE VISITORS</button>
+              <button type="button" class="admin-nav-main" data-admin-tab="app-health">APP HEALTH</button>
               <a class="admin-nav-main" href="sales.html" style="text-decoration:none"><span>SALES TEAM</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
               <a class="admin-nav-main" href="care.html" style="text-decoration:none"><span>SUPPORT DESK</span><span class="chevron" aria-hidden="true">&#8599;</span></a>
               <!-- Nova Instant shelved 9 Oct 2026: link kept in shelved/nova-instant/ -->
@@ -6379,6 +6386,20 @@ html,body{ background:var(--bg); color:var(--ink); }
                   </div>
                 </div>
                 <div id="nvSiteBody"><p class="footer-note">Loading…</p></div>
+              </div>
+            </section>
+
+            <!-- 28 Nov 2026: app health (nv-track.js -> nv_app_events, admin_app_health). Admin only. -->
+            <section class="admin-module" id="admin-app-health">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>App health <span class="chip" id="nvAhCount">…</span></h3><p>How the app and portal are doing for merchants and riders: do bookings get finished, do sign-ins and CNIC photos fail, do notifications arrive, and which screens confuse people. No names or typed text are recorded.</p></div>
+                  <div class="inline-actions">
+                    <select id="nvAhDays" aria-label="Period"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select>
+                    <button class="action-btn ghost" type="button" onclick="nvAhLoad()">Refresh</button>
+                  </div>
+                </div>
+                <div id="nvAhBody"><div class="nvs-tiles"><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div><div class="nvs-tile nv-ah-sk"></div></div></div>
               </div>
             </section>
 
@@ -12380,6 +12401,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
       if (state.activeAdminTab === "flyer-orders") { try { nvFlyAdminLoad(); } catch(e){} }
       if (state.activeAdminTab === "website-visitors") { try { nvSiteLoad(); } catch(e){} }
+      if (state.activeAdminTab === "app-health") { try { nvAhLoad(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
@@ -13398,6 +13420,56 @@ html,body{ background:var(--bg); color:var(--ink); }
       body.innerHTML=html; return true;
     }
     document.addEventListener("change",function(e){ if(e.target && (e.target.id==="nvSiteDays"||e.target.id==="nvSiteOnly")) nvSiteLoad(); });
+    /* ── App health (28 Nov 2026) ──────────────────────────────────────── */
+    var NV_AH_SCREENS={ dashboard:"Home", newBooking:"New booking", parcels:"Parcels", wallet:"Money", money:"Money", support:"Help", profile:"Profile", signin:"Sign in", client:"Portal start", index:"Front page", reports:"Reports", pickups:"Pickups" };
+    function nvAhSecs(ms){ if(ms==null) return "\u2014"; var s=Math.round(ms/1000); return s<60?(Math.round(ms/100)/10)+" s":Math.floor(s/60)+" min "+(s%60)+" s"; }
+    function nvAhPct(a,b){ return b?Math.round(a/b*100)+"%":"\u2014"; }
+    async function nvAhLoad(){
+      var sb=window.__nvSb, body=document.getElementById("nvAhBody"); if(!sb||!sb.rpc||!body) return false;
+      var days=+(document.getElementById("nvAhDays")||{}).value||7, r;
+      try{ r=await sb.rpc("admin_app_health",{ p_days:days }); if(r.error) throw new Error(r.error.message); }
+      catch(e){ body.innerHTML='<p class="footer-note">'+(/Admins only/i.test(String(e.message||e))?"Admins only.":"Could not load: "+nvEscAdmin(e.message||e))+'</p>'; return false; }
+      var d=r.data||{}, t=d.totals||{}, E=nvEscAdmin, n=Number(t.sessions||0);
+      var cc=document.getElementById("nvAhCount"); if(cc){ cc.textContent=n+" sessions \u00b7 "+(t.appSessions||0)+" in the app"; cc.className="chip"+(n?" good":""); }
+      function tile(v,l,bad){ return '<div class="nvs-tile'+(bad?' nv-ah-bad':'')+'"><b>'+E(String(v))+'</b><span>'+E(l)+'</span></div>'; }
+      var lf=Number(t.loginFail||0), lo=Number(t.loginOk||0), cf=Number(t.cnicFail||0), co=Number(t.cnicOk||0);
+      var bo=Number(t.bookOpened||0), bd=Number(t.bookDone||0), pq=Number(t.pushQueued||0), ps=Number(t.pushSent||0);
+      var html='<div class="nvs-h">Bookings</div><div class="nvs-tiles">'+
+        tile(nvAhPct(bd,bo),"finished a booking after opening the form",bo>=5&&bd/bo<0.6)+
+        tile(t.bookings||0,"bookings made")+tile(nvAhSecs(t.bookMedianMs),"typical time to book one")+
+        tile(nvAhSecs(t.readyAppMedianMs!=null?t.readyAppMedianMs:t.readyMedianMs),"typical time until the app is ready",(t.readyAppMedianMs||t.readyMedianMs||0)>3500)+'</div>'+
+        '<div class="nvs-h">Sign-in, CNIC, notifications, errors</div><div class="nvs-tiles">'+
+        tile(lf,"failed sign-ins ("+nvAhPct(lf,lf+lo)+" of tries)",lf+lo>=5&&lf/(lf+lo)>0.25)+
+        tile(cf,"CNIC uploads failed ("+nvAhPct(cf,cf+co)+")",cf>0)+
+        tile(pq?nvAhPct(ps,pq):"\u2014","notifications delivered ("+ps+" of "+pq+")",pq>=5&&ps/pq<0.9)+
+        tile(t.pushOpened||0,"notifications tapped")+tile(t.pushPhones||0,"phones signed up for notifications")+
+        tile(t.jsErrors||0,"script errors ("+(t.jsErrorSessions||0)+" sessions)",(t.jsErrors||0)>0)+
+        tile(t.rageTaps||0,"rage taps (3 quick taps on one spot)",(t.rageTaps||0)>0)+
+        tile((t.android||0)+" / "+(t.ios||0),"Android / iPhone sessions")+'</div>';
+      html+='<p class="footer-note">App crashes and freezes (ANR) are counted by the stores, not here: Play Console \u2192 Android vitals, and App Store Connect \u2192 Crashes / TestFlight. Script errors above are the web view\u2019s version of a crash.</p>';
+      var sc=d.screens||[];
+      html+='<div class="nvs-h">Screens that confuse people</div>'+(sc.length?'<div class="nvs-scroll"><table class="nvs-tbl"><thead><tr><th>Screen</th><th class="n">Opened</th><th class="n">Left within 3 s</th><th class="n">Rage taps</th><th class="n">Errors</th></tr></thead><tbody>'+
+        sc.map(function(x){ var bad=(x.views>=5&&x.bounces/x.views>0.4)||x.rage>0||x.errors>0; return '<tr'+(bad?' class="nv-ah-row-bad"':'')+'><td>'+E(NV_AH_SCREENS[x.screen]||x.screen)+'</td><td class="n">'+x.views+'</td><td class="n">'+x.bounces+(x.views?' <small>('+nvAhPct(x.bounces,x.views)+')</small>':'')+'</td><td class="n">'+x.rage+'</td><td class="n">'+x.errors+'</td></tr>'; }).join("")+'</tbody></table></div>':'<p class="footer-note">No screens recorded yet.</p>');
+      function list(title,a,fmt){ return '<div class="nvs-h">'+title+'</div>'+((a||[]).length?(a||[]).map(function(x){ return '<div class="nvs-bar"><span>'+E(fmt(x))+'</span><em>'+x.n+'</em></div>'; }).join(""):'<p class="footer-note">None.</p>'); }
+      html+=list("Where people rage-tap",d.rage,function(x){ return (NV_AH_SCREENS[x.screen]||x.screen||"")+" \u203a "+(x.what||"?"); });
+      html+=list("Why sign-in failed",d.loginWhy,function(x){ return x.why; });
+      html+=list("Why CNIC uploads failed",d.cnicWhy,function(x){ return x.why; });
+      html+=list("Why notifications did not go",d.pushFailWhy,function(x){ return x.why; });
+      html+=list("Script errors",d.jsWhy,function(x){ return x.why+(x.platform?" ("+x.platform+")":""); });
+      var dy=d.days||[];
+      if(dy.length) html+='<div class="nvs-h">Day by day</div><div class="nvs-scroll"><table class="nvs-tbl"><thead><tr><th>Day</th><th class="n">Sessions</th><th class="n">Bookings</th><th class="n">Failed sign-ins</th><th class="n">CNIC failed</th><th class="n">Errors</th></tr></thead><tbody>'+
+        dy.map(function(x){ return '<tr><td>'+E(x.day)+'</td><td class="n">'+x.sessions+'</td><td class="n">'+x.bookings+'</td><td class="n">'+x.loginFail+'</td><td class="n">'+x.cnicFail+'</td><td class="n">'+x.jsErrors+'</td></tr>'; }).join("")+'</tbody></table></div>';
+      if(!n) html='<p class="footer-note">Nothing recorded in this period yet. Measuring started on 28 Nov 2026.</p>'+html;
+      body.innerHTML=html; return true;
+    }
+    document.addEventListener("change",function(e){ if(e.target && e.target.id==="nvAhDays") nvAhLoad(); });
+    (function nvAhBoot(){
+      var tries=0, t=setInterval(function(){
+        tries++; if(tries>60){ clearInterval(t); return; }
+        if(!window.__nvSb) return; clearInterval(t);
+        var m=document.getElementById("admin-app-health"); if(m && m.classList.contains("active")) nvAhLoad();
+      }, 3000);
+    })();
     function nvSiteOpen(){ var m=document.getElementById("admin-website-visitors"); return !!(m && m.classList.contains("active")); }
     setInterval(function(){ if(!document.hidden && nvSiteOpen() && window.__nvSb) nvSiteLoad(); }, 2*60*1000);
     (function nvSiteBoot(){   // the page reopened on this tab
@@ -21572,6 +21644,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["flyer-orders","Flyer Orders","Flyers merchants bought, to send with the rider"],
       ["website-visitors","Website Visitors","Who lands on the homepage from the ads, and what they tap"],
+      ["app-health","App Health","Booking completion, sign-in and CNIC failures, notifications, errors, confusing screens"],
       ["reviews","Reviews","Approve merchant testimonials"],
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
       ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],

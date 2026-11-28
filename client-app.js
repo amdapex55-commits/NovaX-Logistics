@@ -26,6 +26,16 @@
  * of the DOM than it used to, never less. Inline onclick handlers are
  * unaffected -- they resolve at click time, long after this has run.
  */
+/* Grey loading blocks (28 Nov 2026). nvSkel(rows) gives row-shaped shimmer
+   blocks with a hidden "Loading" for screen readers, so a waiting screen
+   keeps its shape instead of showing a line of text. Real content replaces
+   it when render() writes the container again. */
+window.nvSkel=function(n,label){
+  n=n||3; var w=[[45,80,60],[38,70,52],[52,86,40]], h='';
+  for(var i=0;i<n;i++){ var x=w[i%3]; h+='<div class="nv-skel-row" aria-hidden="true"><div class="nv-skel-line" style="width:'+x[0]+'%"></div><div class="nv-skel-line" style="width:'+x[1]+'%"></div><div class="nv-skel-line" style="width:'+x[2]+'%"></div></div>'; }
+  return '<div class="nv-skel-list" role="status" aria-busy="true"><span class="sr-only">'+(label||'Loading')+'</span>'+h+'</div>';
+};
+
 /* "1 row", "2 rows": used wherever a message counts something, so nothing a
    merchant reads has a plural in brackets (8 Oct 2026). On window because
    this file is several separate closures and all of them count things. */
@@ -6765,7 +6775,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            '<button type="button" class="action-btn nv-sw-go" id="nvSwGo"'+(NV_SW.sel&&!nvSwDemo()?'':' disabled')+'>'+(NV_SW.busy?'Booking…':(q?'Book Nova Swap · '+escLabelText(money(q.total)):'Book Nova Swap'))+'</button></div>';
       }
       h+='<div class="panel nv-sw-list"><div class="section-head"><div><h3>Your swaps</h3></div></div>';
-      if(NV_SW.loading && !NV_SW.list.length) h+='<p class="footer-note">Loading…</p>';
+      if(NV_SW.loading && !NV_SW.list.length) h+=window.nvSkel(3,'Loading your swaps');
       else if(NV_SW.err) h+='<p class="footer-note">'+escLabelText(NV_SW.err)+' <button type="button" class="action-btn ghost" data-sw-act="reload">Retry</button></p>';
       else if(!NV_SW.list.length) h+='<p class="footer-note">No swaps yet. When a customer wants a different size or item, book it above.</p>';
       else h+=NV_SW.list.map(function(s){
@@ -8330,7 +8340,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(window.NovaXReports){ window.NovaXReports.open(host); return; }
       if(host.dataset.loading) return;
       host.dataset.loading="1";
-      if(!host.innerHTML.trim()) host.innerHTML='<div class="panel" style="padding:22px"><p class="footer-note" style="margin:0">Loading your report\u2026</p></div>';
+      if(!host.innerHTML.trim()) host.innerHTML='<div class="panel" style="padding:22px">'+window.nvSkel(4,'Loading your report')+'</div>';
       nvReport2Load().then(function(){
         host.dataset.loading="";
         if(window.NovaXReports) window.NovaXReports.open(host); else throw new Error("no module");
@@ -13251,8 +13261,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              has been populated, re-entering this branch during a refresh must
              not throw a loading card over tickets that are already on screen. */
           if (host && !host.children.length && !NV_TK.loadedOnce){
-            host.innerHTML = '<div class="ops-card"><strong>Loading your tickets\u2026</strong>'
-              + '<p class="footer-note">Connecting to your workspace.</p></div>';
+            host.innerHTML = window.nvSkel(3,'Loading your tickets');
           }
           setTimeout(nvTkLoad, 500);
           return Promise.resolve();
@@ -15011,11 +15020,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* Blank fields with "—" and "Your shop" looked like the account had no
          details. Say it is loading, and on failure say so with a retry. */
       if(err && !NV_PF.loaded){ err.hidden=false; err.classList.remove("is-err"); err.textContent="Loading your profile…"; }
+      /* Grey shimmer in the empty fields while the first load runs, so they
+         do not read as "no details". Cleared on answer, or after 15 s whatever happens. */
+      if(!NV_PF.loaded){ document.body.classList.add("nv-pf-busy"); setTimeout(function(){ document.body.classList.remove("nv-pf-busy"); },15000); }
       return Promise.all([
         Promise.resolve(sb.rpc("nv_profile_get")),
         Promise.resolve(sb.from("client_profile_changes").select("field,old_value,new_value,created_at").order("created_at",{ ascending:false }).limit(12))
       ]).then(function(res){
-        NV_PF.loading=false;
+        NV_PF.loading=false; document.body.classList.remove("nv-pf-busy");
         var r=res[0], h=res[1];
         if(r&&r.error){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent=/permission denied/i.test(r.error.message||"")?window.nvPermText("Loading your profile","profile_load",r.error.message,r.status):"Could not load your profile: "+r.error.message; } return; }
         if(!r||!r.data){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent="Could not load your profile. Refresh the page."; } return; }
@@ -16163,7 +16175,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; /* 4 Nov 2026: announcements sit on Home only; on Wallet they pushed the merchant's money below the fold. */ try{ var rnH=document.getElementById("nvRateNotice"); if(rnH) rnH.classList.toggle("nv-off-tab", id!=="dashboard"); }catch(e){} saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); try{ renderLoadSheetList(); }catch(e){} renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; try{ if(window.nvTrackScreen) window.nvTrackScreen(id); }catch(_t){} /* 4 Nov 2026: announcements sit on Home only; on Wallet they pushed the merchant's money below the fold. */ try{ var rnH=document.getElementById("nvRateNotice"); if(rnH) rnH.classList.toggle("nv-off-tab", id!=="dashboard"); }catch(e){} saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); try{ renderLoadSheetList(); }catch(e){} renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -16735,7 +16747,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderSubAccounts(){
       var host=document.getElementById("subAccountList");
       if(!host) return;
-      if(__nvStaffLoading && !__nvStaffRows){ host.innerHTML='<div class="ops-card"><strong>Loading your team…</strong></div>'; return; }
+      if(__nvStaffLoading && !__nvStaffRows){ host.innerHTML=window.nvSkel(2,'Loading your team'); return; }
       if(__nvStaffError){
         host.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Could not load your team</strong><span class="chip bad">not available</span></div><p>Please try again shortly or contact NovaX support.</p></div>';
         return;
@@ -19402,7 +19414,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var nvFailed=!!window.__nvLoadFailed;
           var ld=nvFailed
             ? '<p class="nv-c-empty">Could not load. <button type="button" class="action-btn ghost" onclick="window.__novaxRetryLoad&&window.__novaxRetryLoad()">Retry</button></p>'
-            : '<p class="nv-c-empty nv-c-loading">Loading your parcels\u2026</p>';
+            : window.nvSkel(2,'Loading your parcels');
           nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">'+(nvFailed?'Not loaded':'Loading\u2026')+'</span></div>'
             +'<div class="nv-cockpit-cols"><div class="nv-c-col"><h4>Needs you now</h4>'+ld+'</div>'
             +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+ld+'</div>'
@@ -25319,6 +25331,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     PN.addListener("registrationError", function(e){ console.warn("NovaX push registration", e && (e.error||e)); });
     PN.addListener("pushNotificationActionPerformed", function(a){
       var u=a && a.notification && a.notification.data && a.notification.data.url;
+      try{ if(window.nvTrack) window.nvTrack("push_open",{ meta:{ event:String((a.notification.data||{}).event||"").slice(0,20) } }); }catch(_t){}
       if(u && /^\/[a-z0-9]/i.test(u)) location.href=new URL(u, location.origin).href;
     });
     PN.addListener("pushNotificationReceived", function(n){

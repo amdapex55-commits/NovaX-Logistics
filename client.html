@@ -22,6 +22,10 @@
     }catch(e){}
   })();
   </script>
+<script>/* Native splash stays up until this page can paint (28 Nov 2026): on a cold
+   start the web view used to show a dark empty screen for seconds. */
+(function(){function go(){try{var S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.SplashScreen;if(S&&S.hide)requestAnimationFrame(function(){S.hide({fadeOutDuration:180});});}catch(e){}}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",go);else go();})();</script>
   <meta name="robots" content="noindex, nofollow, noarchive">
   <!-- Clickjacking guard (1 Oct 2026). GitHub Pages cannot send
        X-Frame-Options or frame-ancestors, so this page refuses to show
@@ -120,7 +124,7 @@
        needs start downloading while the long page is still being read. -->
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="script" href="/assets/vendor/supabase-2.117.2.js">
-  <link rel="preload" as="script" href="client-app.min.js?v=37395f79">
+  <link rel="preload" as="script" href="client-app.min.js?v=f99d4bad">
   <title>NovaX Logistics | Seller Suite</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -654,6 +658,15 @@
     @media (prefers-reduced-motion: reduce){ #nvAwbReveal{display:none!important;} }
 
     /* Loading skeletons -- reuses the existing nvShimmer sweep. */
+    .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+    .nv-skel-list{display:grid;gap:10px;}
+    [data-theme="dark"] .nv-skel-line::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);}
+    body.nv-pf-busy input[id^="nvPf"]:not([type=file]),body.nv-pf-busy select[id^="nvPf"],body.nv-pf-busy textarea[id^="nvPf"]{
+      color:transparent!important;caret-color:transparent;pointer-events:none;
+      background:linear-gradient(90deg,var(--nvu-neutral-bg) 30%,var(--line) 50%,var(--nvu-neutral-bg) 70%) 0 0/220% 100%!important;
+      animation:nvPfSk 1.35s linear infinite;}
+    body.nv-pf-busy input[id^="nvPf"]::placeholder,body.nv-pf-busy textarea[id^="nvPf"]::placeholder{color:transparent;}
+    @keyframes nvPfSk{to{background-position:-220% 0}}
     .nv-skel-row{border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);padding:12px;display:grid;gap:8px;}
     .nv-skel-line{height:11px;border-radius:var(--r-sm);background:var(--nvu-neutral-bg);position:relative;overflow:hidden;}
     .nv-skel-line::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
@@ -661,6 +674,7 @@
     @media (prefers-reduced-motion: reduce){
       .nv-enter,.nv-changed,tr.nv-changed>td{animation:none!important;}
       .nv-skel-line::after{animation:none!important;}
+      body.nv-pf-busy input[id^="nvPf"],body.nv-pf-busy select[id^="nvPf"],body.nv-pf-busy textarea[id^="nvPf"]{animation:none!important;}
     }
     .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
     .parcel-card dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;}
@@ -2972,7 +2986,8 @@ html.nv-app-cold #nvAppBoot{position:fixed;inset:0;z-index:2147483000;display:fl
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=37395f79" defer></script>
+  <script src="nv-track.js?v=68f8c032" defer></script>
+  <script src="client-app.min.js?v=f99d4bad" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --

@@ -127,7 +127,7 @@ for (const f of readdirSync(root).filter(f => f.endsWith(".html"))) checkHtml(f)
    parse, client.html renders as a dead shell -- markup with no behaviour and
    no error the merchant can see. nv-codegen.js and nv3d-hero.js were deleted
    on 25 Aug and are gone from this list with them. */
-for (const f of ["sw.js", "client-app.js", "client-app.min.js", "rider-app.js", "rider-core.js", "nv-cnic.js"]) {
+for (const f of ["sw.js", "client-app.js", "client-app.min.js", "rider-app.js", "rider-core.js", "nv-cnic.js", "nv-track.js"]) {
   try { checkJs(f); } catch { /* file may not exist; not a failure */ }
 }
 
@@ -147,6 +147,16 @@ for (const file of ["rider-app.js", "rider-core.js", "rider.css"]) {
     const html = readFileSync(join(root, page), "utf8");
     if (!html.includes("nv-cnic.js?v=" + actual)) problems.push(`${page} must reference nv-cnic.js?v=${actual}.`);
     else notes.push(`${page}: nv-cnic.js?v=${actual} matches the file`);
+  }
+}
+
+/* nv-track.js (app health events, 28 Nov 2026): index and client must load the current file. */
+{
+  const actual = execFileSync("git", ["hash-object", join(root, "nv-track.js")]).toString().trim().slice(0, 8);
+  for (const page of ["index.html", "client.html"]) {
+    const html = readFileSync(join(root, page), "utf8");
+    if (!html.includes("nv-track.js?v=" + actual)) problems.push(`${page} must reference nv-track.js?v=${actual}.`);
+    else notes.push(`${page}: nv-track.js?v=${actual} matches the file`);
   }
 }
 

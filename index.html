@@ -1239,6 +1239,10 @@ html.nv-app #appHome{--ah-lime:#dcf54b;--ah-lime-ink:#0b1f14;--ah-green:#1fd283;
     try{ var b=ss.getItem("nvAppBoot"); if(b){ var t=Number(b)||Date.now(); if(Date.now()-t<6000){ h.classList.add("nv-app-cold","nab-cont"); window.__nvAppBootAt=t; } ss.removeItem("nvAppBoot"); } }catch(e){}
   })(); }catch(e){}
 </script>
+<script>/* Native splash stays up until this page can paint (28 Nov 2026): on a cold
+   start the web view used to show a dark empty screen for seconds. */
+(function(){function go(){try{var S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.SplashScreen;if(S&&S.hide)requestAnimationFrame(function(){S.hide({fadeOutDuration:180});});}catch(e){}}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",go);else go();})();</script>
 </head>
 <body>
 <!-- NovaX app launch screen (28 Nov 2026). Only inside the iOS/Android app,
@@ -2247,6 +2251,7 @@ html.nab-cont #nvAppBoot .nab-label{animation:none;transform:none}html.nab-cont 
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
 <script src="nv-cnic.js?v=29eecafb"></script>
+<script src="nv-track.js?v=68f8c032"></script>
 <script>
 (function(){
 "use strict";
@@ -3357,8 +3362,10 @@ $("fSignin").addEventListener("submit",function(e){
   __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
     if(res.error||!res.data||!res.data.user){
       btn.disabled=false; btn.textContent=oldTxt;
+      try{ if(window.nvTrack) window.nvTrack("login_fail",{ screen:"signin", meta:{ why:String((res.error&&res.error.message)||"invalid email or password").slice(0,100), as:String(window.NV_SIGNIN_FOR||"merchant").slice(0,12) } }); }catch(_t){}
       showMsg("mSignin","Sign in failed: "+((res.error&&res.error.message)||"invalid email or password"),false); return;
     }
+    try{ if(window.nvTrack) window.nvTrack("login_ok",{ screen:"signin", meta:{ as:String(window.NV_SIGNIN_FOR||"merchant").slice(0,12) } }); }catch(_t){}
     var uid=res.data.user.id, meta=(res.data.user&&res.data.user.user_metadata)||{};
 
     __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
