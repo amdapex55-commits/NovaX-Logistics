@@ -69,6 +69,7 @@
     voiceTapStart: ["Tap to record", "Record karein"], voiceTapStop: ["Tap to stop", "Rokein"],
     voiceAgain: ["Record again", "Dobara record"], voiceSend: ["Send voice note", "Paigham bhejein"],
     voiceRetryMic: ["Try again", "Dobara koshish"], voiceSkip: ["Mic blocked, skip", "Mic band, skip"],
+    voiceLater: ["Record later", "Baad mein record karein"], voiceRecordNow: ["Record now", "Abhi record karein"], voiceGone: ["This parcel is no longer on your list, so its voice note cannot be added from here.", "Yeh parcel ab aap ki list mein nahi, is ka voice note yahan se nahi lag sakta."],
     voiceShort: ["Too short. Speak for at least 3 seconds.", "Bohat chhota. Kam az kam 3 second bolein."],
     voiceBig: ["This recording is too large. Record a shorter note.", "Recording bohat bari hai. Chhota paigham record karein."],
     voiceBlocked: ["Your phone blocked the microphone. Allow it for this app (tap the lock icon next to the address, then Microphone), then tap Try again.", "Phone ne mic band kar diya hai. Is app ke liye mic allow karein (address ke saath lock icon, phir Microphone), phir Dobara koshish dabayein."],
@@ -119,7 +120,23 @@
   function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function money(v) { return "Rs " + Number(v || 0).toLocaleString("en-PK", { maximumFractionDigits: 2 }); }
   function today() { return R.day(new Date()); }
-  function msg(text, type, id) { var el = q(id || "notice"); el.className = "notice show " + (type || "info"); el.textContent = text; }
+  /* 28 Nov 2026 audit: database and network errors reached riders word for
+     word ("JWT expired", "duplicate key value violates…"). Errors NovaX
+     writes for riders are already plain sentences and pass through; the raw
+     ones become what to do next. */
+  function plain(text) {
+    var s = String(text || "");
+    if (/jwt|refresh token|not authenticated|invalid claim|session (has )?expired|\b401\b/i.test(s))
+      return LANG === "ur" ? "Aap ka sign-in khatam ho gaya. Dobara sign in karein; jo mark kiya woh phone par mehfooz hai." : "Your sign-in ran out. Sign in again; what you marked is kept on this phone.";
+    if (/failed to fetch|networkerror|network (request )?failed|load failed|timed? ?out|fetch error|\b50[234]\b/i.test(s))
+      return LANG === "ur" ? "Abhi internet nahi chal raha. Signal aane par dobara karein. Parcel ke marks phone par rehte hain aur khud chale jate hain." : "No internet right now. Try again when the signal is back. Parcel marks stay on this phone and send by themselves.";
+    if (/permission denied for|row-level security/i.test(s))
+      return LANG === "ur" ? "NovaX ne aap ke rider ID par yeh allow nahi kiya. Office ko call karein." : "NovaX did not allow this for your rider ID. Call the office.";
+    if (/duplicate key|violates|constraint|PGRST|syntax error|column .* does not exist|relation .* does not exist|function .* does not exist|null value in|invalid input syntax/i.test(s))
+      return LANG === "ur" ? "NovaX yeh save nahi kar saka. Office ko call karein aur yeh batayein: " + s.slice(0, 60) : "NovaX could not save this. Call the office and read them this: " + s.slice(0, 60);
+    return s;
+  }
+  function msg(text, type, id) { var el = q(id || "notice"); el.className = "notice show " + (type || "info"); el.textContent = type === "error" ? plain(text) : text; }
   function failGate(text) {
     q("gateSpin").classList.add("hidden"); q("gateTitle").textContent = "Station unavailable";
     q("gateText").textContent = text; q("retryBtn").classList.remove("hidden"); q("loginLink").classList.remove("hidden");
@@ -134,7 +151,7 @@
   function ping(text, type, buzz) {
     var el = q("riderToast");
     if (!el) { el = document.createElement("div"); el.id = "riderToast"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite"); document.body.appendChild(el); }
-    el.className = "rider-toast show " + (type || "info"); el.textContent = text;
+    el.className = "rider-toast show " + (type || "info"); el.textContent = type === "error" ? plain(text) : text;
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.className = "rider-toast " + (type || "info"); }, type === "error" ? 6000 : 3200);
     try { if (buzz && navigator.vibrate) navigator.vibrate(buzz); } catch (_) {}
   }
@@ -352,6 +369,7 @@
     el.innerHTML = head + TODAY.map(function (x) {
       var tm = ""; try { tm = new Date(x.changed_at).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }); } catch (_) {}
       var v = x.voice === "sent" ? '<span class="tg ok">' + esc(t("voiceSent")) + '</span>' : x.voice === "skipped" ? '<span class="tg warn">' + esc(t("voiceSkipped")) + '</span>' : x.voice === "missing" ? '<span class="tg bad">' + esc(t("voiceMissing")) + '</span>' : "";
+      var vrec = x.voice === "missing" && voiceOn() && !VOICE.pending[String(x.awb).toUpperCase()] ? '<p><button type="button" class="btn secondary" data-vrec="' + esc(x.awb) + '" data-vstatus="' + esc(x.to_status) + '">🎙 ' + esc(t("voiceRecordNow")) + '</button></p>' : "";
       var key = x.awb + "|" + x.changed_at, call = R.phone(x.phone || ""), ok = /^\+?\d{9,15}$/.test(call), cs = cashOf(x);
       var cash = /return/i.test(x.to_status || "") ? (LANG === "ur" ? "Wapsi · kuch collect nahi" : "Return · nothing to collect")
         : cs.amt > 0 ? (x.to_status === "Delivered" ? (LANG === "ur" ? "COD liya: " : "COD collected: ") : "COD ") + money(cs.amt)
@@ -361,7 +379,7 @@
         '<div class="man-more today-more"><p>' + esc(x.address || (LANG === "ur" ? "Address nahi hai." : "Address missing.")) + (x.city ? ', ' + esc(x.city) : '') + '</p>' +
         (x.phone ? '<p>' + (ok ? '<a class="man-call" href="tel:' + esc(call) + '">\u260e ' + esc(x.phone) + '</a>' : esc(x.phone)) + '</p>' : '') +
         '<p class="moneyline' + (cs.conflict ? ' error-text' : '') + '">' + esc(cash) + (cs.conflict ? ' · ' + esc(LANG === "ur" ? "COD/prepaid ka masla, office ko batayein" : "COD/prepaid conflict, tell the office") : '') + '</p>' +
-        (x.shop ? '<p class="meta-line">' + esc((LANG === "ur" ? "Shop: " : "Shop: ") + x.shop) + '</p>' : '') + '</div></details>';
+        (x.shop ? '<p class="meta-line">' + esc((LANG === "ur" ? "Shop: " : "Shop: ") + x.shop) + '</p>' : '') + '</div></details>' + vrec;
     }).join("");
   }
   /* 6 Nov 2026: N8530344 and N9830081 were in Naveed's hand, but the office
@@ -727,7 +745,10 @@
       connected = true; lastSync = lastFull = Date.now();
       try { store.setItem(cacheKey, JSON.stringify({ user: userId, rider: riderId, at: lastSync, data: data })); }
       catch (_) { msg("This phone cannot save the station for offline use. Do not reload without signal.", "error"); }
-      q("gate").classList.add("hidden"); render(); loadToday(); loadOoa();
+      /* 28 Nov 2026 audit (CLS 0.82): the gate dropped first and the first
+         render then pushed the page 68 px down in view. Draw, then reveal;
+         rider.css keeps main hidden while the gate is up. */
+      render(); q("gate").classList.add("hidden"); loadToday(); loadOoa();
       if (!(data.rider.cities || []).length) msg("No city is set on your rider account. Ask the office to set it.", "error");
       else if (cash.error) msg("Cash services are unavailable. Handover is disabled; contact the office.", "error");
       else if (!silent) msg("Station refreshed.", "ok");
@@ -993,7 +1014,7 @@
         clearInterval(tick); stopTracks(); if (url) URL.revokeObjectURL(url);
         dialog.removeEventListener("cancel", noCancel); dialog.close(); resolve(row);
       }
-      function noCancel(e) { e.preventDefault(); }
+      function noCancel(e) { e.preventDefault(); if (!(mr && mr.state === "recording")) q("voiceLater").click(); }
       async function start() {
         err.textContent = "";
         mime = voiceMime();
@@ -1030,6 +1051,9 @@
       }
       rec.onclick = function () { if (mr && mr.state === "recording") mr.stop(); else void start(); };
       q("voiceAgain").onclick = reset;
+      /* 28 Nov 2026: never trap the rider. The status is already saved; the
+         note can be recorded later from "What you marked today". */
+      q("voiceLater").onclick = function () { if (mr && mr.state === "recording") { try { mr.onstop = null; mr.stop(); } catch (_) {} } finish(null); };
       q("voiceRetryMic").onclick = function () { reset(); void start(); };
       q("voiceSend").onclick = async function () {
         if (!blob) return;
@@ -1127,7 +1151,10 @@
   var geo = { watch: null, fix: null, fixAt: 0, denied: false };
   function geoWanted() {
     return !DEMO && authorized && !document.hidden && !!navigator.geolocation && typeof navigator.geolocation.watchPosition === "function" &&
-      (inBucket("out").length > 0 || (ui.view === "pickup" && inBucket("pickup").length > 0));
+      /* 28 Nov 2026: was ui.view === "pickup", a screen that no longer exists
+         (collecting happens on Process since 3 Nov), so GPS never warmed up
+         before a pickup. Driven by the work the rider has, not the screen. */
+      (inBucket("out").length > 0 || inBucket("pickup").length > 0);
   }
   function geoStop() { if (geo.watch != null) { try { navigator.geolocation.clearWatch(geo.watch); } catch (_) {} geo.watch = null; } }
   function geoSync() {
@@ -1141,7 +1168,7 @@
   }
   function paintGeo() {
     var el = q("geoNote"); if (!el) return;
-    el.classList.toggle("hidden", !(geo.denied && authorized && (inBucket("out").length || ui.view === "pickup")));
+    el.classList.toggle("hidden", !(geo.denied && authorized && (inBucket("out").length || inBucket("pickup").length)));
     el.textContent = t("geoOff");
   }
   /* The reading saved with an action. "at" is when the rider tapped, so an
@@ -1379,7 +1406,7 @@
      here and does it in one tap: receive the sack, take everything out for
      delivery, collect. It uses the same saved actions as the other tabs, so
      offline saving, retries and the office log all still apply. */
-  var PROC = { list: [], why: {}, asked: {} };
+  var PROC = { list: [], why: {}, asked: {}, over: 0, showAll: false }, PROC_MAX = 200, PROC_SHOW = 50;
   function procParse(raw, typing) {
     var out = [], tail = "", bad = [];
     String(raw || "").split(/[^0-9]+/).forEach(function (run, i, all) {
@@ -1389,6 +1416,11 @@
     });
     PROC.bad = bad;
     var seen = {}; out = out.filter(function (a) { if (seen[a]) return false; seen[a] = true; return true; });
+    /* 28 Nov 2026 audit: 500 pasted numbers drew 500 rows (50,000 px). The
+       list takes PROC_MAX at a time; the rest are named, not dropped silently. */
+    if (out.length > PROC_MAX) { PROC.over = out.length - PROC_MAX; out = out.slice(0, PROC_MAX); }
+    else if (out.length < PROC_MAX) PROC.over = 0;   /* the box was cut to 200: keep saying so until it shrinks */
+    if (out.length <= PROC_SHOW) PROC.showAll = false;
     return { awbs: out, tail: tail };
   }
   function procKind(p, mine, a) {
@@ -1424,10 +1456,11 @@
         }, function () {});
       } catch (_) {}
     }
-    host.innerHTML = rows.map(function (r) {
+    var shown = PROC.showAll ? rows : rows.slice(0, PROC_SHOW);
+    host.innerHTML = shown.map(function (r) {
       return '<div class="proc-row"><b class="awbx">' + esc(r.awb) + '</b><span class="proc-who">' + esc(r.p ? (r.p.consignee || "") + (r.p.city ? " · " + r.p.city : "") : "") + '</span>' +
         '<span class="tg ' + (tone[r.s.k] || "") + '">' + esc(r.s.why) + '</span><button type="button" class="proc-x" data-proc-del="' + esc(r.awb) + '" aria-label="Remove ' + esc(r.awb) + '">\u00d7</button></div>';
-    }).join("");
+    }).join("") + (rows.length > shown.length ? '<button type="button" class="btn secondary full" data-proc-more>' + esc(LANG === "ur" ? "Baqi " + (rows.length - shown.length) + " bhi dikhayein" : "Show the other " + (rows.length - shown.length)) + '</button>' : "");
     var by = function (k) { return rows.filter(function (r) { return r.s.k === k; }); };
     var rec = by("receive"), recLocal = rec.filter(function (r) { return !r.s.hub; }), outs = by("out"), col = by("collect"), tr = by("transit");
     var b = [];
@@ -1451,8 +1484,9 @@
          looking counted. Say which pieces are not a whole tracking number. */
       var bad = (PROC.bad || []).slice(0, 3);
       count.textContent = (n ? (n + (LANG === "ur" ? " number" : n === 1 ? " number" : " numbers")) : "") +
+        (PROC.over ? (LANG === "ur" ? " · " + PROC_MAX + " se zyada ek saath nahi. Yeh process karein, phir baqi " + PROC.over + " paste karein" : " · " + PROC_MAX + " at a time. Process these, then paste the other " + PROC.over) : "") +
         (bad.length ? (n ? " · " : "") + (LANG === "ur" ? "Adhoora: " : "Not a full number: ") + bad.join(", ") + ((PROC.bad || []).length > 3 ? " …" : "") : "");
-      count.classList.toggle("proc-bad", bad.length > 0);
+      count.classList.toggle("proc-bad", bad.length > 0 || PROC.over > 0);
     }
   }
   function procSetFromInput(typing) {
@@ -1469,6 +1503,7 @@
     if (changed || typing) procPaint(); else procCountPaint(PROC.list.length);
   }
   function procAdd(awb) { var a = String(awb || "").toUpperCase().replace(/^N?/, "N"); if (!/^N\d{7}$/.test(a) || PROC.list.indexOf(a) > -1) return false;
+    if (PROC.list.length >= PROC_MAX) { ping(LANG === "ur" ? PROC_MAX + " number ho gaye. Pehle inhe process karein." : PROC_MAX + " numbers in the list. Process these first.", "info"); return false; }
     PROC.list.push(a); var el = q("procInput"); if (el) el.value = PROC.list.join(", ") + ", "; procPaint(); return true; }
   async function procRun(mode) {
     if (busy || flushing || !authorized) return;
@@ -1608,9 +1643,10 @@
   q("procInput").addEventListener("input", function () { procSetFromInput(true); });
   q("procInput").addEventListener("paste", function () { setTimeout(function () { procSetFromInput(false); }, 0); });
   q("procInput").addEventListener("blur", function () { procSetFromInput(false); });
-  q("procClear").onclick = function () { PROC.list = []; q("procInput").value = ""; procPaint(); q("procInput").focus(); };
+  q("procClear").onclick = function () { PROC.list = []; PROC.over = 0; PROC.showAll = false; q("procInput").value = ""; procPaint(); q("procInput").focus(); };
   q("procScan").onclick = function () { void startScan(); };
   q("view-process").addEventListener("click", function (e) {
+    if (e.target.closest("[data-proc-more]")) { PROC.showAll = true; procPaint(); return; }
     var del = e.target.closest("[data-proc-del]");
     if (del) { var a = del.getAttribute("data-proc-del"); PROC.list = PROC.list.filter(function (x) { return x !== a; }); q("procInput").value = PROC.list.length ? PROC.list.join(", ") + ", " : ""; procPaint(); return; }
     var go = e.target.closest("[data-proc]"); if (go) { void procRun(go.getAttribute("data-proc")); return; }
@@ -1708,6 +1744,13 @@
       try { await sendTransit(Array.from(ui.sel)); ui.sel.clear(); ui.selScope = ""; }
       catch (err) { if (String(err.message) !== "Not sent.") msg(String(err.message || err), "error"); }
       finally { busy = false; render(); void flush(); }
+      return;
+    }
+    var vr = e.target.closest("[data-vrec]");
+    if (vr) {
+      var vawb = String(vr.dataset.vrec).toUpperCase(), vp = data.parcels.find(function (x) { return x.awb.toUpperCase() === vawb; });
+      if (!vp) { msg(t("voiceGone"), "error"); return; }
+      if (!q("voiceDialog").open) void voiceCapture(vp, vr.dataset.vstatus === "Refused" ? "refused" : "not_available", "", null).then(function () { loadToday(); }).catch(function () {});
       return;
     }
     var go = e.target.closest("[data-goto]");
@@ -1880,7 +1923,7 @@
       else if (name === "rider_station_stamp") d = "demo-" + rev;
       else if (name === "rider_cash_summary") d = cash();
       else if (name === "rider_today") d = rows.filter(function (p) { return /Delivered|Refused|Consignee not available/.test(p.status); }).slice(0, 6).map(function (p, i) {
-          return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i % 2 ? "sent" : "skipped"),
+          return { awb: p.awb, consignee: p.consignee, city: p.city, to_status: p.status, changed_at: iso((i + 1) * 0.5), voice: p.status === "Delivered" ? null : (i === 0 ? "missing" : i % 2 ? "sent" : "skipped"),
                    address: p.address, phone: p.phone, cod_amount: p.cod_amount, payment_mode: (p.meta && p.meta.paymentMode) || "COD", shop: (p.shipper && p.shipper.name) || "Karachi Kicks" }; });
       else if (name === "rider_out_of_area") d = [{ awb: "N9000099", consignee: "Awais Mehmood", city: "Lahore", address: "Near veterinary hospital, Daultala, Gujar Khan", phone: "03001234599", cod_amount: 1380, payment_mode: "COD", shop: "Karachi Kicks", reason: "Address is outside Lahore", changed_at: iso(60) }];
       else if (name === "rider_awb_why") d = [];
